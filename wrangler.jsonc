@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "commentbot",
+  "compatibility_date": "2025-04-07",
+  "main": "server/index.js",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "directory": "src/assets"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "commentbot",
+      "database_id": "153cc865-af0a-42f6-a318-a5cb683c06d4",
+      "preview_database_id": "commentbot"
+    }
+  ],
+  "vars": {
+    "NEXTAUTH_URL": "https://commentbot.millianfreakyads.workers.dev",
+    "WHOP_OAUTH_CLIENT_SECRET": "LVTGVechmQYGIj_icc17MQe1vg_wgMSXFDECrfLFXQw",
+    "WHOP_OAUTH_CLIENT_ID": "ooSk16AXzzonDkIc6ZWZozb8c5aMjIxaIiOERoUYtqg",
+    "WHOP_COMPANY_API_KEY": "BVAt4WK30JAWnBQCFsKhX4iizo_NcV4YyMaeokh7xBU",
+    "WHOP_API_KEY": "BVAt4WK30JAWnBQCFsKhX4iizo_NcV4YyMaeokh7xBU",
+    
+    "WHOP_COMMENT_BOT_PRODUCT_ID": "prod_YpCOaWAGL30pV",
+    "WHOP_COMMENT_BOT_PLAN_ID": "plan_iCOoidm24W6Na",
+    "WHOP_COMMENT_BOT_CHECKOUT_LINK": "https://whop.com/checkout/plan_iCOoidm24W6Na?d2c=true",
+
+    "WHOP_BC_GEN_PRODUCT_ID": "prod_nuM231xabjmyN",
+    "WHOP_BC_GEN_PLAN_ID": "plan_0ArkKt6D6JOi3",
+    "WHOP_BC_GEN_CHECKOUT_LINK": "https://whop.com/checkout/plan_0ArkKt6D6JOi3?d2c=true"
+  }
+}
