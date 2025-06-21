@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import { commentBotApi } from '@/services/api';
+import { commentBotApi, usersApi } from '@/services/api';
 import AuthGuard from '@/components/AuthGuard.vue';
 
 // Import components
@@ -11,7 +11,7 @@ import ActiveOrders from './components/ActiveOrders.vue';
 import CommentGroupDetail from './components/CommentGroupDetail.vue';
 import CreateCommentGroup from './components/CreateCommentGroup.vue';
 import EditCommentGroup from './components/EditCommentGroup.vue';
-import Credits from '@/views/Credits/Credits.vue';
+import CommentBotCredits from './components/CommentBotCredits.vue';
 
 // State management
 const loading = ref({
@@ -156,7 +156,7 @@ const createOrder = async (newOrder) => {
         console.log('Total credits needed:', totalCreditsNeeded);
         
         // Deduct all credits at once
-        const creditResult = await commentBotApi.useCredits({ 
+        const creditResult = await usersApi.useCredits({ 
           credits: totalCreditsNeeded,
           productType: 'comment_bot'
         });
@@ -215,7 +215,7 @@ const fetchCredits = async () => {
   error.value.credits = null;
   
   try {
-    const data = await commentBotApi.checkAccess();
+    const data = await usersApi.checkAccess();
     
     // Get Comment Bot specific credits
     const commentBotData = data.subscriptions?.comment_bot;
@@ -489,7 +489,7 @@ onUnmounted(() => {
 
       <!-- Credits Tab -->
       <v-window-item value="credits">
-        <Credits />
+        <CommentBotCredits />
       </v-window-item>
     </v-window>
 

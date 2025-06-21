@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import CommentBot from '@/views/CommentBot/CommentBot.vue';
+import BCGen from '@/views/BCGen/BCGen.vue';
 import Profile from '@/views/Profile/Profile.vue';
 import AuthCallback from '@/views/AuthCallback.vue';
 import { useAuth } from '@/composables/useAuth';
@@ -7,22 +8,34 @@ import { useAuth } from '@/composables/useAuth';
 const routes = [
   {
     path: '/',
+    name: 'Home',
+    component: Profile,
+    meta: {
+      title: 'Profile',
+      requiresAuth: true,
+      requiresAccess: false
+    }
+  },
+  {
+    path: '/comments',
     name: 'CommentBot',
     component: CommentBot,
     meta: {
       title: 'Comment Bot',
       requiresAuth: true,
-      requiresAccess: true
+      requiresAccess: true,
+      requiresSubscription: 'comment_bot'
     }
   },
   {
-    path: '/comments',
-    name: 'CommentBotAlias',
-    component: CommentBot,
+    path: '/bc-gen',
+    name: 'BCGen',
+    component: BCGen,
     meta: {
-      title: 'Comment Bot',
+      title: 'BC Gen',
       requiresAuth: true,
-      requiresAccess: true
+      requiresAccess: true,
+      requiresSubscription: 'bc_gen'
     }
   },
   {
@@ -71,17 +84,27 @@ router.beforeEach(async (to, from, next) => {
   
   // Check authentication requirements
   if (to.meta.requiresAuth) {
-    const { isAuthenticated, hasCommentBotAccess, loading, initAuth } = useAuth();
+    const { isAuthenticated, hasCommentBotAccess, hasBcGenAccess, loading, initAuth } = useAuth();
     
     // Initialize auth if not already done
     if (loading.value) {
       await initAuth();
     }
     
-    // If route requires access and user doesn't have it, redirect to profile
-    if (to.meta.requiresAccess && !hasCommentBotAccess.value && isAuthenticated.value) {
-      next('/profile');
-      return;
+    // Check subscription-specific requirements
+    if (to.meta.requiresSubscription) {
+      let hasRequiredAccess = false;
+      
+      if (to.meta.requiresSubscription === 'comment_bot') {
+        hasRequiredAccess = hasCommentBotAccess.value;
+      } else if (to.meta.requiresSubscription === 'bc_gen') {
+        hasRequiredAccess = hasBcGenAccess.value;
+      }
+      
+      if (!hasRequiredAccess && isAuthenticated.value) {
+        next('/');
+        return;
+      }
     }
   }
   

@@ -1,6 +1,7 @@
 import { handleCommentBotData } from './CommentBot/CommentBot';
 import { handleAuth, requireAuth, cleanExpiredSessions } from './Auth/Auth';
 import { handleSQLData } from './SQL/SQL';
+import BCGen from './BCGen/BCGen';
 
 export default {
   async fetch(request, env) {
@@ -10,7 +11,7 @@ export default {
     try {
       // Clean expired sessions periodically (on 1% of requests)
       if (Math.random() < 0.01) {
-        cleanExpiredSessions(env.DB).catch(console.error);
+        cleanExpiredSessions(env.USERS_DB).catch(console.error);
       }
       
       // Route authentication requests
@@ -28,6 +29,15 @@ export default {
         return requireAuth(request, env, handleCommentBotData);
       }
       
+      // Route BCGen API requests (protected)
+      if (path.startsWith('/api/bcgen')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          const bcgen = new BCGen(env);
+          // Wait for table initialization
+          await bcgen.initializeTables();
+          return bcgen.handle(req, session);
+        });
+      }
       
       // For any other route, serve the Vue app
       if (env.ASSETS) {

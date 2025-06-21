@@ -354,11 +354,11 @@ async function handleSQLData(request, env) {
   
   // Handle raw SQL query endpoint
   if (path === '/api/sql/raw') {
-    return handleRawSQLRequest(request, env.DB);
+    return handleRawSQLRequest(request, env.COMMENT_BOT_DB);
   }
   
   // Handle regular CRUD operations
-  return handleSQLRequest(request, env.DB);
+  return handleSQLRequest(request, env.COMMENT_BOT_DB);
 }
 
 

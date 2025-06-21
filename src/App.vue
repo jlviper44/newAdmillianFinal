@@ -21,6 +21,12 @@ const allRoutes = [
     requiresSubscription: 'comment_bot'
   },
   { 
+    title: 'BC Gen', 
+    icon: 'mdi-account-multiple-plus', 
+    path: '/bc-gen',
+    requiresSubscription: 'bc_gen'
+  },
+  { 
     title: 'Profile', 
     icon: 'mdi-account', 
     path: '/profile',
@@ -134,13 +140,13 @@ onMounted(async () => {
       <v-list nav>
         <v-list-item
           v-for="(item, i) in visibleRoutes"
-          :key="i"
+          :key="`nav-${item.path}`"
           :to="item.path"
           :title="item.title"
           :prepend-icon="item.icon"
-          :active="activeRoute === item.path || (item.path === '/comments' && activeRoute === '/')"
-          :class="{ 'bg-primary-lighten-5': (activeRoute === item.path || (item.path === '/comments' && activeRoute === '/')) && !isDarkMode,
-                    'bg-primary-darken-3': (activeRoute === item.path || (item.path === '/comments' && activeRoute === '/')) && isDarkMode }"
+          :active="activeRoute === item.path || (item.path === '/profile' && activeRoute === '/')"
+          :class="{ 'bg-primary-lighten-5': (activeRoute === item.path || (item.path === '/profile' && activeRoute === '/')) && !isDarkMode,
+                    'bg-primary-darken-3': (activeRoute === item.path || (item.path === '/profile' && activeRoute === '/')) && isDarkMode }"
           rounded="lg"
           class="mb-1"
         ></v-list-item>

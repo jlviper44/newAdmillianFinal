@@ -58,7 +58,7 @@ function handleCommentBotCors(request) {
 async function initializeCommentGroupTables(env) {
   try {
     // Create comment_groups table with legends JSON column
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE TABLE IF NOT EXISTS comment_groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id VARCHAR(255),
@@ -71,18 +71,18 @@ async function initializeCommentGroupTables(env) {
     `).run();
     
     // Create indices
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_comment_groups_created_at 
       ON comment_groups(created_at)
     `).run();
     
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_comment_groups_user_id 
       ON comment_groups(user_id)
     `).run();
     
     // Create orders table
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id VARCHAR(255),
@@ -101,23 +101,23 @@ async function initializeCommentGroupTables(env) {
     `).run();
     
     // Create indices for orders table
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_orders_order_id ON orders(order_id)
     `).run();
     
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_orders_post_id ON orders(post_id)
     `).run();
     
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)
     `).run();
     
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)
     `).run();
     
-    await env.DB.prepare(`
+    await env.COMMENT_BOT_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)
     `).run();
     
@@ -333,7 +333,7 @@ async function getCommentGroups(request, env, userId) {
       LIMIT ? OFFSET ?
     `;
     
-    const result = await executeQuery(env.DB, query, [userId, limit, offset]);
+    const result = await executeQuery(env.COMMENT_BOT_DB, query, [userId, limit, offset]);
     
     if (!result.success) {
       throw new Error(result.error);
@@ -378,7 +378,7 @@ async function getCommentGroupDetail(groupId, env, userId) {
   try {
     // Get comment group details
     const groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
-    const groupResult = await executeQuery(env.DB, groupQuery, [groupId, userId]);
+    const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, [groupId, userId]);
     
     if (!groupResult.success || groupResult.data.length === 0) {
       return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -470,7 +470,7 @@ async function createCommentGroup(request, env, userId) {
         VALUES (?, ?, ?, ?)
       `;
       
-      const groupResult = await env.DB.prepare(insertGroupQuery)
+      const groupResult = await env.COMMENT_BOT_DB.prepare(insertGroupQuery)
         .bind(userId, groupData.name, groupData.description || null, JSON.stringify(legendsData))
         .run();
       
@@ -550,7 +550,7 @@ async function updateCommentGroup(request, env, userId) {
     try {
       // Check if comment group exists and belongs to user
       const checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND user_id = ?`;
-      const checkResult = await executeQuery(env.DB, checkQuery, [groupId, userId]);
+      const checkResult = await executeQuery(env.COMMENT_BOT_DB, checkQuery, [groupId, userId]);
       
       if (!checkResult.success || checkResult.data.length === 0) {
         return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -563,7 +563,7 @@ async function updateCommentGroup(request, env, userId) {
         WHERE id = ?
       `;
       
-      await env.DB.prepare(updateGroupQuery)
+      await env.COMMENT_BOT_DB.prepare(updateGroupQuery)
         .bind(groupData.name, groupData.description || null, JSON.stringify(legendsData), groupId)
         .run();
       
@@ -602,7 +602,7 @@ async function deleteCommentGroup(request, env, userId) {
     
     // Check if comment group exists and belongs to user
     const checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND user_id = ?`;
-    const checkResult = await executeQuery(env.DB, checkQuery, [groupId, userId]);
+    const checkResult = await executeQuery(env.COMMENT_BOT_DB, checkQuery, [groupId, userId]);
     
     if (!checkResult.success || checkResult.data.length === 0) {
       return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -610,7 +610,7 @@ async function deleteCommentGroup(request, env, userId) {
     
     // Delete comment group (legends are stored as JSON within the table)
     const deleteQuery = `DELETE FROM comment_groups WHERE id = ? AND user_id = ?`;
-    await env.DB.prepare(deleteQuery).bind(groupId, userId).run();
+    await env.COMMENT_BOT_DB.prepare(deleteQuery).bind(groupId, userId).run();
     
     return jsonResponse({
       success: true,
@@ -756,7 +756,7 @@ async function createOrder(request, env, userId) {
     if (orderData.comment_group_id) {
       // Get comment group details and verify it belongs to the user
       const groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
-      const groupResult = await executeQuery(env.DB, groupQuery, [orderData.comment_group_id, userId]);
+      const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, [orderData.comment_group_id, userId]);
       
       if (!groupResult.success || groupResult.data.length === 0) {
         return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -820,7 +820,7 @@ async function createOrder(request, env, userId) {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         
-        await env.DB.prepare(insertOrderQuery)
+        await env.COMMENT_BOT_DB.prepare(insertOrderQuery)
           .bind(
             userId,
             createdOrder.order_id,
@@ -886,7 +886,7 @@ async function getOrders(request, env, userId) {
     query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
     
-    const result = await executeQuery(env.DB, query, params);
+    const result = await executeQuery(env.COMMENT_BOT_DB, query, params);
     
     if (!result.success) {
       throw new Error(result.error);
@@ -900,7 +900,7 @@ async function getOrders(request, env, userId) {
       countParams.push(status);
     }
     
-    const countResult = await executeQuery(env.DB, countQuery, countParams);
+    const countResult = await executeQuery(env.COMMENT_BOT_DB, countQuery, countParams);
     const total = countResult.success && countResult.data.length > 0 ? countResult.data[0].total : 0;
     
     return jsonResponse({
@@ -942,7 +942,7 @@ async function getOrderStatus(orderId, env = null, userId = null) {
           WHERE order_id = ?
         `;
         
-        await env.DB.prepare(updateQuery)
+        await env.COMMENT_BOT_DB.prepare(updateQuery)
           .bind(orderStatus.status, orderId)
           .run();
           
@@ -963,7 +963,7 @@ async function getOrderStatus(orderId, env = null, userId = null) {
         WHERE o.order_id = ? AND o.user_id = ?
       `;
       
-      const result = await executeQuery(env.DB, orderQuery, [orderId, userId]);
+      const result = await executeQuery(env.COMMENT_BOT_DB, orderQuery, [orderId, userId]);
       
       if (result.success && result.data.length > 0) {
         return jsonResponse({

@@ -7,8 +7,8 @@ import { executeQuery } from '../SQL/SQL.js';
  */
 async function initializeAuthTables(env) {
   try {
-    // Create sessions table
-    await env.DB.prepare(`
+    // Create sessions table in USERS_DB
+    await env.USERS_DB.prepare(`
       CREATE TABLE IF NOT EXISTS sessions (
         session_id VARCHAR(255) PRIMARY KEY,
         user_id VARCHAR(255) NOT NULL,
@@ -22,17 +22,17 @@ async function initializeAuthTables(env) {
     `).run();
     
     // Create indices for better performance
-    await env.DB.prepare(`
+    await env.USERS_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_sessions_expires_at 
       ON sessions(expires_at)
     `).run();
     
-    await env.DB.prepare(`
+    await env.USERS_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_sessions_user_id 
       ON sessions(user_id)
     `).run();
     
-    await env.DB.prepare(`
+    await env.USERS_DB.prepare(`
       CREATE INDEX IF NOT EXISTS idx_sessions_created_at 
       ON sessions(created_at)
     `).run();
@@ -148,7 +148,7 @@ async function handleSignin(request, env) {
   let existingSession = null;
   
   if (sessionId) {
-    existingSession = await getSession(env.DB, sessionId);
+    existingSession = await getSession(env.USERS_DB, sessionId);
   }
   
   // Generate new session if no valid existing session
@@ -159,7 +159,7 @@ async function handleSignin(request, env) {
   const state = generateRandomString();
   
   // Store state in session for CSRF protection
-  await setSession(env.DB, sessionId, { state });
+  await setSession(env.USERS_DB, sessionId, { state });
   
   // Include session ID in state for callback (as backup if cookie doesn't work)
   const stateWithSession = `${state}.${sessionId}`;
@@ -244,7 +244,7 @@ async function handleCallback(request, env) {
   }
   
   // Verify state parameter
-  const session = await getSession(env.DB, sessionId);
+  const session = await getSession(env.USERS_DB, sessionId);
   console.log('Session validation:', { 
     sessionExists: !!session, 
     sessionState: session?.state, 
@@ -326,7 +326,7 @@ async function handleCallback(request, env) {
     const userInfo = await userResponse.json();
     
     // Update session with user data
-    await setSession(env.DB, sessionId, {
+    await setSession(env.USERS_DB, sessionId, {
       user: {
         id: userInfo.id,
         name: userInfo.username,
@@ -375,7 +375,7 @@ async function handleLogout(request, env) {
   const sessionId = getSessionIdFromCookie(request);
   
   if (sessionId) {
-    await deleteSession(env.DB, sessionId);
+    await deleteSession(env.USERS_DB, sessionId);
   }
   
   return new Response(null, {
@@ -417,7 +417,7 @@ async function handleCheckAccess(request, env) {
     });
   }
   
-  const session = await getSession(env.DB, sessionId);
+  const session = await getSession(env.USERS_DB, sessionId);
   if (!session || !session.access_token) {
     return new Response(JSON.stringify({ 
       user: null,
@@ -561,7 +561,7 @@ async function handleGetUser(request, env) {
     });
   }
   
-  const session = await getSession(env.DB, sessionId);
+  const session = await getSession(env.USERS_DB, sessionId);
   
   // Ensure we have a valid user with required fields
   let validUser = null;
@@ -589,7 +589,7 @@ async function handleCreateCheckout(request, env) {
     });
   }
   
-  const session = await getSession(env.DB, sessionId);
+  const session = await getSession(env.USERS_DB, sessionId);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -678,7 +678,7 @@ async function handleUseCredits(request, env) {
     });
   }
   
-  const session = await getSession(env.DB, sessionId);
+  const session = await getSession(env.USERS_DB, sessionId);
   if (!session || !session.access_token) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -881,7 +881,7 @@ async function requireAuth(request, env, handler) {
     });
   }
   
-  const session = await getSession(env.DB, sessionId);
+  const session = await getSession(env.USERS_DB, sessionId);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -889,9 +889,8 @@ async function requireAuth(request, env, handler) {
     });
   }
   
-  // Add session to request context
-  request.session = session;
-  return handler(request, env);
+  // Pass session as third parameter to handler
+  return handler(request, env, session);
 }
 
 export { 

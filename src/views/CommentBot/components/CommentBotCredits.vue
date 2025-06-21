@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import { commentBotApi } from '@/services/api';
+import { usersApi } from '@/services/api';
 
 // Credits data
 const credits = ref({
@@ -45,7 +45,7 @@ const checkAccess = async () => {
   error.value.checkAccess = null;
   
   try {
-    const data = await commentBotApi.checkAccess();
+    const data = await usersApi.checkAccess();
     
     // Get Comment Bot specific credits
     const commentBotData = data.subscriptions?.comment_bot;
@@ -70,7 +70,7 @@ const createCheckout = async () => {
   error.value.createCheckout = null;
   
   try {
-    const data = await commentBotApi.createCheckout({ 
+    const data = await usersApi.createCheckout({ 
       quantity: purchaseQuantity.value,
       productType: 'comment_bot'
     });
@@ -122,37 +122,6 @@ const createCheckout = async () => {
     error.value.createCheckout = err.message || 'Failed to create checkout';
   } finally {
     loading.value.createCheckout = false;
-  }
-};
-
-// Use credits
-const useCredits = async () => {
-  if (useCreditsAmount.value < 1 || isNaN(useCreditsAmount.value)) {
-    error.value.useCredits = 'Please enter a valid number of credits';
-    return;
-  }
-  
-  loading.value.useCredits = true;
-  error.value.useCredits = null;
-  
-  try {
-    const data = await commentBotApi.useCredits({ 
-      credits: useCreditsAmount.value,
-      productType: 'comment_bot'
-    });
-    
-    if (data.success) {
-      // Show success message
-      error.value.useCredits = null;
-      // Refresh credits
-      await checkAccess();
-    } else {
-      error.value.useCredits = 'Failed to use credits';
-    }
-  } catch (err) {
-    error.value.useCredits = err.message || 'Failed to use credits';
-  } finally {
-    loading.value.useCredits = false;
   }
 };
 

@@ -62,6 +62,17 @@ export const api = {
   })
 }
 
+// Users/Auth API methods
+export const usersApi = {
+  // Authentication
+  checkAccess: () => api.get('/auth/check-access'),
+  
+  // Credits and checkout
+  createCheckout: (data) => api.post('/auth/create-checkout', data),
+  useCredits: (data) => api.post('/auth/use-credits', data),
+  getCheckoutLink: () => api.get('/auth/checkout-link')
+}
+
 // CommentBot specific API methods
 export const commentBotApi = {
   // Comment Groups
@@ -88,13 +99,31 @@ export const commentBotApi = {
   
   // Other endpoints
   checkAccounts: (type) => api.post(`/commentbot/check-accounts?type=${type}`),
-  getCommentGroupDetail: (id) => api.get(`/commentbot?type=comment-group-detail&id=${id}`),
+  getCommentGroupDetail: (id) => api.get(`/commentbot?type=comment-group-detail&id=${id}`)
+}
+
+// BCGen specific API methods
+export const bcgenApi = {
+  // Get availability for all regions
+  getAvailability: () => api.get('/bcgen/availability'),
   
-  // Credits endpoints
-  checkAccess: () => api.get('/auth/check-access'),
-  createCheckout: (data) => api.post('/auth/create-checkout', data),
-  useCredits: (data) => api.post('/auth/use-credits', data),
-  getCheckoutLink: () => api.get('/auth/checkout-link')
+  // Create a new order
+  createOrder: (country, quantity) => api.post('/bcgen/create-order', {
+    country,
+    quantity
+  }),
+  
+  // Get user's orders
+  getUserOrders: () => api.get('/bcgen/user-orders'),
+  
+  // Get specific order status and accounts
+  getOrderStatus: (orderId) => api.get(`/bcgen/order-status/${orderId}`),
+  
+  // Request refund for an account
+  refundRequest: (orderId, accountUsername) => api.post('/bcgen/refund-request', {
+    orderId,
+    accountUsername
+  })
 }
 
 export default api

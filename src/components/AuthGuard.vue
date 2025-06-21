@@ -94,7 +94,7 @@
 <script setup>
 import { defineProps, onMounted, onUnmounted, watch, ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import { commentBotApi } from '@/services/api'
+import { usersApi } from '@/services/api'
 
 const props = defineProps({
   requireAccess: {
@@ -111,7 +111,7 @@ const paymentCheckInterval = ref(null)
 // Fetch checkout link
 const fetchCheckoutLink = async () => {
   try {
-    const data = await commentBotApi.getCheckoutLink()
+    const data = await usersApi.getCheckoutLink()
     checkoutLink.value = data.checkoutLink || ''
   } catch (err) {
     console.error('Failed to fetch checkout link:', err)

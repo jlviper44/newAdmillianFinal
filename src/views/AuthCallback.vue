@@ -85,19 +85,15 @@ const processCallback = async () => {
     // Close the window after a short delay
     setTimeout(() => {
       window.close()
-      // Fallback if window.close() doesn't work
-      window.location.href = '/'
     }, 1500)
     
   } catch (err) {
     console.error('Auth callback error:', err)
     error.value = err.message
     loading.value = false
-    // Redirect back to login page after a short delay
+    // Close window after a short delay
     setTimeout(() => {
       window.close()
-      // Fallback if window.close() doesn't work
-      window.location.href = '/'
     }, 2000)
   }
 }

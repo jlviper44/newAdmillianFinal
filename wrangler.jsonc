@@ -12,10 +12,22 @@
   },
   "d1_databases": [
     {
-      "binding": "DB",
+      "binding": "COMMENT_BOT_DB",
       "database_name": "commentbot",
       "database_id": "153cc865-af0a-42f6-a318-a5cb683c06d4",
       "preview_database_id": "commentbot"
+    },
+    {
+      "binding": "BCGEN_DB",
+      "database_name": "bcgen",
+      "database_id": "bdb66b09-5517-44f0-8472-8f32cea293b8",
+      "preview_database_id": "bcgen"
+    },
+    {
+      "binding": "USERS_DB",
+      "database_name": "users",
+      "database_id": "YOUR_USERS_DB_ID_HERE",
+      "preview_database_id": "users"
     }
   ],
   "vars": {
@@ -31,6 +43,8 @@
 
     "WHOP_BC_GEN_PRODUCT_ID": "prod_nuM231xabjmyN",
     "WHOP_BC_GEN_PLAN_ID": "plan_0ArkKt6D6JOi3",
-    "WHOP_BC_GEN_CHECKOUT_LINK": "https://whop.com/checkout/plan_0ArkKt6D6JOi3?d2c=true"
+    "WHOP_BC_GEN_CHECKOUT_LINK": "https://whop.com/checkout/plan_0ArkKt6D6JOi3?d2c=true",
+    
+    "SHEETDB_API_URL": "https://sheetdb.io/api/v1/zb48wyyweh0rp"
   }
 }
