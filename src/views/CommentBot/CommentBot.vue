@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { commentBotApi, usersApi } from '@/services/api';
 import AuthGuard from '@/components/AuthGuard.vue';
 
@@ -365,6 +366,14 @@ onMounted(() => {
   fetchOrders();
   fetchAccountPools();
   fetchCredits();
+  
+  // Check if we should show credits tab
+  const route = useRoute();
+  if (route.query.showCredits === 'true') {
+    currentTab.value = 'credits';
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
 });
 
 onUnmounted(() => {

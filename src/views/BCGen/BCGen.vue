@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import AuthGuard from '@/components/AuthGuard.vue';
 import BCGenCredits from './components/BCGenCredits.vue';
 import PlaceOrderView from './components/PlaceOrderView.vue';
@@ -42,6 +43,14 @@ const fetchCredits = async () => {
 // Lifecycle hooks
 onMounted(() => {
   fetchCredits();
+  
+  // Check if we should show credits tab
+  const route = useRoute();
+  if (route.query.showCredits === 'true') {
+    currentTab.value = 'credits';
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
 });
 </script>
 

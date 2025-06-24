@@ -284,7 +284,7 @@ async function handleCallback(request, env) {
     // Create authorization header
     const authString = `${env.WHOP_OAUTH_CLIENT_ID}:${env.WHOP_OAUTH_CLIENT_SECRET}`;
     const authHeader = 'Basic ' + btoa(authString);
-    
+    console.log(authHeader);
     // console.log('Token exchange request:', {
     //   url: 'https://api.whop.com/api/v5/oauth/token',
     //   redirectUri: `${env.NEXTAUTH_URL}/auth/callback/whop`,

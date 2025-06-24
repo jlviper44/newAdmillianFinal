@@ -49,156 +49,166 @@
 
       </v-row>
 
-      <!-- Subscription Cards -->
-      <v-row class="mt-3" v-if="subscriptions">
-        <!-- Comment Bot Subscription Card -->
+      <!-- Subscription Tiers Section -->
+      <v-row class="mt-6">
         <v-col cols="12">
+          <h2 class="text-h5 font-weight-bold mb-2">Choose your plan</h2>
+          <p class="text-body-1 text-grey mb-4">Get instant access to powerful automation tools</p>
+        </v-col>
+      </v-row>
+
+      <v-row v-if="subscriptions">
+        <!-- Comment Bot Tier -->
+        <v-col cols="12" md="6">
           <v-card 
-            :variant="subscriptions.comment_bot?.isActive ? 'elevated' : 'outlined'"
-            :elevation="subscriptions.comment_bot?.isActive ? 2 : 0"
+            class="tier-card h-100"
+            :class="{ 'active-tier': subscriptions.comment_bot?.isActive }"
+            elevation="0"
+            variant="outlined"
           >
-            <v-card-title class="d-flex align-center pa-4">
-              <v-icon class="mr-3" color="primary">mdi-comment-multiple</v-icon>
-              <div>
-                <div class="text-h6">Comment Bot</div>
-                <div class="text-caption text-grey">Automated social media engagement</div>
-              </div>
-            </v-card-title>
+            <!-- Header with gradient background -->
+            <div class="tier-header tier-header-comment">
+              <v-icon size="40" color="white" class="mb-2">mdi-comment-multiple</v-icon>
+              <h3 class="text-h5 font-weight-bold text-white">Comment Bot</h3>
+              <p class="text-body-2 text-white-darken-1 mb-0">Automated social media engagement</p>
+            </div>
             
-            <v-card-text class="pa-4 pt-0">
-              <p class="text-body-2 mb-4">
-                Boost your social media presence with intelligent automated comments. Perfect for Instagram, TikTok, and other platforms.
-              </p>
-              
-              <!-- Active subscription info -->
-              <v-alert 
-                v-if="subscriptions.comment_bot?.isActive"
-                color="success"
-                variant="tonal"
-                density="compact"
-                class="mb-0"
-              >
-                <div class="d-flex align-center justify-space-between">
-                  <div>
-                    <div class="text-subtitle-2">Active Subscription</div>
-                    <div class="text-caption">
-                      {{ subscriptions.comment_bot.expiresIn }} days remaining • Renews {{ formatDate(subscriptions.comment_bot.endDate) }}
-                    </div>
-                  </div>
-                  <v-icon>mdi-check-circle</v-icon>
+            <v-card-text class="pa-5">
+              <!-- Pricing -->
+              <div class="text-center mb-5">
+                <div class="d-flex align-center justify-center mb-2">
+                  <span class="text-h3 font-weight-bold">$20</span>
+                  <span class="text-body-1 ml-1">/month</span>
                 </div>
-              </v-alert>
-              
-              <!-- Inactive subscription -->
-              <div v-else>
-                <v-list density="compact" class="pa-0 mb-3">
-                  <v-list-item class="pa-0">
-                    <template v-slot:prepend>
-                      <v-icon size="small" color="primary">mdi-check</v-icon>
-                    </template>
-                    <v-list-item-title class="text-body-2">AI-powered comment generation</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item class="pa-0">
-                    <template v-slot:prepend>
-                      <v-icon size="small" color="primary">mdi-check</v-icon>
-                    </template>
-                    <v-list-item-title class="text-body-2">Multi-platform support</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item class="pa-0">
-                    <template v-slot:prepend>
-                      <v-icon size="small" color="primary">mdi-check</v-icon>
-                    </template>
-                    <v-list-item-title class="text-body-2">Customizable engagement strategies</v-list-item-title>
-                  </v-list-item>
-                </v-list>
-                
+                <v-divider class="mx-auto" style="max-width: 100px;"></v-divider>
+                <p class="text-body-1 font-weight-bold mt-2">Plus $2 per credit</p>
+                <p class="text-caption text-grey">Pay as you go for credits</p>
+              </div>
+
+              <!-- Features List -->
+              <div class="mb-5">
+                <div class="feature-item" v-for="feature in commentBotFeatures" :key="feature">
+                  <v-icon size="20" color="success" class="mr-3">mdi-check-circle</v-icon>
+                  <span class="text-body-2">{{ feature }}</span>
+                </div>
+              </div>
+
+              <!-- Active Status or CTA -->
+              <div v-if="subscriptions.comment_bot?.isActive" class="active-status">
+                <v-chip color="success" variant="flat" class="mb-3" block>
+                  <v-icon start size="small">mdi-check-circle</v-icon>
+                  Subscribed
+                </v-chip>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 text-grey mb-1">Renews in</p>
+                  <p class="text-h6 font-weight-bold">{{ subscriptions.comment_bot.expiresIn }} days</p>
+                  <p class="text-caption text-grey">{{ formatDate(subscriptions.comment_bot.endDate) }}</p>
+                </div>
+                <v-divider class="my-3"></v-divider>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 font-weight-medium">{{ subscriptions.comment_bot.totalCredits || 0 }} credits available</p>
+                </div>
                 <v-btn 
+                  variant="outlined"
                   color="primary"
                   block
+                  size="large"
                   @click="openCheckout('comment_bot')"
-                  :disabled="!subscriptions.comment_bot?.checkoutLink"
                 >
-                  Get Started
+                  Add More Credits
                 </v-btn>
               </div>
+              <v-btn 
+                v-else
+                color="primary"
+                variant="flat"
+                block
+                size="large"
+                @click="openCheckout('comment_bot')"
+                :disabled="!subscriptions.comment_bot?.checkoutLink"
+              >
+                Get Started
+              </v-btn>
             </v-card-text>
           </v-card>
         </v-col>
 
-        <!-- BC Gen Subscription Card -->
-        <v-col cols="12">
+        <!-- BC Gen Tier -->
+        <v-col cols="12" md="6">
           <v-card 
-            :variant="subscriptions.bc_gen?.isActive ? 'elevated' : 'outlined'"
-            :elevation="subscriptions.bc_gen?.isActive ? 2 : 0"
+            class="tier-card h-100"
+            :class="{ 'active-tier': subscriptions.bc_gen?.isActive }"
+            elevation="0"
+            variant="outlined"
           >
-            <v-card-title class="d-flex align-center pa-4">
-              <v-icon class="mr-3" color="primary">mdi-barcode</v-icon>
-              <div>
-                <div class="text-h6">BC Gen</div>
-                <div class="text-caption text-grey">Business card generator</div>
-              </div>
-            </v-card-title>
+            <!-- Header with gradient background -->
+            <div class="tier-header tier-header-bcgen">
+              <v-icon size="40" color="white" class="mb-2">mdi-account-multiple</v-icon>
+              <h3 class="text-h5 font-weight-bold text-white">BC Gen</h3>
+              <p class="text-body-2 text-white-darken-1 mb-0">Premium account marketplace</p>
+            </div>
             
-            <v-card-text class="pa-4 pt-0">
-              <p class="text-body-2 mb-4">
-                Create professional digital business cards instantly. Share your contact information with style and ease.
-              </p>
-              
-              <!-- Active subscription info -->
-              <v-alert 
-                v-if="subscriptions.bc_gen?.isActive"
-                color="success"
-                variant="tonal"
-                density="compact"
-                class="mb-0"
-              >
-                <div class="d-flex align-center justify-space-between">
-                  <div>
-                    <div class="text-subtitle-2">Active Subscription</div>
-                    <div class="text-caption">
-                      {{ subscriptions.bc_gen.expiresIn }} days remaining • Renews {{ formatDate(subscriptions.bc_gen.endDate) }}
-                    </div>
-                  </div>
-                  <v-icon>mdi-check-circle</v-icon>
+            <v-card-text class="pa-5">
+              <!-- Pricing -->
+              <div class="text-center mb-5">
+                <div class="d-flex align-center justify-center mb-2">
+                  <span class="text-h3 font-weight-bold">$20</span>
+                  <span class="text-body-1 ml-1">/month</span>
                 </div>
-              </v-alert>
-              
-              <!-- Inactive subscription -->
-              <div v-else>
-                <v-list density="compact" class="pa-0 mb-3">
-                  <v-list-item class="pa-0">
-                    <template v-slot:prepend>
-                      <v-icon size="small" color="primary">mdi-check</v-icon>
-                    </template>
-                    <v-list-item-title class="text-body-2">Unlimited business card designs</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item class="pa-0">
-                    <template v-slot:prepend>
-                      <v-icon size="small" color="primary">mdi-check</v-icon>
-                    </template>
-                    <v-list-item-title class="text-body-2">QR code integration</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item class="pa-0">
-                    <template v-slot:prepend>
-                      <v-icon size="small" color="primary">mdi-check</v-icon>
-                    </template>
-                    <v-list-item-title class="text-body-2">Real-time analytics</v-list-item-title>
-                  </v-list-item>
-                </v-list>
-                
+                <v-divider class="mx-auto" style="max-width: 100px;"></v-divider>
+                <p class="text-body-1 font-weight-bold mt-2">Plus $2 per account</p>
+                <p class="text-caption text-grey">1 credit = 1 account</p>
+              </div>
+
+              <!-- Features List -->
+              <div class="mb-5">
+                <div class="feature-item" v-for="feature in bcGenFeatures" :key="feature">
+                  <v-icon size="20" color="success" class="mr-3">mdi-check-circle</v-icon>
+                  <span class="text-body-2">{{ feature }}</span>
+                </div>
+              </div>
+
+              <!-- Active Status or CTA -->
+              <div v-if="subscriptions.bc_gen?.isActive" class="active-status">
+                <v-chip color="success" variant="flat" class="mb-3" block>
+                  <v-icon start size="small">mdi-check-circle</v-icon>
+                  Subscribed
+                </v-chip>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 text-grey mb-1">Renews in</p>
+                  <p class="text-h6 font-weight-bold">{{ subscriptions.bc_gen.expiresIn }} days</p>
+                  <p class="text-caption text-grey">{{ formatDate(subscriptions.bc_gen.endDate) }}</p>
+                </div>
+                <v-divider class="my-3"></v-divider>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 font-weight-medium">{{ subscriptions.bc_gen.totalCredits || 0 }} credits available</p>
+                </div>
                 <v-btn 
+                  variant="outlined"
                   color="primary"
                   block
+                  size="large"
                   @click="openCheckout('bc_gen')"
-                  :disabled="!subscriptions.bc_gen?.checkoutLink"
                 >
-                  Get Started
+                  Add More Credits
                 </v-btn>
               </div>
+              <v-btn 
+                v-else
+                color="primary"
+                variant="flat"
+                block
+                size="large"
+                @click="openCheckout('bc_gen')"
+                :disabled="!subscriptions.bc_gen?.checkoutLink"
+              >
+                Get Started
+              </v-btn>
             </v-card-text>
           </v-card>
         </v-col>
       </v-row>
+
     </v-container>
 
     <!-- Sign Out Confirmation Dialog -->
@@ -232,20 +242,33 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 
 const router = useRouter();
-const { user, isAuthenticated, subscriptions, signOut, checkAccess } = useAuth();
+const { user, subscriptions, signOut, checkAccess } = useAuth();
 
 const signOutDialog = ref(false);
 
-// Go to credits page
-const goToCredits = () => {
-  router.push('/credits');
-};
+// Feature lists
+const commentBotFeatures = [
+  'AI-powered comment generation',
+  'Supported on TikTok (others coming soon)',
+  'Custom comment templates',
+  'Automated engagement campaigns',
+  'Real-time analytics dashboard'
+];
+
+const bcGenFeatures = [
+  'Premium verified accounts',
+  'Multiple regions available',
+  '2FA enabled accounts',
+  'Instant delivery',
+  '24-hour refund guarantee'
+];
+
 
 // Show sign out confirmation
 const confirmSignOut = () => {
@@ -269,11 +292,21 @@ const formatDate = (timestamp) => {
   });
 };
 
-// Open checkout link
+// Open checkout link or navigate to tab
 const openCheckout = (type) => {
-  const link = subscriptions.value?.[type]?.checkoutLink;
-  if (link) {
-    window.open(link, '_blank');
+  // If user has active subscription, navigate to the respective tab and open credits
+  if (subscriptions.value?.[type]?.isActive) {
+    if (type === 'comment_bot') {
+      router.push('/comments?showCredits=true');
+    } else if (type === 'bc_gen') {
+      router.push('/bc-gen?showCredits=true');
+    }
+  } else {
+    // For new users, open the checkout link
+    const link = subscriptions.value?.[type]?.checkoutLink;
+    if (link) {
+      window.open(link, '_blank');
+    }
   }
 };
 
@@ -287,5 +320,98 @@ onMounted(async () => {
 <style scoped>
 .ga-3 {
   gap: 12px;
+}
+
+/* Tier Card Styles */
+.tier-card {
+  border-radius: 16px !important;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+}
+
+.tier-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.tier-card.active-tier {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 8px 16px rgba(var(--v-theme-primary), 0.15);
+}
+
+/* Tier Headers */
+.tier-header {
+  padding: 32px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.tier-header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.tier-header-comment {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.tier-header-bcgen {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+/* Feature Items */
+.feature-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 4px 0;
+}
+
+.feature-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Active Status */
+.active-status :deep(.v-chip) {
+  height: 40px;
+  font-weight: 500;
+}
+
+/* Buttons */
+.tier-card .v-btn {
+  border-radius: 8px;
+  text-transform: none;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+
+/* Text adjustments */
+.text-white-darken-1 {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+/* Responsive adjustments */
+@media (max-width: 959px) {
+  .tier-header {
+    padding: 24px 16px;
+  }
 }
 </style>
