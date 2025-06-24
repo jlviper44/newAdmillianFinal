@@ -122,7 +122,7 @@ export default class BCGen {
     }
   }
 
-  async createOrder(data, userId) {
+  async createOrder(data, userId, session) {
     try {
       const { country, quantity } = data;
 
@@ -136,12 +136,26 @@ export default class BCGen {
         return { error: 'Invalid country' };
       }
 
+      // Check availability before creating order
+      const availabilityData = await this.getAvailability();
+      const availableCount = availabilityData[country.toLowerCase()] || 0;
+      
+      if (availableCount < quantity) {
+        return { 
+          error: `Insufficient accounts available. Only ${availableCount} accounts available for ${country}`,
+          available: availableCount 
+        };
+      }
+
       // Generate order ID
       const orderId = `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-      // Calculate total price (example pricing)
-      const pricePerAccount = 5; // $5 per account
-      const totalPrice = quantity * pricePerAccount;
+      // Calculate total price (using credits instead of money)
+      const creditsPerAccount = 1; // 1 credit per account
+      const totalCredits = quantity * creditsPerAccount;
+
+      // Check user credits before proceeding
+      // Note: Actual credit deduction happens after successful order fulfillment
 
       // Create order record
       const orderData = {
@@ -149,7 +163,7 @@ export default class BCGen {
         userId,
         country,
         quantity,
-        totalPrice,
+        totalPrice: totalCredits,
         status: 'pending',
         createdAt: new Date().toISOString(),
         accounts: []
@@ -164,19 +178,49 @@ export default class BCGen {
         userId,
         country,
         quantity,
-        totalPrice,
+        totalCredits,
         'pending',
         orderData.createdAt,
         JSON.stringify([])
       ).run();
 
-      // Fetch accounts from SheetDB
-      this.fulfillOrderFromSheetDB(orderId, country, quantity, sheetName);
+      // Fetch accounts from SheetDB immediately (synchronously for better UX)
+      const userEmail = session?.user?.email || '';
+      const fulfillmentResult = await this.fulfillOrderFromSheetDB(orderId, country, quantity, sheetName, userId, userEmail);
+
+      if (!fulfillmentResult.success) {
+        // If fulfillment failed, mark order as failed
+        await this.env.BCGEN_DB.prepare(`
+          UPDATE orders 
+          SET status = ?1
+          WHERE orderId = ?2
+        `).bind('failed', orderId).run();
+
+        return {
+          error: fulfillmentResult.error || 'Failed to fulfill order',
+          orderId
+        };
+      }
+
+      // Deduct credits after successful fulfillment
+      try {
+        const creditDeductionResult = await this.deductUserCredits(session, totalCredits);
+        if (creditDeductionResult.success) {
+          console.log(`Successfully deducted ${totalCredits} BC Gen credits for order ${orderId}`);
+        } else {
+          console.error(`Failed to deduct credits for order ${orderId}:`, creditDeductionResult.error);
+          // Note: Order was fulfilled successfully, so we continue despite credit deduction failure
+        }
+      } catch (creditError) {
+        console.error('Error deducting credits:', creditError);
+        // Note: Order was fulfilled successfully, so we continue despite credit deduction failure
+      }
 
       return {
         success: true,
         orderId,
-        message: 'Order created successfully'
+        message: 'Order created and fulfilled successfully',
+        order: fulfillmentResult.order
       };
     } catch (error) {
       console.error('Error creating order:', error);
@@ -237,6 +281,97 @@ export default class BCGen {
     }
   }
 
+  // Deduct credits from user's BC Gen memberships
+  async deductUserCredits(session, credits) {
+    try {
+      if (!session || !session.access_token) {
+        return { error: 'No valid session for credit deduction' };
+      }
+
+      // Get user's memberships from Whop
+      const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (!membershipResponse.ok) {
+        return { error: 'Failed to fetch memberships' };
+      }
+      
+      const memberships = await membershipResponse.json();
+      
+      // Filter memberships with credits for BC Gen
+      const bcGenProductId = this.env.WHOP_BC_GEN_PRODUCT_ID;
+      const creditMemberships = memberships.data?.filter(m => 
+        m.metadata?.Quantity && 
+        parseInt(m.metadata.Quantity) > 0 &&
+        (m.metadata?.ProductType === 'bc_gen' || m.product_id === bcGenProductId)
+      ) || [];
+      
+      // Sort by quantity (ascending) to use smaller quantities first
+      creditMemberships.sort((a, b) => 
+        parseInt(a.metadata.Quantity) - parseInt(b.metadata.Quantity)
+      );
+      
+      let remainingCredits = credits;
+      const updates = [];
+      
+      // Calculate credit usage
+      for (const membership of creditMemberships) {
+        if (remainingCredits <= 0) break;
+        
+        const currentQuantity = parseInt(membership.metadata.Quantity);
+        const toSubtract = Math.min(currentQuantity, remainingCredits);
+        const newQuantity = currentQuantity - toSubtract;
+        
+        updates.push({
+          membershipId: membership.id,
+          newQuantity: newQuantity
+        });
+        
+        remainingCredits -= toSubtract;
+      }
+      
+      if (remainingCredits > 0) {
+        return { error: 'Insufficient credits' };
+      }
+      
+      // Apply updates to memberships
+      for (const update of updates) {
+        try {
+          // Use the same endpoint as Auth module
+          const response = await fetch(`https://api.whop.com/api/v2/memberships/${update.membershipId}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.env.WHOP_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              metadata: {
+                Quantity: update.newQuantity
+              }
+            })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Failed to update membership ${update.membershipId}: ${response.status} - ${errorText}`);
+          } else {
+            console.log(`Updated membership ${update.membershipId}: ${update.newQuantity} credits remaining`);
+          }
+        } catch (error) {
+          console.error(`Error updating membership ${update.membershipId}:`, error);
+        }
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error deducting credits:', error);
+      return { error: 'Failed to deduct credits' };
+    }
+  }
+
   async refundRequest(data, userId) {
     try {
       const { orderId, accountUsername } = data;
@@ -294,75 +429,168 @@ export default class BCGen {
   }
 
   // Fulfill order by fetching accounts from SheetDB
-  async fulfillOrderFromSheetDB(orderId, country, quantity, sheetName) {
-    // Execute asynchronously
-    setTimeout(async () => {
-      try {
-        const SHEETDB_API_URL = this.env.SHEETDB_API_URL || 'https://sheetdb.io/api/v1/zb48wyyweh0rp';
-        
-        // Fetch accounts from SheetDB
-        const response = await fetch(
-          `${SHEETDB_API_URL}?sheet=${sheetName}&limit=${quantity}`,
-          {
-            headers: {
-              'Accept': 'application/json',
-            }
+  async fulfillOrderFromSheetDB(orderId, country, quantity, sheetName, userId, userEmail) {
+    try {
+      const SHEETDB_API_URL = this.env.SHEETDB_API_URL || 'https://sheetdb.io/api/v1/zb48wyyweh0rp';
+      
+      // Fetch accounts from SheetDB
+      const response = await fetch(
+        `${SHEETDB_API_URL}?sheet=${sheetName}&limit=${quantity}`,
+        {
+          headers: {
+            'Accept': 'application/json',
           }
-        );
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch accounts from SheetDB');
         }
-        
-        const sheetAccounts = await response.json();
-        
-        if (!sheetAccounts || sheetAccounts.length < quantity) {
-          throw new Error('Not enough accounts available');
-        }
-        
-        // Normalize account data for consistent field names
-        const accounts = sheetAccounts.slice(0, quantity).map((account) => {
-          return {
-            Username: account.Username || account.username || '',
-            Password: account.Password || account.password || account.PassTiktok || account.passTiktok || '',
-            'Recovery Code': account['Recovery Code'] || account['recovery code'] || account.Code2fa || account.code2fa || '',
-            Email: account.Email || account.email || account.Mail || account.mail || '',
-            'Email Password': account['Email Password'] || account['email password'] || account.Passmail || '',
-            cookies: account.cookies || account.Cookies || '',
-            country: country,
-            // Add additional fields from SheetDB
-            ID: account.ID || '',
-            Name: account.Name || '',
-            State: account.State || '',
-            Status: account.Status || '',
-            refunded: false
-          };
-        });
-
-        // Update order status and add accounts
-        await this.env.BCGEN_DB.prepare(`
-          UPDATE orders 
-          SET status = ?1, accountsData = ?2, fulfilledAt = ?3
-          WHERE orderId = ?4
-        `).bind(
-          'completed',
-          JSON.stringify(accounts),
-          new Date().toISOString(),
-          orderId
-        ).run();
-        
-        console.log(`Order ${orderId} fulfilled with ${accounts.length} accounts from SheetDB`);
-      } catch (error) {
-        console.error('Error fulfilling order from SheetDB:', error);
-        
-        // Mark order as failed
-        await this.env.BCGEN_DB.prepare(`
-          UPDATE orders 
-          SET status = ?1
-          WHERE orderId = ?2
-        `).bind('failed', orderId).run();
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch accounts from SheetDB');
       }
-    }, 2000); // Process after 2 seconds
+      
+      const sheetAccounts = await response.json();
+      
+      if (!sheetAccounts || sheetAccounts.length < quantity) {
+        throw new Error('Not enough accounts available');
+      }
+      
+      // Normalize account data for consistent field names
+      const accounts = sheetAccounts.slice(0, quantity).map((account, index) => {
+        return {
+          Username: account.Username || account.username || '',
+          Password: account.Password || account.password || account.PassTiktok || account.passTiktok || '',
+          'Recovery Code': account['Recovery Code'] || account['recovery code'] || account.Code2fa || account.code2fa || '',
+          Email: account.Email || account.email || account.Mail || account.mail || '',
+          'Email Password': account['Email Password'] || account['email password'] || account.Passmail || '',
+          cookies: account.cookies || account.Cookies || '',
+          country: country,
+          // Add additional fields from SheetDB
+          ID: account.ID || `${orderId}-${index + 1}`,
+          Name: account.Name || '',
+          State: account.State || '',
+          Status: account.Status || '',
+          refunded: false,
+          // Keep original data for deletion
+          _originalUsername: account.Username || account.username || ''
+        };
+      });
+
+      // Move accounts to Sold sheet and delete from source sheet
+      const movedAccounts = []
+      console.log(`Starting to move ${accounts.length} accounts from ${sheetName} to Sold sheet for order ${orderId}`)
+      
+      for (const account of accounts) {
+        try {
+          // Get the original account data from the sheet
+          const originalIndex = accounts.indexOf(account);
+          const originalAccountData = sheetAccounts[originalIndex];
+          
+          // Start with all original fields from the source account
+          const soldData = { ...originalAccountData };
+          
+          // Override/add specific fields for the Sold sheet with correct column names
+          soldData['SoldTo'] = userId;
+          soldData['SoldToName'] = userEmail || '';
+          soldData['SoldDate'] = new Date().toISOString();
+          soldData['OrderId'] = orderId;
+          soldData['Original Sheet'] = sheetName;
+          
+          // Ensure normalized fields are present (for consistency)
+          soldData.Username = account.Username;
+          soldData.Password = account.Password;
+          soldData['Recovery Code'] = account['Recovery Code'] || '';
+          soldData.Email = account.Email || '';
+          soldData['Email Password'] = account['Email Password'] || '';
+          soldData.cookies = account.cookies || '';
+          
+          console.log(`Moving account ${account._originalUsername} to Sold sheet...`)
+          
+          // Add to Sold sheet
+          const addResponse = await fetch(
+            `${SHEETDB_API_URL}?sheet=Sold`,
+            {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(soldData)
+            }
+          )
+          
+          if (addResponse.ok) {
+            // Delete from original sheet using the original username as identifier
+            const usernameToDelete = account._originalUsername;
+            if (!usernameToDelete) {
+              console.error(`No username found for account to delete`);
+              continue;
+            }
+            
+            const deleteResponse = await fetch(
+              `${SHEETDB_API_URL}/Username/${encodeURIComponent(usernameToDelete)}?sheet=${sheetName}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  'Accept': 'application/json',
+                }
+              }
+            )
+            
+            if (deleteResponse.ok) {
+              movedAccounts.push(usernameToDelete)
+              console.log(`Account ${usernameToDelete} moved to Sold sheet and deleted from ${sheetName}`)
+            } else {
+              const errorText = await deleteResponse.text();
+              console.error(`Failed to delete account ${usernameToDelete} from ${sheetName}. Status: ${deleteResponse.status}, Error: ${errorText}`)
+            }
+          } else {
+            const errorText = await addResponse.text();
+            console.error(`Failed to add account ${account.Username} to Sold sheet. Status: ${addResponse.status}, Error: ${errorText}`)
+          }
+        } catch (error) {
+          console.error(`Error moving account ${account.Username}:`, error)
+        }
+      }
+      
+      console.log(`Successfully moved ${movedAccounts.length} of ${accounts.length} accounts to Sold sheet`)
+      
+      // Clear availability cache since we modified the sheets
+      const cacheKey = 'bcgen:availability:all'
+      await this.env.BCGEN_DB.prepare('DELETE FROM cache WHERE key = ?1').bind(cacheKey).run()
+
+      // Update order status and add accounts
+      await this.env.BCGEN_DB.prepare(`
+        UPDATE orders 
+        SET status = ?1, accountsData = ?2, fulfilledAt = ?3
+        WHERE orderId = ?4
+      `).bind(
+        'completed',
+        JSON.stringify(accounts),
+        new Date().toISOString(),
+        orderId
+      ).run();
+      
+      console.log(`Order ${orderId} fulfilled with ${accounts.length} accounts from SheetDB`);
+
+      // Get the updated order
+      const order = await this.env.BCGEN_DB.prepare(`
+        SELECT * FROM orders WHERE orderId = ?1
+      `).bind(orderId).first();
+
+      return {
+        success: true,
+        order: {
+          ...order,
+          accounts
+        }
+      };
+    } catch (error) {
+      console.error('Error fulfilling order from SheetDB:', error);
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
 
@@ -371,12 +599,14 @@ export default class BCGen {
     const path = url.pathname;
 
     // Check authentication
-    if (!session || !session.user_id) {
+    if (!session || !session.user || !session.user.id) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    const userId = session.user.id;
 
     // Handle routes
     if (path === '/api/bcgen/availability' && request.method === 'GET') {
@@ -388,14 +618,14 @@ export default class BCGen {
 
     if (path === '/api/bcgen/create-order' && request.method === 'POST') {
       const data = await request.json();
-      const result = await this.createOrder(data, session.user_id);
+      const result = await this.createOrder(data, userId, session);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
     if (path === '/api/bcgen/user-orders' && request.method === 'GET') {
-      const result = await this.getUserOrders(session.user_id);
+      const result = await this.getUserOrders(userId);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });
@@ -403,7 +633,7 @@ export default class BCGen {
 
     if (path.startsWith('/api/bcgen/order-status/') && request.method === 'GET') {
       const orderId = path.split('/').pop();
-      const result = await this.getOrderStatus(orderId, session.user_id);
+      const result = await this.getOrderStatus(orderId, userId);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });
@@ -411,7 +641,7 @@ export default class BCGen {
 
     if (path === '/api/bcgen/refund-request' && request.method === 'POST') {
       const data = await request.json();
-      const result = await this.refundRequest(data, session.user_id);
+      const result = await this.refundRequest(data, userId);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });

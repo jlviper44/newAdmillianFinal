@@ -133,16 +133,17 @@ async function initializeCommentGroupTables(env) {
  * Handle Comment Bot data requests
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
+ * @param {Object} session - The user session from requireAuth middleware
  */
-export async function handleCommentBotData(request, env) {
+export async function handleCommentBotData(request, env, session) {
   // Handle CORS for CommentBot requests
   const corsResponse = handleCommentBotCors(request);
   if (corsResponse) {
     return corsResponse;
   }
   
-  // Get user_id from session (added by requireAuth middleware)
-  const userId = request.session?.user?.id;
+  // Get user_id from session (passed by requireAuth middleware)
+  const userId = session?.user?.id;
   if (!userId) {
     return jsonResponse({ error: 'Unauthorized - No user ID found' }, 401);
   }

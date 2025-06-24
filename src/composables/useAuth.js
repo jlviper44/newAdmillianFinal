@@ -1,13 +1,28 @@
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, getCurrentInstance } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
 // Global auth state
 const user = ref(null)
 const loading = ref(true)
 const subscriptions = ref(null)
+const showAuthModal = ref(false)
+
+// Set up global auth expired listener
+let authExpiredHandler = null
+if (typeof window !== 'undefined') {
+  authExpiredHandler = () => {
+    user.value = null
+    subscriptions.value = null
+    showAuthModal.value = true
+  }
+  window.addEventListener('auth:expired', authExpiredHandler)
+}
 
 export function useAuth() {
-  const router = useRouter()
+  // Only use router/route if we're in a component context
+  const instance = getCurrentInstance()
+  const router = instance ? useRouter() : null
+  const route = instance ? useRoute() : null
 
   // Computed properties
   const isAuthenticated = computed(() => !!user.value)
@@ -34,6 +49,7 @@ export function useAuth() {
         }
       } else {
         user.value = null
+        // Don't trigger auth modal here, let individual API calls handle 401s
       }
     } catch (error) {
       console.error('Auth check failed:', error)
@@ -147,7 +163,7 @@ export function useAuth() {
     } finally {
       user.value = null
       subscriptions.value = null
-      router.push('/')
+      router?.push('/')
     }
   }
 
@@ -161,6 +177,13 @@ export function useAuth() {
       // Ensure subscriptions are null when not authenticated
       subscriptions.value = null
     }
+    
+    // Check if we should show auth modal from query parameter
+    if (route?.query?.showAuth === 'true') {
+      showAuthModal.value = true
+      // Clean up the URL
+      router?.replace({ query: {} })
+    }
   }
 
   return {
@@ -171,6 +194,7 @@ export function useAuth() {
     hasCommentBotAccess,
     hasBcGenAccess,
     hasAnyAccess,
+    showAuthModal,
     checkAuth,
     checkAccess,
     signIn,

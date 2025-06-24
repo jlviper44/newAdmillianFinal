@@ -17,7 +17,8 @@ async function apiRequest(url, options = {}) {
     const response = await fetch(`${API_BASE}${url}`, defaultOptions)
     
     if (response.status === 401) {
-      // Unauthorized - throw error to be handled by components
+      // Session expired or invalid - handle logout
+      handleSessionExpired()
       throw new Error('Unauthorized')
     }
     
@@ -30,6 +31,24 @@ async function apiRequest(url, options = {}) {
   } catch (error) {
     console.error('API request failed:', error)
     throw error
+  }
+}
+
+// Handle expired sessions
+function handleSessionExpired() {
+  // Clear any local auth state
+  localStorage.removeItem('user')
+  sessionStorage.clear()
+  
+  // Clear cookies by setting them to expire
+  document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
+  
+  // Dispatch a custom event that components can listen to
+  window.dispatchEvent(new CustomEvent('auth:expired'))
+  
+  // Redirect to home page with auth modal
+  if (window.location.pathname !== '/') {
+    window.location.href = '/?showAuth=true'
   }
 }
 

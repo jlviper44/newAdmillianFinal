@@ -89,192 +89,264 @@
                 </div>
                 
                 <div v-else-if="orderAccounts[order.orderId]">
+                  <!-- Quick Actions Bar -->
+                  <div class="d-flex justify-space-between align-center mb-4 pa-2">
+                    <div class="text-h6">
+                      <v-icon start color="primary">mdi-account-multiple</v-icon>
+                      {{ orderAccounts[order.orderId].length }} Accounts
+                    </div>
+                    <v-btn
+                      @click="copyAllAccounts(order)"
+                      color="primary"
+                      variant="tonal"
+                      prepend-icon="mdi-content-copy"
+                    >
+                      Copy All
+                    </v-btn>
+                  </div>
+
                   <v-card 
                     v-for="(account, index) in orderAccounts[order.orderId]" 
                     :key="index"
-                    class="mb-3 pa-3"
-                    :variant="account.refunded ? 'tonal' : 'outlined'"
+                    class="mb-4 account-card"
+                    :variant="account.refunded ? 'tonal' : 'elevated'"
                     :color="account.refunded ? 'error' : ''"
+                    elevation="2"
                   >
-                    <div class="d-flex justify-space-between align-center mb-2">
-                      <div class="font-weight-bold">
-                        Account #{{ index + 1 }} - {{ account.country || order.country }}
+                    <!-- Account Header -->
+                    <v-card-title class="account-header pa-4">
+                      <div class="d-flex justify-space-between align-center w-100">
+                        <div class="d-flex align-center">
+                          <v-avatar 
+                            :color="account.refunded ? 'error' : 'primary'"
+                            size="40"
+                            class="mr-3"
+                          >
+                            <span class="text-h6">{{ index + 1 }}</span>
+                          </v-avatar>
+                          <div>
+                            <div class="text-h6">
+                              {{ account.country || order.country }}
+                              <v-chip 
+                                size="small" 
+                                variant="tonal"
+                                class="ml-2"
+                                :color="account.Status === 'Active' ? 'success' : 'warning'"
+                              >
+                                {{ account.Status || 'Active' }}
+                              </v-chip>
+                            </div>
+                            <div class="text-caption text-grey">
+                              ID: {{ account.ID || `${order.orderId}-${index + 1}` }}
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <v-chip 
+                            v-if="account.refunded"
+                            color="error"
+                            variant="elevated"
+                            prepend-icon="mdi-close-circle"
+                          >
+                            REFUNDED
+                          </v-chip>
+                        </div>
                       </div>
-                      <div>
-                        <v-chip 
-                          v-if="account.refunded"
-                          size="small"
-                          color="error"
-                        >
-                          REFUNDED
-                        </v-chip>
-                        <v-btn
-                          v-else-if="canRefund(order)"
-                          @click="requestRefund(order.orderId, account.Username || account.username)"
-                          size="small"
-                          color="warning"
-                          variant="outlined"
-                          class="ml-2"
-                        >
-                          Request Refund
-                        </v-btn>
-                      </div>
-                    </div>
+                    </v-card-title>
+
+                    <v-divider></v-divider>
                     
                     <!-- Account Details -->
-                    <div class="account-details">
-                      <!-- Username -->
-                      <div class="detail-row">
-                        <span class="detail-label">Username:</span>
-                        <span class="detail-value">
-                          <code>{{ account.Username || account.username || 'Not available' }}</code>
-                          <v-btn 
-                            v-if="account.Username || account.username"
-                            @click="copyToClipboard(account.Username || account.username, 'Username')"
-                            size="small"
-                            color="success"
-                            class="ml-2"
-                          >
-                            Copy
-                          </v-btn>
-                        </span>
-                      </div>
-                      
-                      <!-- Password -->
-                      <div class="detail-row">
-                        <span class="detail-label">Password:</span>
-                        <span class="detail-value">
-                          <code>{{ account.Password || account.passTiktok || account.password || 'Not available' }}</code>
-                          <v-btn 
-                            v-if="account.Password || account.passTiktok || account.password"
-                            @click="copyToClipboard(account.Password || account.passTiktok || account.password, 'Password')"
-                            size="small"
-                            color="success"
-                            class="ml-2"
-                          >
-                            Copy Password
-                          </v-btn>
-                        </span>
-                      </div>
-                      
-                      <!-- Email -->
-                      <div class="detail-row" v-if="account.Email || account.mail">
-                        <span class="detail-label">Email:</span>
-                        <span class="detail-value">
-                          <code>{{ account.Email || account.mail }}</code>
-                          <v-btn 
-                            @click="copyToClipboard(account.Email || account.mail, 'Email')"
-                            size="small"
-                            color="success"
-                            class="ml-2"
-                          >
-                            Copy Email
-                          </v-btn>
-                        </span>
-                      </div>
-                      
-                      <!-- 2FA Secret -->
-                      <div v-if="account['Recovery Code'] || account.code2fa">
-                        <div class="detail-row">
-                          <span class="detail-label">2FA Secret:</span>
-                          <span class="detail-value">
-                            <code class="two-fa-code">{{ account['Recovery Code'] || account.code2fa }}</code>
-                            <v-btn 
-                              @click="copyToClipboard(account['Recovery Code'] || account.code2fa, '2FA Secret')"
-                              size="small"
-                              color="secondary"
-                              class="ml-2"
-                            >
-                              Copy Secret
-                            </v-btn>
-                          </span>
-                        </div>
-                        
-                        <!-- TOTP Code -->
-                        <div class="detail-row totp-row">
-                          <span class="detail-label">2FA Login Code:</span>
-                          <span class="detail-value">
-                            <div class="totp-container">
-                              <code class="totp-code">{{ totpCodes[`${order.orderId}-${index}`] || '------' }}</code>
-                              <v-chip size="small" class="ml-2">
-                                {{ totpTimers[`${order.orderId}-${index}`] || 30 }}s
-                              </v-chip>
-                              <v-btn 
-                                @click="copyToClipboard(totpCodes[`${order.orderId}-${index}`], 'TOTP Code')"
+                    <v-card-text class="pa-4">
+                      <v-row>
+                        <!-- Left Column - Compact Credentials -->
+                        <v-col cols="12" md="6">
+                          <v-card variant="outlined" class="pa-3 equal-height-card">
+                            <div class="text-subtitle-2 text-grey mb-3">
+                              <v-icon size="small" class="mr-1">mdi-account-details</v-icon>
+                              Credentials
+                            </div>
+                            
+                            <!-- Compact credential rows -->
+                            <div class="compact-credentials">
+                              <!-- Username -->
+                              <div class="credential-row">
+                                <span class="credential-label">Username</span>
+                                <code class="credential-value">{{ account.Username || account.username || 'N/A' }}</code>
+                                <v-btn 
+                                  v-if="account.Username || account.username"
+                                  @click="copyToClipboard(account.Username || account.username, 'Username')"
+                                  icon="mdi-content-copy"
+                                  size="x-small"
+                                  variant="text"
+                                  density="compact"
+                                ></v-btn>
+                              </div>
+                              
+                              <!-- Password -->
+                              <div class="credential-row">
+                                <span class="credential-label">Password</span>
+                                <code class="credential-value">{{ account.Password || account.passTiktok || account.password || 'N/A' }}</code>
+                                <v-btn 
+                                  v-if="account.Password || account.passTiktok || account.password"
+                                  @click="copyToClipboard(account.Password || account.passTiktok || account.password, 'Password')"
+                                  icon="mdi-content-copy"
+                                  size="x-small"
+                                  variant="text"
+                                  density="compact"
+                                ></v-btn>
+                              </div>
+                              
+                              <!-- Email -->
+                              <div class="credential-row" v-if="account.Email || account.mail">
+                                <span class="credential-label">Email</span>
+                                <code class="credential-value">{{ account.Email || account.mail }}</code>
+                                <v-btn 
+                                  @click="copyToClipboard(account.Email || account.mail, 'Email')"
+                                  icon="mdi-content-copy"
+                                  size="x-small"
+                                  variant="text"
+                                  density="compact"
+                                ></v-btn>
+                              </div>
+                              
+                              <!-- Email Password -->
+                              <div class="credential-row" v-if="account['Email Password']">
+                                <span class="credential-label">Email Pass</span>
+                                <code class="credential-value">{{ account['Email Password'] }}</code>
+                                <v-btn 
+                                  @click="copyToClipboard(account['Email Password'], 'Email Password')"
+                                  icon="mdi-content-copy"
+                                  size="x-small"
+                                  variant="text"
+                                  density="compact"
+                                ></v-btn>
+                              </div>
+                              
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <v-spacer></v-spacer>
+                            <div class="mt-auto pt-3">
+                              <v-btn
+                                @click="copyAccountCredentials(account)"
+                                color="primary"
+                                variant="tonal"
                                 size="small"
-                                color="success"
-                                class="ml-2"
-                                :disabled="!totpCodes[`${order.orderId}-${index}`]"
+                                block
+                                prepend-icon="mdi-content-copy"
                               >
-                                Copy Code
-                              </v-btn>
-                              <v-btn 
-                                @click="refreshTOTP(order.orderId, index, account['Recovery Code'] || account.code2fa)"
-                                size="small"
-                                color="info"
-                                class="ml-2"
-                              >
-                                Refresh
+                                Copy All Credentials
                               </v-btn>
                             </div>
-                          </span>
-                        </div>
-                      </div>
-                      <div v-else class="detail-row">
-                        <span class="detail-label">2FA:</span>
-                        <span class="detail-value text-grey">Not configured</span>
-                      </div>
+                          </v-card>
+                        </v-col>
                       
-                      <!-- Cookies -->
-                      <div class="detail-row">
-                        <span class="detail-label">Cookies:</span>
-                        <div class="d-flex align-start gap-2 mt-2">
-                          <v-textarea
-                            :model-value="account.cookies || 'N/A'"
-                            readonly
-                            rows="3"
-                            variant="outlined"
-                            density="compact"
-                            class="flex-grow-1"
-                          ></v-textarea>
-                          <v-btn 
-                            @click="copyToClipboard(account.cookies || '', 'Cookies')"
-                            size="small"
-                            color="success"
-                          >
-                            Copy Cookies
-                          </v-btn>
-                        </div>
+                        <!-- Right Column - 2FA & Cookies -->
+                        <v-col cols="12" md="6">
+                          <!-- 2FA Section -->
+                          <v-card variant="outlined" class="pa-3 equal-height-card">
+                            <div class="text-subtitle-2 text-grey mb-3">
+                              <v-icon size="small" class="mr-1">mdi-shield-key</v-icon>
+                              Two-Factor Auth
+                            </div>
+                            
+                            <template v-if="account['Recovery Code'] || account.code2fa">
+                              <div class="compact-credentials">
+                                <!-- 2FA Secret -->
+                                <div class="credential-row">
+                                  <span class="credential-label">Secret</span>
+                                  <code class="credential-value font-weight-bold">{{ account['Recovery Code'] || account.code2fa }}</code>
+                                  <v-btn 
+                                    @click="copyToClipboard(account['Recovery Code'] || account.code2fa, '2FA Secret')"
+                                    icon="mdi-content-copy"
+                                    size="x-small"
+                                    variant="text"
+                                    density="compact"
+                                  ></v-btn>
+                                </div>
+                                
+                                <!-- TOTP Code -->
+                                <div class="credential-row" style="background: rgba(var(--v-theme-primary), 0.1);">
+                                  <span class="credential-label">Code</span>
+                                  <code class="totp-display-compact">{{ totpCodes[`${order.orderId}-${index}`] || '------' }}</code>
+                                  <v-progress-circular
+                                    :model-value="(30 - (totpTimers[`${order.orderId}-${index}`] || 30)) * 3.33"
+                                    :size="24"
+                                    :width="2"
+                                    color="primary"
+                                  >
+                                    <span style="font-size: 0.65rem;">{{ totpTimers[`${order.orderId}-${index}`] || 30 }}</span>
+                                  </v-progress-circular>
+                                </div>
+                                
+                                <!-- Action Buttons -->
+                                <div class="d-flex flex-column mt-3">
+                                  <v-btn
+                                    @click="copyToClipboard(totpCodes[`${order.orderId}-${index}`], 'TOTP Code')"
+                                    color="primary"
+                                    variant="tonal"
+                                    size="small"
+                                    block
+                                    :disabled="!totpCodes[`${order.orderId}-${index}`]"
+                                    prepend-icon="mdi-content-copy"
+                                    class="mb-2"
+                                  >
+                                    Copy Code
+                                  </v-btn>
+                                  <v-btn
+                                    @click="refreshTOTP(order.orderId, index, account['Recovery Code'] || account.code2fa)"
+                                    color="secondary"
+                                    variant="tonal"
+                                    size="small"
+                                    block
+                                    prepend-icon="mdi-refresh"
+                                  >
+                                    Refresh Code
+                                  </v-btn>
+                                </div>
+                              </div>
+                            </template>
+                            <template v-else>
+                              <div class="d-flex align-center justify-center flex-grow-1">
+                                <span class="text-caption text-grey">
+                                  <v-icon size="small" class="mr-1">mdi-shield-off</v-icon>
+                                  Not configured
+                                </span>
+                              </div>
+                            </template>
+                          </v-card>
+                        </v-col>
+                      </v-row>
+
+                      <!-- Cookies Section - Full Width -->
+                      <div class="mt-3">
+                        <v-card variant="tonal" color="grey" density="compact">
+                          <v-card-title class="d-flex justify-space-between align-center py-2">
+                            <span class="text-subtitle-2">
+                              <v-icon size="x-small" class="mr-1">mdi-cookie</v-icon>
+                              Cookies
+                            </span>
+                            <v-btn 
+                              @click="copyToClipboard(account.cookies || '', 'Cookies')"
+                              color="primary"
+                              variant="flat"
+                              size="x-small"
+                              prepend-icon="mdi-content-copy"
+                              :disabled="!account.cookies"
+                            >
+                              Copy
+                            </v-btn>
+                          </v-card-title>
+                          <v-divider></v-divider>
+                          <v-card-text class="pa-0">
+                            <pre class="cookies-code"><code>{{ account.cookies || 'No cookies available' }}</code></pre>
+                          </v-card-text>
+                        </v-card>
                       </div>
-                      
-                      <!-- Email Password if exists -->
-                      <div class="detail-row" v-if="account['Email Password']">
-                        <span class="detail-label">Email Password:</span>
-                        <span class="detail-value">
-                          <code>{{ account['Email Password'] }}</code>
-                          <v-btn 
-                            @click="copyToClipboard(account['Email Password'], 'Email Password')"
-                            size="small"
-                            color="success"
-                            class="ml-2"
-                          >
-                            Copy
-                          </v-btn>
-                        </span>
-                      </div>
-                    </div>
+
+                    </v-card-text>
                   </v-card>
-                  
-                  <!-- Refund Warning -->
-                  <v-alert 
-                    v-if="!canRefund(order) && !order.accounts?.some(a => a.refunded)"
-                    type="warning"
-                    variant="tonal"
-                    class="mt-3"
-                  >
-                    <v-icon icon="mdi-alert"></v-icon>
-                    Refund period has expired (24 hours)
-                  </v-alert>
                 </div>
               </v-card-text>
             </div>
@@ -413,37 +485,6 @@ const copyToClipboard = async (text, label) => {
   }
 }
 
-const requestRefund = async (orderId, accountUsername) => {
-  try {
-    const response = await bcgenApi.refundRequest(orderId, accountUsername)
-    
-    if (response.error) {
-      showSnackbar(response.error, 'error')
-      return
-    }
-    
-    showSnackbar('Refund request submitted successfully!', 'success')
-    await loadUserOrders()
-    
-    // Reload accounts if they're expanded
-    if (expandedOrders.value[orderId]) {
-      orderAccounts.value[orderId] = null
-      await toggleAccounts(orderId)
-    }
-  } catch (error) {
-    showSnackbar(error.message || 'Failed to request refund', 'error')
-  }
-}
-
-const canRefund = (order) => {
-  if (order.status !== 'completed' && order.status !== 'fulfilled') return false
-  
-  const orderDate = new Date(order.createdAt || order.fulfilledAt)
-  const now = new Date()
-  const hoursDiff = (now - orderDate) / (1000 * 60 * 60)
-  
-  return hoursDiff <= 24
-}
 
 // TOTP Implementation
 const base32ToHex = (base32) => {
@@ -549,6 +590,68 @@ const refreshTOTP = async (orderId, index, secret) => {
   }
 }
 
+// Copy all account details
+const copyAccountDetails = async (account) => {
+  const details = []
+  details.push('=== Account Details ===')
+  if (account.Username || account.username) details.push(`Username: ${account.Username || account.username}`)
+  if (account.Password || account.passTiktok || account.password) details.push(`Password: ${account.Password || account.passTiktok || account.password}`)
+  if (account.Email || account.mail) details.push(`Email: ${account.Email || account.mail}`)
+  if (account['Email Password']) details.push(`Email Password: ${account['Email Password']}`)
+  if (account['Recovery Code'] || account.code2fa) details.push(`2FA Secret: ${account['Recovery Code'] || account.code2fa}`)
+  if (account.cookies) details.push(`Cookies: ${account.cookies}`)
+  
+  try {
+    await navigator.clipboard.writeText(details.join('\n'))
+    showSnackbar('All account details copied!', 'success')
+  } catch (error) {
+    showSnackbar('Failed to copy details', 'error')
+  }
+}
+
+// Copy account credentials only
+const copyAccountCredentials = async (account) => {
+  const credentials = []
+  if (account.Username || account.username) credentials.push(`Username: ${account.Username || account.username}`)
+  if (account.Password || account.passTiktok || account.password) credentials.push(`Password: ${account.Password || account.passTiktok || account.password}`)
+  if (account.Email || account.mail) credentials.push(`Email: ${account.Email || account.mail}`)
+  if (account['Email Password']) credentials.push(`Email Password: ${account['Email Password']}`)
+  
+  try {
+    await navigator.clipboard.writeText(credentials.join('\n'))
+    showSnackbar('Credentials copied!', 'success')
+  } catch (error) {
+    showSnackbar('Failed to copy credentials', 'error')
+  }
+}
+
+// Copy all accounts for an order
+const copyAllAccounts = async (order) => {
+  const accounts = orderAccounts.value[order.orderId]
+  if (!accounts || accounts.length === 0) return
+  
+  const allDetails = []
+  accounts.forEach((account, index) => {
+    allDetails.push(`\n=== Account #${index + 1} ===`)
+    if (account.Username || account.username) allDetails.push(`Username: ${account.Username || account.username}`)
+    if (account.Password || account.passTiktok || account.password) allDetails.push(`Password: ${account.Password || account.passTiktok || account.password}`)
+    if (account.Email || account.mail) allDetails.push(`Email: ${account.Email || account.mail}`)
+    if (account['Recovery Code'] || account.code2fa) allDetails.push(`2FA Secret: ${account['Recovery Code'] || account.code2fa}`)
+  })
+  
+  try {
+    await navigator.clipboard.writeText(allDetails.join('\n'))
+    showSnackbar(`All ${accounts.length} accounts copied!`, 'success')
+  } catch (error) {
+    showSnackbar('Failed to copy accounts', 'error')
+  }
+}
+
+// Open account in browser (placeholder)
+const openInBrowser = (account) => {
+  showSnackbar('Browser opening feature coming soon!', 'info')
+}
+
 // Load orders on mount
 onMounted(() => {
   loadUserOrders()
@@ -564,58 +667,151 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Account Details Styles */
-.account-details {
-  margin-top: 16px;
+/* Account Card Styles */
+.account-card {
+  transition: all 0.3s ease;
+  overflow: hidden;
 }
 
-.detail-row {
+.account-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.account-header {
+  background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.05) 0%, rgba(var(--v-theme-primary), 0.02) 100%);
+}
+
+/* Equal Height Cards */
+.equal-height-card {
+  height: 100%;
+  min-height: 220px;
   display: flex;
-  align-items: flex-start;
-  margin-bottom: 16px;
-  gap: 16px;
+  flex-direction: column;
 }
 
-.detail-label {
-  font-weight: 600;
-  min-width: 120px;
-  color: rgba(var(--v-theme-on-surface), 0.7);
+.equal-height-card .compact-credentials {
+  flex: 1 0 auto;
 }
 
-.detail-value {
-  flex: 1;
+/* Compact Credentials */
+.compact-credentials {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
 }
 
-.detail-value code {
-  background-color: rgba(var(--v-theme-surface-variant), 0.5);
+.credential-row {
+  display: flex;
+  align-items: center;
   padding: 4px 8px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  transition: background 0.2s;
 }
 
-.two-fa-code {
-  background-color: rgba(var(--v-theme-primary), 0.1) !important;
+.credential-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.credential-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  min-width: 80px;
+}
+
+.credential-value {
+  flex: 1;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cookies Code Block */
+.cookies-code {
+  margin: 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0;
+  overflow-x: auto;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.cookies-code code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* TOTP Display */
+.totp-display {
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: 0.15em;
   color: rgb(var(--v-theme-primary));
-  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
-.totp-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.totp-code {
-  font-size: 1.2em;
-  font-weight: bold;
+.totp-display-compact {
+  font-size: 1.1rem;
+  font-weight: 700;
   letter-spacing: 0.1em;
-  background-color: rgba(var(--v-theme-success), 0.1) !important;
-  color: rgb(var(--v-theme-success));
-  padding: 8px 12px !important;
+  color: rgb(var(--v-theme-primary));
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  padding: 0 8px;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+.totp-display {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Custom scrollbar for cookies */
+.cookies-code::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cookies-code::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.cookies-code::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.cookies-code::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.cookies-code::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Responsive adjustments */
+@media (max-width: 960px) {
+  .credential-text {
+    font-size: 0.85em;
+  }
+  
+  .totp-display {
+    font-size: 1.2em;
+  }
 }
 </style>

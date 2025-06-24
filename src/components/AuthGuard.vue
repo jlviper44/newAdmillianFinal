@@ -103,7 +103,7 @@ const props = defineProps({
   }
 })
 
-const { isAuthenticated, hasAccess, loading, signIn, checkAccess, initAuth } = useAuth()
+const { isAuthenticated, hasAccess, loading, signIn, checkAccess, initAuth, showAuthModal } = useAuth()
 const checkoutLink = ref('')
 const showPaymentDialog = ref(false)
 const paymentCheckInterval = ref(null)
@@ -177,6 +177,14 @@ onMounted(async () => {
 watch(isAuthenticated, async (newVal) => {
   if (newVal && props.requireAccess && !hasAccess.value) {
     await checkAccess()
+  }
+})
+
+// Watch for auth modal trigger
+watch(showAuthModal, async (newVal) => {
+  if (newVal && !isAuthenticated.value) {
+    showAuthModal.value = false
+    await signIn()
   }
 })
 

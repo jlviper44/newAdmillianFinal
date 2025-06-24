@@ -71,7 +71,14 @@
             :class="{ 'selected-card': orderQuantities[region.id] > 0 }"
             :loading="availabilityLoading"
           >
-            <div class="text-h2 mb-1">{{ region.flag }}</div>
+            <v-img
+              :src="`https://flagcdn.com/w80/${region.code}.png`"
+              :alt="`${region.name} flag`"
+              width="60"
+              height="40"
+              class="mx-auto mb-2 flag-image"
+              cover
+            ></v-img>
             <div class="text-h6 mb-1 font-weight-bold">{{ region.name }}</div>
             <div 
               class="mb-2 font-weight-bold" 
@@ -121,6 +128,20 @@
         </v-col>
       </v-row>
 
+      <!-- Order Summary -->
+      <v-alert 
+        v-if="orderTotal > 0"
+        type="info"
+        variant="tonal"
+        class="mt-4 mb-2"
+      >
+        <div class="d-flex justify-space-between align-center">
+          <span>Total accounts: <strong>{{ orderTotal }}</strong></span>
+          <span>Credits needed: <strong>{{ orderTotal }}</strong></span>
+          <span>Remaining after order: <strong>{{ remainingCredits - orderTotal }}</strong></span>
+        </div>
+      </v-alert>
+
       <!-- Order Button -->
       <v-btn
         @click="handleCreateOrder"
@@ -129,9 +150,10 @@
         size="x-large"
         class="mt-4"
         :loading="orderLoading"
-        :disabled="orderTotal === 0"
+        :disabled="orderTotal === 0 || orderTotal > remainingCredits"
       >
-        Place Order{{ orderTotal > 0 ? ` (${orderTotal} accounts)` : '' }}
+        <v-icon start>mdi-cart</v-icon>
+        {{ orderTotal === 0 ? 'Select Accounts to Order' : `Place Order (${orderTotal} credits)` }}
       </v-btn>
     </v-card-text>
     
@@ -148,6 +170,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { bcgenApi, usersApi } from '@/services/api'
+
+// Emit
+const emit = defineEmits(['orderCreated'])
 
 // State
 const orderLoading = ref(false)
@@ -167,15 +192,15 @@ const snackbar = ref({
 
 // Constants
 const regions = [
-  { id: 'netherlands', name: 'Netherlands', flag: '🇳🇱' },
-  { id: 'saudi arabia', name: 'Saudi Arabia', flag: '🇸🇦' },
-  { id: 'canada', name: 'Canada', flag: '🇨🇦' },
-  { id: 'france', name: 'France', flag: '🇫🇷' },
-  { id: 'germany', name: 'Germany', flag: '🇩🇪' },
-  { id: 'switzerland', name: 'Switzerland', flag: '🇨🇭' },
-  { id: 'sweden', name: 'Sweden', flag: '🇸🇪' },
-  { id: 'usa', name: 'United States', flag: '🇺🇸' },
-  { id: 'usa auto', name: 'USA Auto', flag: '🇺🇸' }
+  { id: 'netherlands', name: 'Netherlands', code: 'nl' },
+  { id: 'saudi arabia', name: 'Saudi Arabia', code: 'sa' },
+  { id: 'canada', name: 'Canada', code: 'ca' },
+  { id: 'france', name: 'France', code: 'fr' },
+  { id: 'germany', name: 'Germany', code: 'de' },
+  { id: 'switzerland', name: 'Switzerland', code: 'ch' },
+  { id: 'sweden', name: 'Sweden', code: 'se' },
+  { id: 'usa', name: 'United States', code: 'us' },
+  { id: 'usa auto', name: 'USA Auto', code: 'us' }
 ]
 
 // Methods
@@ -270,9 +295,18 @@ const handleCreateOrder = async () => {
     return
   }
   
+  // Check if user has enough credits
+  if (orderTotal.value > remainingCredits.value) {
+    showSnackbar(`Insufficient credits. You need ${orderTotal.value} credits but only have ${remainingCredits.value}`, 'error')
+    return
+  }
+  
   orderLoading.value = true
   
   try {
+    const successfulOrders = []
+    const failedOrders = []
+    
     // Place orders for each region
     for (const order of ordersToPlace) {
       const response = await bcgenApi.createOrder(
@@ -281,21 +315,61 @@ const handleCreateOrder = async () => {
       )
       
       if (response.error) {
-        showSnackbar(`Failed to order from ${order.country}: ${response.error}`, 'error')
+        failedOrders.push({ 
+          country: order.country, 
+          error: response.error,
+          available: response.available 
+        })
         continue
       }
+      
+      successfulOrders.push({
+        country: order.country,
+        quantity: order.quantity,
+        orderId: response.orderId
+      })
     }
     
-    showSnackbar('Orders created successfully!', 'success')
+    // Show results
+    if (successfulOrders.length > 0) {
+      const successMsg = successfulOrders.map(o => 
+        `${o.country}: ${o.quantity} accounts (Order ID: ${o.orderId})`
+      ).join('\n')
+      showSnackbar(`Orders created successfully!\n${successMsg}`, 'success')
+    }
     
-    // Reset quantities
-    Object.keys(orderQuantities.value).forEach(key => {
-      orderQuantities.value[key] = 0
+    if (failedOrders.length > 0) {
+      failedOrders.forEach(f => {
+        if (f.available !== undefined) {
+          showSnackbar(`${f.country}: ${f.error}`, 'error')
+        } else {
+          showSnackbar(`${f.country}: ${f.error}`, 'error')
+        }
+      })
+    }
+    
+    // Reset quantities only for successful orders
+    successfulOrders.forEach(order => {
+      orderQuantities.value[order.country] = 0
     })
-    orderTotal.value = 0
     
-    // Refresh availability
+    // Update quantities for failed orders based on availability
+    failedOrders.forEach(f => {
+      if (f.available !== undefined && f.available < orderQuantities.value[f.country]) {
+        orderQuantities.value[f.country] = f.available
+      }
+    })
+    
+    updateOrderTotal()
+    
+    // Refresh availability and credits
     await checkAvailability()
+    await fetchCredits()
+    
+    // Emit event to refresh orders list if any orders were successful
+    if (successfulOrders.length > 0) {
+      emit('orderCreated')
+    }
   } catch (error) {
     showSnackbar(error.message || 'Failed to create orders', 'error')
   } finally {
@@ -326,6 +400,11 @@ onMounted(() => {
 
 .quantity-input {
   max-width: 60px;
+}
+
+.flag-image {
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .quantity-input :deep(.v-field__input) {
