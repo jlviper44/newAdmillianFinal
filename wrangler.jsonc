@@ -38,12 +38,12 @@
     "WHOP_API_KEY": "BVAt4WK30JAWnBQCFsKhX4iizo_NcV4YyMaeokh7xBU",
     
     "WHOP_COMMENT_BOT_PRODUCT_ID": "prod_YpCOaWAGL30pV",
-    "WHOP_COMMENT_BOT_PLAN_ID": "plan_iCOoidm24W6Na",
-    "WHOP_COMMENT_BOT_CHECKOUT_LINK": "https://whop.com/checkout/plan_iCOoidm24W6Na?d2c=true",
+    "WHOP_COMMENT_BOT_PLAN_ID": "plan_cZ6jfA1kgP11m",
+    "WHOP_COMMENT_BOT_CHECKOUT_LINK": "https://whop.com/checkout/plan_cZ6jfA1kgP11m?d2c=true",
 
     "WHOP_BC_GEN_PRODUCT_ID": "prod_nuM231xabjmyN",
-    "WHOP_BC_GEN_PLAN_ID": "plan_0ArkKt6D6JOi3",
-    "WHOP_BC_GEN_CHECKOUT_LINK": "https://whop.com/checkout/plan_0ArkKt6D6JOi3?d2c=true",
+    "WHOP_BC_GEN_PLAN_ID": "plan_PZUv8O6NeXkEq",
+    "WHOP_BC_GEN_CHECKOUT_LINK": "https://whop.com/checkout/plan_PZUv8O6NeXkEq?d2c=true",
     
     "SHEETDB_API_URL": "https://sheetdb.io/api/v1/zb48wyyweh0rp"
   }

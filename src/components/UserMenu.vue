@@ -13,14 +13,22 @@
             <v-icon v-else>mdi-account-circle</v-icon>
           </v-avatar>
           <span class="d-none d-sm-inline">{{ user.name || user.email }}</span>
+          <v-chip v-if="user.isAdmin" color="amber" size="x-small" variant="flat" class="ml-2">
+            <v-icon start size="x-small">mdi-crown</v-icon>
+            Admin
+          </v-chip>
           <v-icon end>mdi-menu-down</v-icon>
         </v-btn>
       </template>
       
       <v-list>
         <v-list-item>
-          <v-list-item-title class="font-weight-bold">
+          <v-list-item-title class="font-weight-bold d-flex align-center">
             {{ user.name || 'User' }}
+            <v-chip v-if="user.isAdmin" color="amber" size="x-small" variant="flat" class="ml-3">
+              <v-icon start size="x-small">mdi-crown</v-icon>
+              Admin
+            </v-chip>
           </v-list-item-title>
           <v-list-item-subtitle v-if="user.email">
             {{ user.email }}

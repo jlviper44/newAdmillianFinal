@@ -23,7 +23,13 @@
                     <v-icon v-else size="60">mdi-account-circle</v-icon>
                   </v-avatar>
                   <div class="flex-grow-1">
-                    <div class="text-subtitle-1 font-weight-medium">{{ user.name || 'Not set' }}</div>
+                    <div class="d-flex align-center">
+                      <span class="text-subtitle-1 font-weight-medium">{{ user.name || 'Not set' }}</span>
+                      <v-chip v-if="user.isAdmin" color="amber" size="small" variant="flat" class="ml-3">
+                        <v-icon start size="small">mdi-crown</v-icon>
+                        Admin
+                      </v-chip>
+                    </div>
                     <div class="text-body-2 text-grey">{{ user.email || 'Not set' }}</div>
                     <div class="text-caption text-grey">ID: {{ user.id }}</div>
                   </div>
@@ -94,7 +100,22 @@
               </div>
 
               <!-- Active Status or CTA -->
-              <div v-if="subscriptions.comment_bot?.isActive" class="active-status">
+              <div v-if="user?.isAdmin" class="active-status">
+                <v-chip color="amber" variant="flat" class="mb-3" block>
+                  <v-icon start size="small">mdi-crown</v-icon>
+                  Admin Access
+                </v-chip>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 text-grey mb-1">Status</p>
+                  <p class="text-h6 font-weight-bold">Unlimited Access</p>
+                  <p class="text-caption text-grey">No expiration</p>
+                </div>
+                <v-divider class="my-3"></v-divider>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 font-weight-medium">Unlimited credits available</p>
+                </div>
+              </div>
+              <div v-else-if="subscriptions.comment_bot?.isActive" class="active-status">
                 <v-chip color="success" variant="flat" class="mb-3" block>
                   <v-icon start size="small">mdi-check-circle</v-icon>
                   Subscribed
@@ -169,7 +190,22 @@
               </div>
 
               <!-- Active Status or CTA -->
-              <div v-if="subscriptions.bc_gen?.isActive" class="active-status">
+              <div v-if="user?.isAdmin" class="active-status">
+                <v-chip color="amber" variant="flat" class="mb-3" block>
+                  <v-icon start size="small">mdi-crown</v-icon>
+                  Admin Access
+                </v-chip>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 text-grey mb-1">Status</p>
+                  <p class="text-h6 font-weight-bold">Unlimited Access</p>
+                  <p class="text-caption text-grey">No expiration</p>
+                </div>
+                <v-divider class="my-3"></v-divider>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 font-weight-medium">Unlimited credits available</p>
+                </div>
+              </div>
+              <div v-else-if="subscriptions.bc_gen?.isActive" class="active-status">
                 <v-chip color="success" variant="flat" class="mb-3" block>
                   <v-icon start size="small">mdi-check-circle</v-icon>
                   Subscribed

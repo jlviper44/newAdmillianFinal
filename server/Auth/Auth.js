@@ -1,6 +1,14 @@
 // Auth.js - OAuth authentication system for Cloudflare Workers
 import { executeQuery } from '../SQL/SQL.js';
 
+// Hard-coded admin users who bypass payment requirements
+const ADMIN_USERS = ['user_uZ1HxkxpdULMs', 'user_7vMF2GI5Dz3YT'];
+
+// Helper function to check if a user is an admin
+function isAdminUser(userId) {
+  return ADMIN_USERS.includes(userId);
+}
+
 /**
  * Initialize authentication tables in D1 database
  * @param {Object} env - Environment bindings with DB
@@ -444,6 +452,45 @@ async function handleCheckAccess(request, env) {
     });
   }
   
+  // Check if user is an admin - admins get unlimited access
+  if (session.user && isAdminUser(session.user.id)) {
+    return new Response(JSON.stringify({ 
+      user: { ...session.user, isAdmin: true },
+      memberships: [],
+      subscriptions: {
+        comment_bot: { 
+          isActive: true, 
+          expiresIn: 9999, // Effectively unlimited
+          startDate: Math.floor(Date.now() / 1000),
+          endDate: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60), // 1 year from now
+          membershipId: 'admin_bypass',
+          checkoutLink: null,
+          totalCredits: 999999, // Unlimited credits
+          creditMemberships: [{
+            id: 'admin_bypass',
+            metadata: { Quantity: 999999, ProductType: 'admin' }
+          }]
+        },
+        bc_gen: { 
+          isActive: true, 
+          expiresIn: 9999, // Effectively unlimited
+          startDate: Math.floor(Date.now() / 1000),
+          endDate: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60), // 1 year from now
+          membershipId: 'admin_bypass',
+          checkoutLink: null,
+          totalCredits: 999999, // Unlimited credits
+          creditMemberships: [{
+            id: 'admin_bypass',
+            metadata: { Quantity: 999999, ProductType: 'admin' }
+          }]
+        }
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
   try {
     // Fetch user memberships
     const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
@@ -527,7 +574,7 @@ async function handleCheckAccess(request, env) {
     };
     
     return new Response(JSON.stringify({ 
-      user: session.user,
+      user: { ...session.user, isAdmin: false },
       memberships: memberships.data,
       subscriptions
     }), {
@@ -537,7 +584,7 @@ async function handleCheckAccess(request, env) {
   } catch (error) {
     console.error('Check access error:', error);
     return new Response(JSON.stringify({ 
-      user: session?.user || null,
+      user: session?.user ? { ...session.user, isAdmin: isAdminUser(session.user.id) } : null,
       memberships: [],
       subscriptions: {
         comment_bot: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_COMMENT_BOT_CHECKOUT_LINK || null },
@@ -566,7 +613,7 @@ async function handleGetUser(request, env) {
   // Ensure we have a valid user with required fields
   let validUser = null;
   if (session?.user && session.user.id) {
-    validUser = session.user;
+    validUser = { ...session.user, isAdmin: isAdminUser(session.user.id) };
   }
   
   return new Response(JSON.stringify({ 
@@ -687,6 +734,19 @@ async function handleUseCredits(request, env) {
   }
   
   const { credits, productType = 'comment_bot' } = await request.json();
+  
+  // Check if user is an admin - admins don't need to use credits
+  if (session.user && isAdminUser(session.user.id)) {
+    return new Response(JSON.stringify({ 
+      success: true,
+      creditsUsed: 0,
+      message: 'Admin user - no credits deducted',
+      updates: []
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
   
   if (!credits || credits < 1) {
     return new Response(JSON.stringify({ error: 'Invalid credits amount' }), {

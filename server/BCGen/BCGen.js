@@ -1,3 +1,11 @@
+// Hard-coded admin users who bypass payment requirements
+const ADMIN_USERS = ['user_uZ1HxkxpdULMs', 'user_7vMF2GI5Dz3YT'];
+
+// Helper function to check if a user is an admin
+function isAdminUser(userId) {
+  return ADMIN_USERS.includes(userId);
+}
+
 export default class BCGen {
   constructor(env) {
     this.env = env;
@@ -286,6 +294,12 @@ export default class BCGen {
     try {
       if (!session || !session.access_token) {
         return { error: 'No valid session for credit deduction' };
+      }
+
+      // Check if user is an admin - admins don't need to deduct credits
+      if (session.user && isAdminUser(session.user.id)) {
+        console.log(`Admin user ${session.user.id} - skipping credit deduction`);
+        return { success: true };
       }
 
       // Get user's memberships from Whop
