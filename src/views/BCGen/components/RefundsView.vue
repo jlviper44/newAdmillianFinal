@@ -3,17 +3,18 @@
     <v-card-text>
       <div v-if="ordersLoading" class="text-center pa-4">
         <v-progress-circular indeterminate color="primary"></v-progress-circular>
-        <p class="mt-2">Loading orders...</p>
+        <p class="mt-2">Loading refund requests...</p>
       </div>
       
-      <div v-else-if="orders.length === 0" class="text-center pa-8">
-        <v-icon size="64" color="grey">mdi-cart-outline</v-icon>
-        <p class="text-h6 mt-4 text-grey">No orders yet</p>
+      <div v-else-if="refundOrders.length === 0" class="text-center pa-8">
+        <v-icon size="64" color="grey">mdi-cash-refund</v-icon>
+        <p class="text-h6 mt-4 text-grey">No refund requests</p>
+        <p class="text-body-2 text-grey">Orders with refund requests will appear here</p>
       </div>
       
       <div v-else>
         <v-card 
-          v-for="order in orders" 
+          v-for="order in refundOrders" 
           :key="order.orderId"
           class="mb-4"
           elevation="2"
@@ -41,62 +42,75 @@
                   Refund Approved
                 </v-chip>
                 <v-chip 
-                  v-else-if="isWithin24Hours(order.createdAt) && order.status !== 'refunded' && (order.status === 'fulfilled' || order.status === 'completed')"
+                  v-else-if="order.refundStatus === 'denied'"
                   size="x-small"
-                  color="info"
+                  color="error"
                   variant="tonal"
                 >
-                  Refundable
+                  Refund Denied
+                </v-chip>
+                <v-chip 
+                  v-else-if="order.status === 'refunded'"
+                  size="x-small"
+                  color="success"
+                  variant="flat"
+                >
+                  Refunded
                 </v-chip>
               </div>
             </div>
             <div class="text-right">
-              <v-chip 
-                :color="getStatusColor(order.status)"
-                text-color="white"
-                class="mb-1"
-              >
-                {{ order.status?.toUpperCase() || 'PENDING' }}
-              </v-chip>
               <div class="text-caption">
-                {{ order.quantity || order.totalAccounts || 0 }} accounts • ${{ order.total || order.totalPrice || 0 }}
+                {{ order.quantity || order.totalAccounts || 0 }} accounts • {{ order.status === 'refunded' || order.refundStatus === 'approved' ? 0 : (order.totalPrice || 0) }} credits
               </div>
             </div>
           </v-card-title>
           
           <!-- Order Items -->
           <v-card-text class="pt-0 pb-2">
-            <div class="d-flex flex-wrap gap-2 mb-3">
-              <v-chip 
-                v-if="order.country"
-                size="small"
-                variant="outlined"
-                color="primary"
-              >
-                {{ order.quantity || 1 }}x {{ order.country }}
-              </v-chip>
-              <v-chip 
-                v-else-if="order.items"
-                v-for="item in order.items" 
-                :key="item.region"
-                size="small"
-                variant="outlined"
-                color="primary"
-              >
-                {{ item.quantity }}x {{ item.region }}
-              </v-chip>
-            </div>
+            <!-- Refund Information -->
+            <v-alert 
+              :type="order.refundStatus === 'approved' || order.status === 'refunded' ? 'success' : 
+                     order.refundStatus === 'denied' ? 'error' : 'warning'"
+              variant="tonal"
+              density="compact"
+              class="mb-0"
+            >
+              <div>
+                <div class="font-weight-medium">
+                  {{ order.refundStatus === 'pending' ? 'Refund request is being reviewed' : 
+                     order.refundStatus === 'approved' ? 'Refund has been approved' :
+                     order.refundStatus === 'denied' ? 'Refund request was denied' :
+                     order.status === 'refunded' ? 'Refund completed' : 'Refund status unknown' }}
+                </div>
+                <div class="text-caption" v-if="order.refundRequestedAt">
+                  Requested: {{ formatDate(order.refundRequestedAt) }}
+                </div>
+                <div class="text-caption mt-1" v-if="order.refundStatus === 'denied' && order.adminNotes">
+                  <strong>Reason:</strong> {{ order.adminNotes }}
+                </div>
+                <div class="mt-2" v-if="order.refundStatus === 'approved' && order.checkoutLink">
+                  <v-btn
+                    :href="order.checkoutLink"
+                    target="_blank"
+                    color="primary"
+                    size="small"
+                    variant="flat"
+                    prepend-icon="mdi-open-in-new"
+                  >
+                    Claim Refund
+                  </v-btn>
+                </div>
+              </div>
+            </v-alert>
           </v-card-text>
           
           <!-- Order Actions -->
           <v-card-actions>
             <v-row no-gutters>
-              <v-col 
-                :cols="(order.status === 'fulfilled' || order.status === 'completed') && isWithin24Hours(order.createdAt) && order.status !== 'refunded' ? 6 : 12"
-                :class="(order.status === 'fulfilled' || order.status === 'completed') && isWithin24Hours(order.createdAt) && order.status !== 'refunded' ? 'pr-1' : ''"
-              >
+              <v-col cols="12">
                 <v-btn
-                  v-if="order.status === 'fulfilled' || order.status === 'completed'"
+                  v-if="order.status === 'fulfilled' || order.status === 'completed' || order.status === 'refunded'"
                   @click="toggleAccounts(order.orderId)"
                   color="secondary"
                   block
@@ -104,45 +118,15 @@
                 >
                   {{ expandedOrders[order.orderId] ? 'Hide' : 'View' }} Accounts
                 </v-btn>
+                <p v-else-if="order.refundStatus === 'approved' && !order.checkoutLink" class="text-center w-100 text-grey pa-2">
+                  Waiting for checkout link...
+                </p>
+                <p v-else-if="order.refundStatus === 'pending'" class="text-center w-100 text-grey pa-2">
+                  Refund pending review
+                </p>
                 <p v-else class="text-center w-100 text-grey pa-2">
                   Order is being processed...
                 </p>
-              </v-col>
-              <v-col 
-                v-if="(order.status === 'fulfilled' || order.status === 'completed') && isWithin24Hours(order.createdAt) && order.status !== 'refunded'"
-                cols="6"
-                class="pl-1"
-              >
-                <v-btn
-                  v-if="!order.refundStatus"
-                  @click="openRefundDialog(order)"
-                  color="warning"
-                  block
-                  variant="outlined"
-                  prepend-icon="mdi-cash-refund"
-                >
-                  Request Refund
-                </v-btn>
-                <v-btn
-                  v-else-if="order.refundStatus === 'pending'"
-                  color="grey"
-                  block
-                  variant="outlined"
-                  disabled
-                  prepend-icon="mdi-clock-outline"
-                >
-                  Waiting for Response
-                </v-btn>
-                <v-btn
-                  v-else-if="order.refundStatus === 'approved'"
-                  color="success"
-                  block
-                  variant="tonal"
-                  disabled
-                  prepend-icon="mdi-check-circle"
-                >
-                  Refund Approved
-                </v-btn>
               </v-col>
             </v-row>
           </v-card-actions>
@@ -167,13 +151,14 @@
                     <v-btn
                       @click="copyAllAccounts(order)"
                       color="primary"
-                      variant="tonal"
+                      variant="flat"
+                      size="small"
                       prepend-icon="mdi-content-copy"
                     >
                       Copy All
                     </v-btn>
                   </div>
-
+                  
                   <v-card 
                     v-for="(account, index) in orderAccounts[order.orderId]" 
                     :key="index"
@@ -413,7 +398,6 @@
                           </v-card-text>
                         </v-card>
                       </div>
-
                     </v-card-text>
                   </v-card>
                 </div>
@@ -432,73 +416,15 @@
       </v-snackbar>
     </v-card-text>
   </v-card>
-
-  <!-- Refund Dialog -->
-  <v-dialog v-model="refundDialog" max-width="500">
-    <v-card>
-      <v-card-title>
-        <v-icon class="mr-2">mdi-cash-refund</v-icon>
-        Request Refund
-      </v-card-title>
-      
-      <v-card-text>
-        <v-alert type="info" variant="tonal" class="mb-4">
-          You are requesting a refund for:
-          <div class="mt-2 font-weight-medium">Order #{{ refundOrder?.orderId }}</div>
-        </v-alert>
-        
-        <v-textarea
-          v-model="refundReason"
-          label="Reason for refund"
-          placeholder="Please explain why you are requesting a refund..."
-          rows="4"
-          required
-          variant="outlined"
-          :error-messages="!refundReason.trim() && refundLoading ? ['Reason is required'] : []"
-        ></v-textarea>
-      </v-card-text>
-      
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          @click="refundDialog = false"
-          :disabled="refundLoading"
-        >
-          Cancel
-        </v-btn>
-        <v-btn
-          @click="submitRefund"
-          color="warning"
-          variant="flat"
-          :loading="refundLoading"
-        >
-          Submit Request
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { bcgenApi } from '@/services/api'
-import { useAuth } from '@/composables/useAuth'
-
-const { user } = useAuth()
-
-// Define emits
-const emit = defineEmits(['refund-requested'])
 
 // State
 const ordersLoading = ref(false)
-const allOrders = ref([])
-
-// Computed - filter out orders with refund requests
-const orders = computed(() => {
-  return allOrders.value.filter(order => 
-    !order.refundStatus && order.status !== 'refunded'
-  )
-})
+const orders = ref([])
 const expandedOrders = ref({})
 const orderAccounts = ref({})
 const loadingAccounts = ref({})
@@ -511,6 +437,13 @@ const snackbar = ref({
   show: false,
   text: '',
   color: 'success'
+})
+
+// Computed - filter only orders with refund requests
+const refundOrders = computed(() => {
+  return orders.value.filter(order => 
+    order.refundStatus || order.status === 'refunded'
+  )
 })
 
 // Methods
@@ -532,53 +465,6 @@ const getStatusColor = (status) => {
   return colors[status] || 'grey'
 }
 
-const isWithin24Hours = (dateString) => {
-  const orderDate = new Date(dateString)
-  const now = new Date()
-  const diffInHours = (now - orderDate) / (1000 * 60 * 60)
-  return diffInHours <= 24
-}
-
-// Refund dialog state
-const refundDialog = ref(false)
-const refundOrder = ref(null)
-const refundReason = ref('')
-const refundLoading = ref(false)
-
-const openRefundDialog = (order) => {
-  refundOrder.value = order
-  refundReason.value = ''
-  refundDialog.value = true
-}
-
-const submitRefund = async () => {
-  if (!refundReason.value.trim()) {
-    showSnackbar('Please provide a reason for the refund', 'warning')
-    return
-  }
-
-  refundLoading.value = true
-  try {
-    const response = await bcgenApi.requestRefund(refundOrder.value.orderId, refundReason.value)
-    
-    if (response.error) {
-      showSnackbar(response.error, 'error')
-      return
-    }
-    
-    showSnackbar('Refund request submitted successfully', 'success')
-    refundDialog.value = false
-    // Refresh orders to update status
-    await loadUserOrders()
-    // Emit event to parent to refresh refunds view
-    emit('refund-requested')
-  } catch (error) {
-    showSnackbar('Failed to submit refund request', 'error')
-  } finally {
-    refundLoading.value = false
-  }
-}
-
 const loadUserOrders = async () => {
   ordersLoading.value = true
   try {
@@ -589,7 +475,7 @@ const loadUserOrders = async () => {
       return
     }
     
-    allOrders.value = response.orders || []
+    orders.value = response.orders || []
   } catch (error) {
     showSnackbar(error.message || 'Failed to load orders', 'error')
   } finally {
@@ -617,6 +503,12 @@ const toggleAccounts = async (orderId) => {
   expandedOrders.value[orderId] = true
   
   if (orderAccounts.value[orderId]) {
+    // Re-start TOTP generation for existing accounts
+    orderAccounts.value[orderId].forEach((account, index) => {
+      if (account['Recovery Code'] || account.code2fa) {
+        refreshTOTP(orderId, index, account['Recovery Code'] || account.code2fa)
+      }
+    })
     return
   }
   
@@ -656,6 +548,59 @@ const copyToClipboard = async (text, label) => {
   }
 }
 
+const copyAccountCredentials = async (account) => {
+  let text = `Username: ${account.Username || account.username}\n`
+  text += `Password: ${account.Password || account.password}\n`
+  
+  if (account['Recovery Code'] || account.code2fa) {
+    text += `2FA Secret: ${account['Recovery Code'] || account.code2fa}\n`
+  }
+  
+  if (account.Email || account.mail) {
+    text += `Email: ${account.Email || account.mail}\n`
+  }
+  
+  if (account['Email Password']) {
+    text += `Email Password: ${account['Email Password']}\n`
+  }
+  
+  try {
+    await navigator.clipboard.writeText(text)
+    showSnackbar('Account credentials copied!', 'success')
+  } catch (error) {
+    showSnackbar('Failed to copy credentials', 'error')
+  }
+}
+
+const copyAllAccounts = async (order) => {
+  const accounts = orderAccounts.value[order.orderId]
+  if (!accounts || accounts.length === 0) return
+  
+  let allText = `Order #${order.orderId} - ${order.country}\n\n`
+  
+  accounts.forEach((account, index) => {
+    allText += `Account #${index + 1}:\n`
+    allText += `Username: ${account.Username || account.username}\n`
+    allText += `Password: ${account.Password || account.password}\n`
+    if (account['Recovery Code'] || account.code2fa) {
+      allText += `2FA Secret: ${account['Recovery Code'] || account.code2fa}\n`
+    }
+    if (account.Email || account.mail) {
+      allText += `Email: ${account.Email || account.mail}\n`
+    }
+    if (account['Email Password']) {
+      allText += `Email Password: ${account['Email Password']}\n`
+    }
+    allText += '\n'
+  })
+  
+  try {
+    await navigator.clipboard.writeText(allText)
+    showSnackbar('All accounts copied!', 'success')
+  } catch (error) {
+    showSnackbar('Failed to copy accounts', 'error')
+  }
+}
 
 // TOTP Implementation
 const base32ToHex = (base32) => {
@@ -718,21 +663,15 @@ const generateTOTP = async (secret, timeStep = 30) => {
       (signatureArray[offset + 3] & 0xff)
     ) % 1000000
     
-    // Pad with leading zeros
     return code.toString().padStart(6, '0')
   } catch (error) {
-    console.error('TOTP generation error:', error)
-    return null
+    console.error('Error generating TOTP:', error)
+    return '------'
   }
 }
 
-const getTimeRemaining = (timeStep = 30) => {
-  const seconds = Math.floor(Date.now() / 1000)
-  return timeStep - (seconds % timeStep)
-}
-
-const refreshTOTP = async (orderId, index, secret) => {
-  const key = `${orderId}-${index}`
+const refreshTOTP = async (orderId, accountIndex, secret) => {
+  const key = `${orderId}-${accountIndex}`
   
   // Clear existing interval
   if (totpIntervals.value[key]) {
@@ -741,86 +680,26 @@ const refreshTOTP = async (orderId, index, secret) => {
   
   // Generate initial code
   const code = await generateTOTP(secret)
-  if (code) {
-    totpCodes.value[key] = code
-    totpTimers.value[key] = getTimeRemaining()
+  totpCodes.value[key] = code
+  
+  // Update timer
+  const updateTimer = () => {
+    const now = Date.now()
+    const timeStep = 30000 // 30 seconds in milliseconds
+    const timeRemaining = Math.ceil((timeStep - (now % timeStep)) / 1000)
+    totpTimers.value[key] = timeRemaining
     
-    // Update every second
-    totpIntervals.value[key] = setInterval(async () => {
-      const remaining = getTimeRemaining()
-      totpTimers.value[key] = remaining
-      
-      // Generate new code when timer resets
-      if (remaining === 30) {
-        const newCode = await generateTOTP(secret)
-        if (newCode) {
-          totpCodes.value[key] = newCode
-        }
-      }
-    }, 1000)
+    if (timeRemaining === 30) {
+      // Generate new code
+      generateTOTP(secret).then(newCode => {
+        totpCodes.value[key] = newCode
+      })
+    }
   }
-}
-
-// Copy all account details
-const copyAccountDetails = async (account) => {
-  const details = []
-  details.push('=== Account Details ===')
-  if (account.Username || account.username) details.push(`Username: ${account.Username || account.username}`)
-  if (account.Password || account.passTiktok || account.password) details.push(`Password: ${account.Password || account.passTiktok || account.password}`)
-  if (account.Email || account.mail) details.push(`Email: ${account.Email || account.mail}`)
-  if (account['Email Password']) details.push(`Email Password: ${account['Email Password']}`)
-  if (account['Recovery Code'] || account.code2fa) details.push(`2FA Secret: ${account['Recovery Code'] || account.code2fa}`)
-  if (account.cookies) details.push(`Cookies: ${account.cookies}`)
   
-  try {
-    await navigator.clipboard.writeText(details.join('\n'))
-    showSnackbar('All account details copied!', 'success')
-  } catch (error) {
-    showSnackbar('Failed to copy details', 'error')
-  }
-}
-
-// Copy account credentials only
-const copyAccountCredentials = async (account) => {
-  const credentials = []
-  if (account.Username || account.username) credentials.push(`Username: ${account.Username || account.username}`)
-  if (account.Password || account.passTiktok || account.password) credentials.push(`Password: ${account.Password || account.passTiktok || account.password}`)
-  if (account.Email || account.mail) credentials.push(`Email: ${account.Email || account.mail}`)
-  if (account['Email Password']) credentials.push(`Email Password: ${account['Email Password']}`)
-  
-  try {
-    await navigator.clipboard.writeText(credentials.join('\n'))
-    showSnackbar('Credentials copied!', 'success')
-  } catch (error) {
-    showSnackbar('Failed to copy credentials', 'error')
-  }
-}
-
-// Copy all accounts for an order
-const copyAllAccounts = async (order) => {
-  const accounts = orderAccounts.value[order.orderId]
-  if (!accounts || accounts.length === 0) return
-  
-  const allDetails = []
-  accounts.forEach((account, index) => {
-    allDetails.push(`\n=== Account #${index + 1} ===`)
-    if (account.Username || account.username) allDetails.push(`Username: ${account.Username || account.username}`)
-    if (account.Password || account.passTiktok || account.password) allDetails.push(`Password: ${account.Password || account.passTiktok || account.password}`)
-    if (account.Email || account.mail) allDetails.push(`Email: ${account.Email || account.mail}`)
-    if (account['Recovery Code'] || account.code2fa) allDetails.push(`2FA Secret: ${account['Recovery Code'] || account.code2fa}`)
-  })
-  
-  try {
-    await navigator.clipboard.writeText(allDetails.join('\n'))
-    showSnackbar(`All ${accounts.length} accounts copied!`, 'success')
-  } catch (error) {
-    showSnackbar('Failed to copy accounts', 'error')
-  }
-}
-
-// Open account in browser (placeholder)
-const openInBrowser = (account) => {
-  showSnackbar('Browser opening feature coming soon!', 'info')
+  // Update immediately and then every second
+  updateTimer()
+  totpIntervals.value[key] = setInterval(updateTimer, 1000)
 }
 
 // Load orders on mount
@@ -870,7 +749,7 @@ defineExpose({
   flex: 1 0 auto;
 }
 
-/* Compact Credentials */
+/* Credentials styling */
 .compact-credentials {
   display: flex;
   flex-direction: column;
@@ -929,14 +808,6 @@ defineExpose({
 }
 
 /* TOTP Display */
-.totp-display {
-  font-size: 1.5em;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  color: rgb(var(--v-theme-primary));
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-}
-
 .totp-display-compact {
   font-size: 1.1rem;
   font-weight: 700;
@@ -944,17 +815,6 @@ defineExpose({
   color: rgb(var(--v-theme-primary));
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   padding: 0 8px;
-}
-
-/* Animations */
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.6; }
-  100% { opacity: 1; }
-}
-
-.totp-display {
-  animation: pulse 2s ease-in-out infinite;
 }
 
 /* Custom scrollbar for cookies */

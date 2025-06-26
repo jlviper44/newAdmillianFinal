@@ -138,10 +138,20 @@ export const bcgenApi = {
   // Get specific order status and accounts
   getOrderStatus: (orderId) => api.get(`/bcgen/order-status/${orderId}`),
   
-  // Request refund for an account
-  refundRequest: (orderId, accountUsername) => api.post('/bcgen/refund-request', {
+  // Request refund for an order
+  requestRefund: (orderId, reason) => api.post('/bcgen/refund-request', {
     orderId,
-    accountUsername
+    reason
+  }),
+  
+  // Get all refund requests (admin only)
+  getRefundRequests: () => api.get('/bcgen/refund-requests'),
+  
+  // Process refund request (admin only)
+  processRefund: (requestId, action, adminNotes) => api.post('/bcgen/process-refund', {
+    requestId,
+    action,
+    adminNotes
   })
 }
 

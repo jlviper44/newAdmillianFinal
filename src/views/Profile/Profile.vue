@@ -3,7 +3,15 @@
     <v-container fluid>
       <v-row>
         <v-col cols="12">
-          <h1 class="text-h5 font-weight-bold mb-3">Profile</h1>
+          <div class="d-flex justify-space-between align-center mb-6">
+            <div>
+              <h1 class="text-h4 font-weight-bold">
+                <v-icon icon="mdi-account" size="x-large" class="mr-2"></v-icon>
+                Profile
+              </h1>
+              <p class="text-subtitle-1 text-grey-darken-1 mt-1">Manage your account settings and information</p>
+            </div>
+          </div>
         </v-col>
       </v-row>
 

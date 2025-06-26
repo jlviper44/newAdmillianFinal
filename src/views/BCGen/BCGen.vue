@@ -5,7 +5,12 @@ import AuthGuard from '@/components/AuthGuard.vue';
 import BCGenCredits from './components/BCGenCredits.vue';
 import PlaceOrderView from './components/PlaceOrderView.vue';
 import OrdersView from './components/OrdersView.vue';
+import RefundsView from './components/RefundsView.vue';
 import { usersApi } from '@/services/api';
+
+// Component refs
+const ordersViewRef = ref(null);
+const refundsViewRef = ref(null);
 
 // State management
 const currentTab = ref('orders');
@@ -37,6 +42,30 @@ const fetchCredits = async () => {
     remainingCredits.value = 0;
   } finally {
     loading.value.credits = false;
+  }
+};
+
+// Handle order creation
+const handleOrderCreated = () => {
+  // Switch to My Orders tab
+  currentTab.value = 'my-orders';
+  
+  // Refresh the orders list
+  if (ordersViewRef.value) {
+    ordersViewRef.value.refreshOrders();
+  }
+  
+  // Also refresh refunds view if it exists
+  if (refundsViewRef.value) {
+    refundsViewRef.value.refreshOrders();
+  }
+};
+
+// Handle refund request
+const handleRefundRequested = () => {
+  // Refresh the refunds view
+  if (refundsViewRef.value) {
+    refundsViewRef.value.refreshOrders();
   }
 };
 
@@ -77,6 +106,7 @@ onMounted(() => {
           <v-tabs v-model="currentTab" class="mb-6">
             <v-tab value="orders">Orders</v-tab>
             <v-tab value="my-orders">My Orders</v-tab>
+            <v-tab value="refunds">Refunds</v-tab>
             <v-tab value="credits">Credits</v-tab>
           </v-tabs>
         </v-col>
@@ -86,12 +116,17 @@ onMounted(() => {
       <v-window v-model="currentTab">
         <!-- Orders Tab -->
         <v-window-item value="orders">
-          <PlaceOrderView />
+          <PlaceOrderView @orderCreated="handleOrderCreated" />
         </v-window-item>
 
         <!-- My Orders Tab -->
         <v-window-item value="my-orders">
-          <OrdersView />
+          <OrdersView ref="ordersViewRef" @refund-requested="handleRefundRequested" />
+        </v-window-item>
+
+        <!-- Refunds Tab -->
+        <v-window-item value="refunds">
+          <RefundsView ref="refundsViewRef" />
         </v-window-item>
 
         <!-- Overview Tab -->

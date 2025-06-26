@@ -32,6 +32,12 @@ const allRoutes = [
     path: '/profile',
     requiresSubscription: null
   },
+  { 
+    title: 'Settings', 
+    icon: 'mdi-cog', 
+    path: '/settings',
+    requiresSubscription: null
+  },
 ];
 
 // Filtered routes based on user access

@@ -50,6 +50,34 @@ export default class BCGen {
         )
       `).run();
 
+      // Create refund_requests table
+      await this.env.BCGEN_DB.prepare(`
+        CREATE TABLE IF NOT EXISTS refund_requests (
+          requestId TEXT PRIMARY KEY,
+          orderId TEXT NOT NULL,
+          userId TEXT NOT NULL,
+          userEmail TEXT,
+          reason TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          adminNotes TEXT,
+          processedBy TEXT,
+          processedAt TEXT,
+          createdAt TEXT NOT NULL,
+          refundAmount INTEGER NOT NULL,
+          checkoutLink TEXT,
+          FOREIGN KEY (orderId) REFERENCES orders(orderId)
+        )
+      `).run();
+      
+      // Add checkoutLink column if it doesn't exist (for existing databases)
+      try {
+        await this.env.BCGEN_DB.prepare(`
+          ALTER TABLE refund_requests ADD COLUMN checkoutLink TEXT
+        `).run();
+      } catch (e) {
+        // Column already exists, ignore error
+      }
+
       // Create indices for better performance
       await this.env.BCGEN_DB.prepare(`
         CREATE INDEX IF NOT EXISTS idx_orders_userId ON orders(userId)
@@ -61,6 +89,14 @@ export default class BCGen {
 
       await this.env.BCGEN_DB.prepare(`
         CREATE INDEX IF NOT EXISTS idx_orders_createdAt ON orders(createdAt)
+      `).run();
+
+      await this.env.BCGEN_DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_refund_requests_orderId ON refund_requests(orderId)
+      `).run();
+
+      await this.env.BCGEN_DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_refund_requests_status ON refund_requests(status)
       `).run();
 
       return true;
@@ -244,10 +280,32 @@ export default class BCGen {
         ORDER BY createdAt DESC
       `).bind(userId).all();
 
-      // Parse accounts data for each order
+      // Get all refund requests for this user
+      const refundRequests = await this.env.BCGEN_DB.prepare(`
+        SELECT orderId, status, createdAt, adminNotes, checkoutLink 
+        FROM refund_requests 
+        WHERE userId = ?1
+      `).bind(userId).all();
+
+      // Create a map of order refund statuses
+      const refundStatusMap = {};
+      refundRequests.results.forEach(request => {
+        refundStatusMap[request.orderId] = {
+          refundStatus: request.status,
+          refundRequestedAt: request.createdAt,
+          adminNotes: request.adminNotes || null,
+          checkoutLink: request.checkoutLink || null
+        };
+      });
+
+      // Parse accounts data and add refund status for each order
       const formattedOrders = orders.results.map(order => ({
         ...order,
-        accounts: order.accountsData ? JSON.parse(order.accountsData) : []
+        accounts: order.accountsData ? JSON.parse(order.accountsData) : [],
+        refundStatus: refundStatusMap[order.orderId]?.refundStatus || null,
+        refundRequestedAt: refundStatusMap[order.orderId]?.refundRequestedAt || null,
+        adminNotes: refundStatusMap[order.orderId]?.adminNotes || null,
+        checkoutLink: refundStatusMap[order.orderId]?.checkoutLink || null
       }));
 
       return {
@@ -386,12 +444,12 @@ export default class BCGen {
     }
   }
 
-  async refundRequest(data, userId) {
+  async createRefundRequest(data, userId, session) {
     try {
-      const { orderId, accountUsername } = data;
+      const { orderId, reason } = data;
 
-      if (!orderId || !accountUsername) {
-        return { error: 'Invalid refund parameters' };
+      if (!orderId || !reason || reason.trim().length === 0) {
+        return { error: 'Order ID and reason are required' };
       }
 
       // Get the order
@@ -404,6 +462,11 @@ export default class BCGen {
         return { error: 'Order not found' };
       }
 
+      // Check if order status allows refunds
+      if (order.status !== 'completed' && order.status !== 'fulfilled') {
+        return { error: 'Only completed orders can be refunded' };
+      }
+
       // Check if order is eligible for refund (within 24 hours)
       const orderDate = new Date(order.createdAt);
       const now = new Date();
@@ -413,31 +476,188 @@ export default class BCGen {
         return { error: 'Refund period has expired (24 hours)' };
       }
 
-      // Parse accounts and mark the specific account as refunded
-      const accounts = order.accountsData ? JSON.parse(order.accountsData) : [];
-      const accountIndex = accounts.findIndex(acc => 
-        acc.Username === accountUsername || acc.username === accountUsername
-      );
+      // Check if a refund request already exists for this order
+      const existingRequest = await this.env.BCGEN_DB.prepare(`
+        SELECT * FROM refund_requests 
+        WHERE orderId = ?1 AND status != 'denied'
+      `).bind(orderId).first();
 
-      if (accountIndex === -1) {
-        return { error: 'Account not found in order' };
+      if (existingRequest) {
+        return { error: 'A refund request already exists for this order' };
       }
 
-      accounts[accountIndex].refunded = true;
+      // Generate request ID
+      const requestId = `REF-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      const userEmail = session?.user?.email || '';
 
-      // Update order in database
+      // Create refund request
       await this.env.BCGEN_DB.prepare(`
-        UPDATE orders 
-        SET accountsData = ?1 
-        WHERE orderId = ?2
-      `).bind(JSON.stringify(accounts), orderId).run();
+        INSERT INTO refund_requests (
+          requestId, orderId, userId, userEmail, reason, 
+          status, createdAt, refundAmount
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      `).bind(
+        requestId,
+        orderId,
+        userId,
+        userEmail,
+        reason,
+        'pending',
+        new Date().toISOString(),
+        order.totalPrice
+      ).run();
 
       return {
         success: true,
-        message: 'Refund request submitted successfully'
+        message: 'Refund request submitted successfully',
+        requestId
       };
     } catch (error) {
-      console.error('Error processing refund:', error);
+      console.error('Error creating refund request:', error);
+      return { error: 'Failed to create refund request' };
+    }
+  }
+
+  async getAllRefundRequests() {
+    try {
+      const requests = await this.env.BCGEN_DB.prepare(`
+        SELECT 
+          rr.*,
+          o.country,
+          o.quantity,
+          o.createdAt as orderCreatedAt,
+          o.status as orderStatus
+        FROM refund_requests rr
+        JOIN orders o ON rr.orderId = o.orderId
+        ORDER BY rr.createdAt DESC
+      `).all();
+
+      return {
+        success: true,
+        requests: requests.results
+      };
+    } catch (error) {
+      console.error('Error getting refund requests:', error);
+      return { error: 'Failed to get refund requests' };
+    }
+  }
+
+  async processRefundRequest(data, adminUserId) {
+    try {
+      const { requestId, action, adminNotes } = data;
+
+      if (!requestId || !action || !['approve', 'deny'].includes(action)) {
+        return { error: 'Invalid parameters' };
+      }
+
+      // Get the refund request with order details
+      const request = await this.env.BCGEN_DB.prepare(`
+        SELECT rr.*, o.quantity, o.country, o.userId 
+        FROM refund_requests rr
+        JOIN orders o ON rr.orderId = o.orderId
+        WHERE rr.requestId = ?1 AND rr.status = 'pending'
+      `).bind(requestId).first();
+
+      if (!request) {
+        return { error: 'Refund request not found or already processed' };
+      }
+
+      const newStatus = action === 'approve' ? 'approved' : 'denied';
+
+      // Update refund request
+      await this.env.BCGEN_DB.prepare(`
+        UPDATE refund_requests
+        SET status = ?1, adminNotes = ?2, processedBy = ?3, processedAt = ?4
+        WHERE requestId = ?5
+      `).bind(
+        newStatus,
+        adminNotes || '',
+        adminUserId,
+        new Date().toISOString(),
+        requestId
+      ).run();
+
+      let checkoutLink = null;
+      
+      // If approved, update order status and create checkout link
+      if (action === 'approve') {
+        // Update order status
+        await this.env.BCGEN_DB.prepare(`
+          UPDATE orders
+          SET status = 'refunded'
+          WHERE orderId = ?1
+        `).bind(request.orderId).run();
+
+        // Create a checkout link with 0 price for the refunded quantity
+        try {
+          const productId = this.env.WHOP_BC_GEN_PRODUCT_ID || 'prod_FtQmJmRGklnKjB';
+          console.log('Creating refund plan with product ID:', productId);
+          console.log('Using API Key:', this.env.WHOP_API_KEY ? 'Present' : 'Missing');
+          
+          // Create a plan with 0 price for the refund
+          const planResponse = await fetch('https://api.whop.com/api/v2/plans', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.env.WHOP_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              plan_type: 'one_time',
+              base_currency: 'usd',
+              stock: 1,
+              visibility: "hidden",
+              payment_link_description: `Refund for Order #${request.orderId} - ${request.quantity} accounts`,
+              initial_price: 0, // 0 price for refund
+              product_id: productId,
+              metadata: {
+                Quantity: request.quantity || 1,
+                InitialQuantity: request.quantity || 1,
+                ProductType: 'bc_gen',
+                RefundRequestId: requestId,
+                OriginalOrderId: request.orderId,
+                RefundForUser: request.userId
+              }
+            })
+          });
+
+          if (planResponse.ok) {
+            const planData = await planResponse.json();
+            console.log('Refund plan created:', planData);
+            
+            checkoutLink = planData.direct_link;
+            
+            if (checkoutLink) {
+              // Store the checkout link in the refund request
+              await this.env.BCGEN_DB.prepare(`
+                UPDATE refund_requests
+                SET checkoutLink = ?1
+                WHERE requestId = ?2
+              `).bind(checkoutLink, requestId).run();
+              
+              console.log('Refund checkout link created:', checkoutLink);
+            } else {
+              console.error('No direct_link found in plan response:', planData);
+            }
+          } else {
+            const errorText = await planResponse.text();
+            console.error('Failed to create refund plan:', planResponse.status, errorText);
+            console.error('API URL used:', 'https://api.whop.com/api/v2/plans');
+            console.error('Product ID used:', productId);
+          }
+        } catch (error) {
+          console.error('Error creating refund checkout link:', error);
+          // Continue with approval even if checkout link fails
+        }
+      }
+
+      return {
+        success: true,
+        message: `Refund request ${newStatus} successfully`,
+        checkoutLink
+      };
+    } catch (error) {
+      console.error('Error processing refund request:', error);
       return { error: 'Failed to process refund request' };
     }
   }
@@ -655,7 +875,38 @@ export default class BCGen {
 
     if (path === '/api/bcgen/refund-request' && request.method === 'POST') {
       const data = await request.json();
-      const result = await this.refundRequest(data, userId);
+      const result = await this.createRefundRequest(data, userId, session);
+      return new Response(JSON.stringify(result), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/bcgen/refund-requests' && request.method === 'GET') {
+      // Check if user is admin
+      if (!isAdminUser(userId)) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const result = await this.getAllRefundRequests();
+      return new Response(JSON.stringify(result), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/bcgen/process-refund' && request.method === 'POST') {
+      // Check if user is admin
+      if (!isAdminUser(userId)) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const data = await request.json();
+      const result = await this.processRefundRequest(data, userId);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });

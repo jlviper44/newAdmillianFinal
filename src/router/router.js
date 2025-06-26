@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import CommentBot from '@/views/CommentBot/CommentBot.vue';
 import BCGen from '@/views/BCGen/BCGen.vue';
 import Profile from '@/views/Profile/Profile.vue';
+import Settings from '@/views/Settings/Settings.vue';
 import AuthCallback from '@/views/AuthCallback.vue';
 import { useAuth } from '@/composables/useAuth';
 
@@ -44,6 +45,16 @@ const routes = [
     component: Profile,
     meta: {
       title: 'Profile',
+      requiresAuth: true,
+      requiresAccess: false
+    }
+  },
+  {
+    path: '/settings',
+    name: 'Settings',
+    component: Settings,
+    meta: {
+      title: 'Settings',
       requiresAuth: true,
       requiresAccess: false
     }
