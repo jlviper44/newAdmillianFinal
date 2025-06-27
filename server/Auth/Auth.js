@@ -417,6 +417,11 @@ async function handleCheckAccess(request, env) {
           checkoutLink: env.WHOP_BC_GEN_CHECKOUT_LINK || null,
           totalCredits: 0,
           creditMemberships: []
+        },
+        dashboard: { 
+          isActive: false, 
+          expiresIn: 0, 
+          checkoutLink: env.WHOP_DASHBOARD_CHECKOUT_LINK || null
         }
       }
     }), {
@@ -444,6 +449,11 @@ async function handleCheckAccess(request, env) {
           checkoutLink: env.WHOP_BC_GEN_CHECKOUT_LINK || null,
           totalCredits: 0,
           creditMemberships: []
+        },
+        dashboard: { 
+          isActive: false, 
+          expiresIn: 0, 
+          checkoutLink: env.WHOP_DASHBOARD_CHECKOUT_LINK || null
         }
       }
     }), {
@@ -483,6 +493,14 @@ async function handleCheckAccess(request, env) {
             id: 'admin_bypass',
             metadata: { Quantity: 999999, ProductType: 'admin' }
           }]
+        },
+        dashboard: { 
+          isActive: true, 
+          expiresIn: 9999, // Effectively unlimited
+          startDate: Math.floor(Date.now() / 1000),
+          endDate: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60), // 1 year from now
+          membershipId: 'admin_bypass',
+          checkoutLink: null
         }
       }
     }), {
@@ -530,6 +548,12 @@ async function handleCheckAccess(request, env) {
       membership.status === 'active'
     );
     
+    // Check Dashboard subscription
+    const dashboardMembership = memberships.data?.find(membership => 
+      membership.plan_id === env.WHOP_DASHBOARD_PLAN_ID &&
+      membership.status === 'active'
+    );
+    
     // Calculate credits for each product type
     const commentBotCredits = memberships.data?.filter(m => 
       m.metadata?.Quantity && 
@@ -570,6 +594,14 @@ async function handleCheckAccess(request, env) {
         checkoutLink: env.WHOP_BC_GEN_CHECKOUT_LINK || null,
         totalCredits: bcGenTotalCredits,
         creditMemberships: bcGenCredits
+      },
+      dashboard: {
+        isActive: !!dashboardMembership,
+        expiresIn: dashboardMembership ? calculateDaysRemaining(dashboardMembership.renewal_period_end) : 0,
+        startDate: dashboardMembership?.renewal_period_start || null,
+        endDate: dashboardMembership?.renewal_period_end || null,
+        membershipId: dashboardMembership?.id || null,
+        checkoutLink: env.WHOP_DASHBOARD_CHECKOUT_LINK || null
       }
     };
     
@@ -588,7 +620,8 @@ async function handleCheckAccess(request, env) {
       memberships: [],
       subscriptions: {
         comment_bot: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_COMMENT_BOT_CHECKOUT_LINK || null },
-        bc_gen: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_BC_GEN_CHECKOUT_LINK || null }
+        bc_gen: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_BC_GEN_CHECKOUT_LINK || null },
+        dashboard: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_DASHBOARD_CHECKOUT_LINK || null }
       }
     }), {
       status: 200,

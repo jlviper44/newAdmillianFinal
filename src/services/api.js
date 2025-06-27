@@ -17,6 +17,12 @@ async function apiRequest(url, options = {}) {
     const response = await fetch(`${API_BASE}${url}`, defaultOptions)
     
     if (response.status === 401) {
+      // Special handling for metrics endpoints - don't logout immediately
+      if (url.includes('/metrics/') || url.includes('/affiliate/')) {
+        console.warn('Metrics API requires authentication')
+        return { success: false, error: 'Authentication required', data: [] }
+      }
+      
       // Session expired or invalid - handle logout
       handleSessionExpired()
       throw new Error('Unauthorized')
@@ -153,6 +159,20 @@ export const bcgenApi = {
     action,
     adminNotes
   })
+}
+
+// Metrics specific API methods
+export const metricsApi = {
+  // Fluent APIs
+  getFluentApis: () => api.get('/metrics/fluent-apis'),
+  addFluentApi: (data) => api.post('/metrics/fluent-apis', data),
+  deleteFluentApi: (id) => api.delete(`/metrics/fluent-apis/${id}`),
+  
+  // Affiliate data
+  testAffiliate: (data) => api.post('/affiliate/test', data),
+  getClicks: (data) => api.post('/affiliate/clicks', data),
+  getConversions: (data) => api.post('/affiliate/conversions', data),
+  getSubaffiliateSummary: (data) => api.post('/affiliate/subaffiliatesummary', data)
 }
 
 export default api

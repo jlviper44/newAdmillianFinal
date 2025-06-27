@@ -2,6 +2,7 @@ import { handleCommentBotData } from './CommentBot/CommentBot';
 import { handleAuth, requireAuth, cleanExpiredSessions } from './Auth/Auth';
 import { handleSQLData } from './SQL/SQL';
 import BCGen from './BCGen/BCGen';
+import { handleMetricsRequest, Metrics } from './Dashboard/Metrics/Metrics';
 
 export default {
   async fetch(request, env) {
@@ -17,6 +18,13 @@ export default {
       // Route authentication requests
       if (path.startsWith('/api/auth')) {
         return handleAuth(request, env);
+      }
+      
+      // Route Metrics/Affiliate API requests - MUST BE BEFORE GENERIC SQL HANDLER
+      if (path.startsWith('/api/affiliate') || path === '/api/sql/raw') {
+        // Initialize Metrics tables if needed
+        await Metrics.initializeTables(env);
+        return handleMetricsRequest(request, env, path);
       }
       
       // Route SQL API requests
@@ -36,6 +44,14 @@ export default {
           // Wait for table initialization
           await bcgen.initializeTables();
           return bcgen.handle(req, session);
+        });
+      }
+      
+      // Route Dashboard Metrics management requests (protected)
+      if (path.startsWith('/api/metrics')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          await Metrics.initializeTables(env);
+          return handleMetricsRequest(req, env, path, session);
         });
       }
       

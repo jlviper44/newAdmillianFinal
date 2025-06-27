@@ -72,8 +72,96 @@
       </v-row>
 
       <v-row v-if="subscriptions">
+        <!-- Dashboard Tier -->
+        <v-col cols="12" md="4">
+          <v-card 
+            class="tier-card h-100"
+            :class="{ 'active-tier': subscriptions.dashboard?.isActive }"
+            elevation="0"
+            variant="outlined"
+          >
+            <!-- Header with gradient background -->
+            <div class="tier-header tier-header-dashboard">
+              <v-icon size="32" color="white" class="mb-1">mdi-view-dashboard</v-icon>
+              <h3 class="text-h6 font-weight-bold text-white">Dashboard</h3>
+              <p class="text-caption text-white-darken-1 mb-0">Analytics & management tools</p>
+            </div>
+            
+            <v-card-text class="pa-4">
+              <!-- Pricing -->
+              <div class="text-center mb-4">
+                <div class="d-flex align-center justify-center mb-1">
+                  <span class="text-h4 font-weight-bold">$500</span>
+                  <span class="text-body-2 ml-1">/month</span>
+                </div>
+                <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
+                <p class="text-body-2 font-weight-bold mt-1">All-in-one solution</p>
+                <p class="text-caption text-grey">Comprehensive analytics suite</p>
+              </div>
+
+              <!-- Features List -->
+              <div class="mb-4">
+                <div class="feature-item" v-for="feature in dashboardFeatures" :key="feature">
+                  <v-icon size="16" color="success" class="mr-2">mdi-check-circle</v-icon>
+                  <span class="text-caption">{{ feature }}</span>
+                </div>
+              </div>
+
+              <!-- Active Status or CTA -->
+              <div v-if="user?.isAdmin" class="active-status">
+                <v-chip color="amber" variant="flat" class="mb-3" block>
+                  <v-icon start size="small">mdi-crown</v-icon>
+                  Admin Access
+                </v-chip>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 text-grey mb-1">Status</p>
+                  <p class="text-h6 font-weight-bold">Unlimited Access</p>
+                  <p class="text-caption text-grey">No expiration</p>
+                </div>
+                <v-divider class="my-3"></v-divider>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 font-weight-medium">Full dashboard access</p>
+                </div>
+              </div>
+              <div v-else-if="subscriptions.dashboard?.isActive" class="active-status">
+                <v-chip color="success" variant="flat" class="mb-3" block>
+                  <v-icon start size="small">mdi-check-circle</v-icon>
+                  Subscribed
+                </v-chip>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 text-grey mb-1">Renews in</p>
+                  <p class="text-h6 font-weight-bold">{{ subscriptions.dashboard.expiresIn }} days</p>
+                  <p class="text-caption text-grey">{{ formatDate(subscriptions.dashboard.endDate) }}</p>
+                </div>
+                <v-divider class="my-3"></v-divider>
+                <div class="text-center mb-3">
+                  <p class="text-body-2 font-weight-medium">Full access active</p>
+                </div>
+                <v-btn 
+                  variant="outlined"
+                  color="primary"
+                  block
+                  @click="openCheckout('dashboard')"
+                >
+                  Manage Subscription
+                </v-btn>
+              </div>
+              <v-btn 
+                v-else
+                color="primary"
+                variant="flat"
+                block
+                @click="openCheckout('dashboard')"
+                :disabled="!subscriptions.dashboard?.checkoutLink"
+              >
+                Get Started
+              </v-btn>
+            </v-card-text>
+          </v-card>
+        </v-col>
+
         <!-- Comment Bot Tier -->
-        <v-col cols="12" md="6">
+        <v-col cols="12" md="4">
           <v-card 
             class="tier-card h-100"
             :class="{ 'active-tier': subscriptions.comment_bot?.isActive }"
@@ -82,28 +170,28 @@
           >
             <!-- Header with gradient background -->
             <div class="tier-header tier-header-comment">
-              <v-icon size="40" color="white" class="mb-2">mdi-comment-multiple</v-icon>
-              <h3 class="text-h5 font-weight-bold text-white">Comment Bot</h3>
-              <p class="text-body-2 text-white-darken-1 mb-0">Automated social media engagement</p>
+              <v-icon size="32" color="white" class="mb-1">mdi-comment-multiple</v-icon>
+              <h3 class="text-h6 font-weight-bold text-white">Comment Bot</h3>
+              <p class="text-caption text-white-darken-1 mb-0">Automated social media engagement</p>
             </div>
             
-            <v-card-text class="pa-5">
+            <v-card-text class="pa-4">
               <!-- Pricing -->
-              <div class="text-center mb-5">
-                <div class="d-flex align-center justify-center mb-2">
-                  <span class="text-h3 font-weight-bold">$20</span>
-                  <span class="text-body-1 ml-1">/month</span>
+              <div class="text-center mb-4">
+                <div class="d-flex align-center justify-center mb-1">
+                  <span class="text-h4 font-weight-bold">$20</span>
+                  <span class="text-body-2 ml-1">/month</span>
                 </div>
-                <v-divider class="mx-auto" style="max-width: 100px;"></v-divider>
-                <p class="text-body-1 font-weight-bold mt-2">Plus $2 per credit</p>
+                <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
+                <p class="text-body-2 font-weight-bold mt-1">Plus $2 per credit</p>
                 <p class="text-caption text-grey">Pay as you go for credits</p>
               </div>
 
               <!-- Features List -->
-              <div class="mb-5">
+              <div class="mb-4">
                 <div class="feature-item" v-for="feature in commentBotFeatures" :key="feature">
-                  <v-icon size="20" color="success" class="mr-3">mdi-check-circle</v-icon>
-                  <span class="text-body-2">{{ feature }}</span>
+                  <v-icon size="16" color="success" class="mr-2">mdi-check-circle</v-icon>
+                  <span class="text-caption">{{ feature }}</span>
                 </div>
               </div>
 
@@ -141,7 +229,6 @@
                   variant="outlined"
                   color="primary"
                   block
-                  size="large"
                   @click="openCheckout('comment_bot')"
                 >
                   Add More Credits
@@ -152,7 +239,6 @@
                 color="primary"
                 variant="flat"
                 block
-                size="large"
                 @click="openCheckout('comment_bot')"
                 :disabled="!subscriptions.comment_bot?.checkoutLink"
               >
@@ -163,7 +249,7 @@
         </v-col>
 
         <!-- BC Gen Tier -->
-        <v-col cols="12" md="6">
+        <v-col cols="12" md="4">
           <v-card 
             class="tier-card h-100"
             :class="{ 'active-tier': subscriptions.bc_gen?.isActive }"
@@ -172,28 +258,28 @@
           >
             <!-- Header with gradient background -->
             <div class="tier-header tier-header-bcgen">
-              <v-icon size="40" color="white" class="mb-2">mdi-account-multiple</v-icon>
-              <h3 class="text-h5 font-weight-bold text-white">BC Gen</h3>
-              <p class="text-body-2 text-white-darken-1 mb-0">Premium account marketplace</p>
+              <v-icon size="32" color="white" class="mb-1">mdi-account-multiple</v-icon>
+              <h3 class="text-h6 font-weight-bold text-white">BC Gen</h3>
+              <p class="text-caption text-white-darken-1 mb-0">Premium account marketplace</p>
             </div>
             
-            <v-card-text class="pa-5">
+            <v-card-text class="pa-4">
               <!-- Pricing -->
-              <div class="text-center mb-5">
-                <div class="d-flex align-center justify-center mb-2">
-                  <span class="text-h3 font-weight-bold">$20</span>
-                  <span class="text-body-1 ml-1">/month</span>
+              <div class="text-center mb-4">
+                <div class="d-flex align-center justify-center mb-1">
+                  <span class="text-h4 font-weight-bold">$20</span>
+                  <span class="text-body-2 ml-1">/month</span>
                 </div>
-                <v-divider class="mx-auto" style="max-width: 100px;"></v-divider>
-                <p class="text-body-1 font-weight-bold mt-2">Plus $2 per account</p>
+                <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
+                <p class="text-body-2 font-weight-bold mt-1">Plus $2 per account</p>
                 <p class="text-caption text-grey">1 credit = 1 account</p>
               </div>
 
               <!-- Features List -->
-              <div class="mb-5">
+              <div class="mb-4">
                 <div class="feature-item" v-for="feature in bcGenFeatures" :key="feature">
-                  <v-icon size="20" color="success" class="mr-3">mdi-check-circle</v-icon>
-                  <span class="text-body-2">{{ feature }}</span>
+                  <v-icon size="16" color="success" class="mr-2">mdi-check-circle</v-icon>
+                  <span class="text-caption">{{ feature }}</span>
                 </div>
               </div>
 
@@ -231,7 +317,6 @@
                   variant="outlined"
                   color="primary"
                   block
-                  size="large"
                   @click="openCheckout('bc_gen')"
                 >
                   Add More Credits
@@ -242,7 +327,6 @@
                 color="primary"
                 variant="flat"
                 block
-                size="large"
                 @click="openCheckout('bc_gen')"
                 :disabled="!subscriptions.bc_gen?.checkoutLink"
               >
@@ -313,6 +397,14 @@ const bcGenFeatures = [
   '24-hour refund guarantee'
 ];
 
+const dashboardFeatures = [
+  'Real-time analytics',
+  'Performance metrics',
+  'Campaign management',
+  'Team collaboration tools',
+  'Advanced reporting'
+];
+
 
 // Show sign out confirmation
 const confirmSignOut = () => {
@@ -344,6 +436,8 @@ const openCheckout = (type) => {
       router.push('/comments?showCredits=true');
     } else if (type === 'bc_gen') {
       router.push('/bc-gen?showCredits=true');
+    } else if (type === 'dashboard') {
+      router.push('/dashboard');
     }
   } else {
     // For new users, open the checkout link
@@ -387,7 +481,7 @@ onMounted(async () => {
 
 /* Tier Headers */
 .tier-header {
-  padding: 32px 24px;
+  padding: 24px 16px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -421,12 +515,16 @@ onMounted(async () => {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
 }
 
+.tier-header-dashboard {
+  background: linear-gradient(135deg, #2196f3 0%, #1565c0 100%);
+}
+
 /* Feature Items */
 .feature-item {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
-  padding: 4px 0;
+  margin-bottom: 8px;
+  padding: 2px 0;
 }
 
 .feature-item:last-child {
@@ -435,7 +533,7 @@ onMounted(async () => {
 
 /* Active Status */
 .active-status :deep(.v-chip) {
-  height: 40px;
+  height: 32px;
   font-weight: 500;
 }
 

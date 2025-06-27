@@ -10,10 +10,16 @@ const theme = useTheme();
 const isDarkMode = ref(false);
 
 // Authentication
-const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess } = useAuth();
+const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess } = useAuth();
 
 // All routes
 const allRoutes = [
+  { 
+    title: 'Dashboard', 
+    icon: 'mdi-view-dashboard', 
+    path: '/dashboard',
+    requiresSubscription: 'dashboard'
+  },
   { 
     title: 'Comment Bot', 
     icon: 'mdi-comment-multiple', 
@@ -51,6 +57,7 @@ const visibleRoutes = computed(() => {
     // Check specific subscription requirements
     if (route.requiresSubscription === 'comment_bot') return hasCommentBotAccess.value;
     if (route.requiresSubscription === 'bc_gen') return hasBcGenAccess.value;
+    if (route.requiresSubscription === 'dashboard') return hasDashboardAccess.value;
     
     return false;
   });

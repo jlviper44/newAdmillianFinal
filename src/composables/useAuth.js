@@ -30,7 +30,8 @@ export function useAuth() {
   // Subscription-specific computed properties
   const hasCommentBotAccess = computed(() => subscriptions.value?.comment_bot?.isActive || false)
   const hasBcGenAccess = computed(() => subscriptions.value?.bc_gen?.isActive || false)
-  const hasAnyAccess = computed(() => hasCommentBotAccess.value || hasBcGenAccess.value)
+  const hasDashboardAccess = computed(() => subscriptions.value?.dashboard?.isActive || false)
+  const hasAnyAccess = computed(() => hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value)
 
   // Check authentication status
   const checkAuth = async () => {
@@ -193,6 +194,7 @@ export function useAuth() {
     isAuthenticated,
     hasCommentBotAccess,
     hasBcGenAccess,
+    hasDashboardAccess,
     hasAnyAccess,
     showAuthModal,
     checkAuth,

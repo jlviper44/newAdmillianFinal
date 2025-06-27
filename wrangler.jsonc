@@ -28,6 +28,12 @@
       "database_name": "users",
       "database_id": "8dd18cd6-0ef3-4942-b535-65aea588d486",
       "preview_database_id": "users"
+    },
+    {
+      "binding": "DASHBOARD_DB",
+      "database_name": "dashboard",
+      "database_id": "b8e0ef90-599c-4451-bcaf-8865533ac147",
+      "preview_database_id": "dashboard"
     }
   ],
   "vars": {
@@ -44,6 +50,10 @@
     "WHOP_BC_GEN_PRODUCT_ID": "prod_nuM231xabjmyN",
     "WHOP_BC_GEN_PLAN_ID": "plan_PZUv8O6NeXkEq",
     "WHOP_BC_GEN_CHECKOUT_LINK": "https://whop.com/checkout/plan_PZUv8O6NeXkEq?d2c=true",
+    
+    "WHOP_DASHBOARD_PRODUCT_ID": "prod_qVzybseKMbXh4",
+    "WHOP_DASHBOARD_PLAN_ID": "plan_Q9j4r3lUgwBRd",
+    "WHOP_DASHBOARD_CHECKOUT_LINK": "https://whop.com/checkout/plan_Q9j4r3lUgwBRd?d2c=true",
     
     "SHEETDB_API_URL": "https://sheetdb.io/api/v1/zb48wyyweh0rp"
   }

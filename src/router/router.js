@@ -3,6 +3,7 @@ import CommentBot from '@/views/CommentBot/CommentBot.vue';
 import BCGen from '@/views/BCGen/BCGen.vue';
 import Profile from '@/views/Profile/Profile.vue';
 import Settings from '@/views/Settings/Settings.vue';
+import Dashboard from '@/views/Dashboard/Dashboard.vue';
 import AuthCallback from '@/views/AuthCallback.vue';
 import { useAuth } from '@/composables/useAuth';
 
@@ -59,6 +60,17 @@ const routes = [
       requiresAccess: false
     }
   },
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: Dashboard,
+    meta: {
+      title: 'Dashboard',
+      requiresAuth: true,
+      requiresAccess: true,
+      requiresSubscription: 'dashboard'
+    }
+  },
   // Auth callback route
   {
     path: '/auth/callback/:provider',
@@ -95,7 +107,7 @@ router.beforeEach(async (to, from, next) => {
   
   // Check authentication requirements
   if (to.meta.requiresAuth) {
-    const { isAuthenticated, hasCommentBotAccess, hasBcGenAccess, loading, initAuth } = useAuth();
+    const { isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, loading, initAuth } = useAuth();
     
     // Initialize auth if not already done
     if (loading.value) {
@@ -110,6 +122,8 @@ router.beforeEach(async (to, from, next) => {
         hasRequiredAccess = hasCommentBotAccess.value;
       } else if (to.meta.requiresSubscription === 'bc_gen') {
         hasRequiredAccess = hasBcGenAccess.value;
+      } else if (to.meta.requiresSubscription === 'dashboard') {
+        hasRequiredAccess = hasDashboardAccess.value;
       }
       
       if (!hasRequiredAccess && isAuthenticated.value) {
