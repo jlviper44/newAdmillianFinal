@@ -37,6 +37,33 @@
                 title="Metrics"
                 rounded="lg"
               ></v-list-item>
+              
+              <v-list-item
+                value="sparks"
+                :active="selectedTab === 'sparks'"
+                @click="selectedTab = 'sparks'"
+                prepend-icon="mdi-lightning-bolt"
+                title="Sparks"
+                rounded="lg"
+              ></v-list-item>
+              
+              <v-list-item
+                value="templates"
+                :active="selectedTab === 'templates'"
+                @click="selectedTab = 'templates'"
+                prepend-icon="mdi-file-document-multiple"
+                title="Templates"
+                rounded="lg"
+              ></v-list-item>
+              
+              <v-list-item
+                value="shopify"
+                :active="selectedTab === 'shopify'"
+                @click="selectedTab = 'shopify'"
+                prepend-icon="mdi-shopping"
+                title="Shopify Stores"
+                rounded="lg"
+              ></v-list-item>
             </v-list>
           </v-card>
         </v-col>
@@ -54,6 +81,21 @@
           <div v-if="selectedTab === 'metrics'">
             <MetricsView />
           </div>
+          
+          <!-- Sparks Tab -->
+          <div v-if="selectedTab === 'sparks'">
+            <SparksView />
+          </div>
+          
+          <!-- Templates Tab -->
+          <div v-if="selectedTab === 'templates'">
+            <TemplatesView />
+          </div>
+          
+          <!-- Shopify Stores Tab -->
+          <div v-if="selectedTab === 'shopify'">
+            <ShopifyStoresView />
+          </div>
         </v-col>
       </v-row>
     </v-container>
@@ -64,6 +106,9 @@
 import { ref } from 'vue';
 import AuthGuard from '@/components/AuthGuard.vue';
 import MetricsView from './components/Metrics/MetricsView.vue';
+import SparksView from './components/Sparks/SparksView.vue';
+import TemplatesView from './components/Templates/TemplatesView.vue';
+import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
 
 const selectedTab = ref('overview');
 </script>

@@ -175,4 +175,94 @@ export const metricsApi = {
   getSubaffiliateSummary: (data) => api.post('/affiliate/subaffiliatesummary', data)
 }
 
+// Sparks specific API methods
+export const sparksApi = {
+  // List sparks with pagination and filtering
+  listSparks: (params) => {
+    const queryParams = new URLSearchParams(params).toString()
+    return api.get(`/sparks${queryParams ? `?${queryParams}` : ''}`)
+  },
+  
+  // Get a specific spark
+  getSpark: (id) => api.get(`/sparks/${id}`),
+  
+  // Create a new spark
+  createSpark: (data) => api.post('/sparks', data),
+  
+  // Update an existing spark
+  updateSpark: (id, data) => api.put(`/sparks/${id}`, data),
+  
+  // Delete a spark
+  deleteSpark: (id) => api.delete(`/sparks/${id}`),
+  
+  // Toggle spark status (active/inactive)
+  toggleSparkStatus: (id) => api.put(`/sparks/${id}/toggle-status`),
+  
+  // Get spark statistics
+  getSparkStats: (id) => api.get(`/sparks/${id}/stats`),
+  
+  // Extract TikTok thumbnail
+  extractTikTokThumbnail: (tiktokUrl) => api.post('/sparks/extract-tiktok-thumbnail', { tiktokUrl })
+}
+
+// Templates specific API methods
+export const templatesApi = {
+  // List templates with pagination and filtering
+  listTemplates: (params) => {
+    const queryParams = new URLSearchParams(params).toString()
+    return api.get(`/templates${queryParams ? `?${queryParams}` : ''}`)
+  },
+  
+  // Get templates for dropdown (simplified list)
+  getTemplatesList: () => api.get('/templates/list'),
+  
+  // Get a specific template
+  getTemplate: (id) => api.get(`/templates/${id}`),
+  
+  // Create a new template
+  createTemplate: (data) => api.post('/templates', data),
+  
+  // Update an existing template
+  updateTemplate: (id, data) => api.put(`/templates/${id}`, data),
+  
+  // Delete a template
+  deleteTemplate: (id) => api.delete(`/templates/${id}`),
+  
+  // Duplicate a template
+  duplicateTemplate: (id) => api.post(`/templates/${id}/duplicate`),
+  
+  // Get template categories
+  getCategories: () => api.get('/templates/categories')
+}
+
+// Shopify Stores specific API methods
+export const shopifyApi = {
+  // List stores with pagination and filtering
+  listStores: (params) => {
+    const queryParams = new URLSearchParams(params).toString()
+    return api.get(`/shopify-stores${queryParams ? `?${queryParams}` : ''}`)
+  },
+  
+  // Get a specific store
+  getStore: (id) => api.get(`/shopify-stores/${id}`),
+  
+  // Create a new store
+  createStore: (data) => api.post('/shopify-stores', data),
+  
+  // Update an existing store
+  updateStore: (id, data) => api.put(`/shopify-stores/${id}`, data),
+  
+  // Delete a store
+  deleteStore: (id) => api.delete(`/shopify-stores/${id}`),
+  
+  // Toggle store status (active/inactive)
+  toggleStoreStatus: (id) => api.put(`/shopify-stores/${id}/toggle-status`),
+  
+  // Test store connection
+  testConnection: (id) => api.post(`/shopify-stores/${id}/test-connection`),
+  
+  // Get store credentials (includes sensitive data)
+  getStoreCredentials: (id) => api.get(`/shopify-stores/${id}/credentials`)
+}
+
 export default api

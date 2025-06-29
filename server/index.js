@@ -3,6 +3,9 @@ import { handleAuth, requireAuth, cleanExpiredSessions } from './Auth/Auth';
 import { handleSQLData } from './SQL/SQL';
 import BCGen from './BCGen/BCGen';
 import { handleMetricsRequest, Metrics } from './Dashboard/Metrics/Metrics';
+import { handleSparkData } from './Dashboard/Sparks/Sparks';
+import { handleTemplateData } from './Dashboard/Templates/Templates';
+import { handleShopifyStoresData } from './Dashboard/ShopifyStores/ShopifyStores';
 
 export default {
   async fetch(request, env) {
@@ -52,6 +55,27 @@ export default {
         return requireAuth(request, env, async (req, env, session) => {
           await Metrics.initializeTables(env);
           return handleMetricsRequest(req, env, path, session);
+        });
+      }
+      
+      // Route Sparks API requests (protected)
+      if (path.startsWith('/api/sparks')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          return handleSparkData(req, env);
+        });
+      }
+      
+      // Route Templates API requests (protected)
+      if (path.startsWith('/api/templates')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          return handleTemplateData(req, env);
+        });
+      }
+      
+      // Route Shopify Stores API requests (protected)
+      if (path.startsWith('/api/shopify-stores')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          return handleShopifyStoresData(req, env);
         });
       }
       
