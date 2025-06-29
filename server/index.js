@@ -6,6 +6,7 @@ import { handleMetricsRequest, Metrics } from './Dashboard/Metrics/Metrics';
 import { handleSparkData } from './Dashboard/Sparks/Sparks';
 import { handleTemplateData } from './Dashboard/Templates/Templates';
 import { handleShopifyStoresData } from './Dashboard/ShopifyStores/ShopifyStores';
+import handleCampaignsAPI from './Dashboard/Campaigns/Campaigns';
 
 export default {
   async fetch(request, env) {
@@ -76,6 +77,13 @@ export default {
       if (path.startsWith('/api/shopify-stores')) {
         return requireAuth(request, env, async (req, env, session) => {
           return handleShopifyStoresData(req, env);
+        });
+      }
+      
+      // Route Campaigns API requests (protected)
+      if (path.startsWith('/api/campaigns')) {
+        return requireAuth(request, env, async (req, env) => {
+          return handleCampaignsAPI(req, env, path);
         });
       }
       

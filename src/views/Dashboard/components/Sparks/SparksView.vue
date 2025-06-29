@@ -70,7 +70,7 @@
     </v-row>
     
     <v-row v-else>
-      <v-col v-for="spark in sparks" :key="spark.id" cols="12" sm="6" md="4" lg="3">
+      <v-col v-for="spark in sparks" :key="spark.id" cols="12" sm="6" md="6" lg="4">
         <v-card :class="{ 'border-error': spark.status === 'disabled' }" class="spark-card">
           <div class="position-relative">
             <v-img :src="spark.thumbnail" height="200" cover>
@@ -185,7 +185,7 @@
     </div>
     
     <!-- Create/Edit Spark Modal -->
-    <v-dialog v-model="showCreateModal" max-width="600px" persistent>
+    <v-dialog v-model="showCreateModal" max-width="600px">
       <v-card>
         <v-card-title>
           {{ editingSpark ? 'Edit Spark' : 'Create Spark' }}
@@ -270,7 +270,7 @@
     </v-dialog>
     
     <!-- Stats Modal -->
-    <v-dialog v-model="showStatsModal" max-width="900px" persistent>
+    <v-dialog v-model="showStatsModal" max-width="900px">
       <v-card>
         <v-card-title>
           <span v-if="currentStats && currentStats.spark && !currentStats.error">
@@ -406,7 +406,7 @@
     </v-dialog>
     
     <!-- Delete Confirmation Modal -->
-    <v-dialog v-model="showDeleteModal" max-width="500px" persistent>
+    <v-dialog v-model="showDeleteModal" max-width="500px">
       <v-card>
         <v-card-title>Delete Spark</v-card-title>
         <v-card-text>

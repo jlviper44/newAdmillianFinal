@@ -480,7 +480,6 @@ onMounted(() => {
     <v-dialog
       v-model="showAddApiDialog"
       max-width="500"
-      persistent
     >
       <v-card>
         <v-card-title class="d-flex align-center">
@@ -564,7 +563,6 @@ onMounted(() => {
     <v-dialog
       v-model="showDeleteApiDialog"
       max-width="400"
-      persistent
     >
       <v-card>
         <v-card-title class="d-flex align-center">

@@ -155,7 +155,7 @@
     </div>
     
     <!-- Create/Edit Template Modal -->
-    <v-dialog v-model="showCreateModal" max-width="900px" persistent>
+    <v-dialog v-model="showCreateModal" max-width="900px">
       <v-card>
         <v-card-title>
           {{ editingTemplate ? 'Edit Template' : 'Create Template' }}

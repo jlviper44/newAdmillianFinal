@@ -1,0 +1,965 @@
+/**
+ * Campaigns API Handler
+ * Manages all campaign-related API endpoints using native SQL
+ */
+
+/**
+ * Initialize campaigns table if it doesn't exist
+ */
+async function initializeCampaignsTable(db) {
+  try {
+    // Create campaigns table with proper schema
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        regions TEXT NOT NULL, -- JSON array of regions
+        tiktok_store_id TEXT NOT NULL,
+        redirect_store_id TEXT,
+        template_id TEXT,
+        redirect_type TEXT DEFAULT 'template', -- 'template' or 'custom'
+        custom_redirect_link TEXT,
+        affiliate_link TEXT,
+        status TEXT DEFAULT 'active', -- 'active', 'paused', 'completed'
+        is_active BOOLEAN DEFAULT 1,
+        traffic INTEGER DEFAULT 0,
+        launches TEXT DEFAULT '{}', -- JSON object of launches
+        max_launch_number INTEGER DEFAULT 0,
+        total_launches INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    console.log('Campaigns table initialized successfully');
+  } catch (error) {
+    console.error('Error initializing campaigns table:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate a unique ID for campaigns
+ */
+function generateId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * List all campaigns with filtering and pagination
+ */
+async function listCampaigns(db, request) {
+  try {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '10');
+    const search = url.searchParams.get('search') || '';
+    const status = url.searchParams.get('status') || 'all';
+    const offset = (page - 1) * limit;
+    
+    // Build query conditions
+    let whereConditions = [];
+    let params = [];
+    
+    if (search) {
+      whereConditions.push('(name LIKE ? OR id LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    
+    if (status !== 'all') {
+      whereConditions.push('status = ?');
+      params.push(status);
+    }
+    
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}`
+      : '';
+    
+    // Get total count
+    const countQuery = `SELECT COUNT(*) as total FROM campaigns ${whereClause}`;
+    const countResult = await db.prepare(countQuery).bind(...params).first();
+    const total = countResult?.total || 0;
+    
+    // Get paginated results
+    const query = `
+      SELECT * FROM campaigns 
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    params.push(limit, offset);
+    
+    const result = await db.prepare(query).bind(...params).all();
+    const campaigns = (result.results || []).map(campaign => ({
+      ...campaign,
+      regions: JSON.parse(campaign.regions || '[]'),
+      launches: JSON.parse(campaign.launches || '{}'),
+      isActive: campaign.is_active === 1,
+      tiktokStoreId: campaign.tiktok_store_id,
+      redirectStoreId: campaign.redirect_store_id,
+      templateId: campaign.template_id,
+      redirectType: campaign.redirect_type,
+      customRedirectLink: campaign.custom_redirect_link,
+      affiliateLink: campaign.affiliate_link,
+      maxLaunchNumber: campaign.max_launch_number,
+      totalLaunches: campaign.total_launches,
+      createdAt: campaign.created_at,
+      updatedAt: campaign.updated_at
+    }));
+    
+    return new Response(
+      JSON.stringify({
+        campaigns,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }),
+      {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Error listing campaigns:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to list campaigns',
+        message: error.message,
+        campaigns: [],
+        total: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Get a single campaign by ID
+ */
+async function getCampaign(db, campaignId) {
+  try {
+    console.log('Getting campaign:', campaignId);
+    
+    if (!campaignId) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign ID is required' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const campaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!campaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found', campaignId }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const formattedCampaign = {
+      ...campaign,
+      regions: JSON.parse(campaign.regions || '[]'),
+      launches: JSON.parse(campaign.launches || '{}'),
+      isActive: campaign.is_active === 1,
+      tiktokStoreId: campaign.tiktok_store_id,
+      redirectStoreId: campaign.redirect_store_id,
+      templateId: campaign.template_id,
+      redirectType: campaign.redirect_type,
+      customRedirectLink: campaign.custom_redirect_link,
+      affiliateLink: campaign.affiliate_link,
+      maxLaunchNumber: campaign.max_launch_number,
+      totalLaunches: campaign.total_launches,
+      createdAt: campaign.created_at,
+      updatedAt: campaign.updated_at
+    };
+    
+    return new Response(
+      JSON.stringify(formattedCampaign),
+      {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to get campaign',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }
+    );
+  }
+}
+
+/**
+ * Create a new campaign
+ */
+async function createCampaign(db, request) {
+  try {
+    const campaignData = await request.json();
+    
+    // Validate required fields
+    if (!campaignData.name || !campaignData.regions || campaignData.regions.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields (name and at least one region)' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    if (!campaignData.tiktokStoreId) {
+      return new Response(
+        JSON.stringify({ error: 'TikTok store is required' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Validate redirect configuration
+    if (campaignData.redirectType === 'custom') {
+      if (!campaignData.customRedirectLink) {
+        return new Response(
+          JSON.stringify({ error: 'Custom redirect link is required for custom redirect type' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      try {
+        const customUrl = new URL(campaignData.customRedirectLink);
+        if (customUrl.protocol !== 'https:') {
+          return new Response(
+            JSON.stringify({ error: 'Custom redirect link must use HTTPS protocol' }),
+            {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        }
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid custom redirect link URL format' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    } else {
+      // Template is required for non-custom redirects
+      if (!campaignData.templateId) {
+        return new Response(
+          JSON.stringify({ error: 'Template is required for template-based campaigns' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      if (!campaignData.redirectStoreId) {
+        return new Response(
+          JSON.stringify({ error: 'Redirect store is required for template-based campaigns' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    }
+    
+    // Generate ID if not provided
+    const campaignId = campaignData.id || generateId();
+    
+    // Initialize launches
+    const launches = campaignData.launches || {
+      "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null }
+    };
+    
+    // Insert campaign
+    await db.prepare(`
+      INSERT INTO campaigns (
+        id, name, description, regions, tiktok_store_id, redirect_store_id,
+        template_id, redirect_type, custom_redirect_link, affiliate_link,
+        status, is_active, traffic, launches, max_launch_number, total_launches
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      campaignId,
+      campaignData.name,
+      campaignData.description || null,
+      JSON.stringify(campaignData.regions),
+      campaignData.tiktokStoreId,
+      campaignData.redirectStoreId || null,
+      campaignData.templateId || null,
+      campaignData.redirectType || 'template',
+      campaignData.customRedirectLink || null,
+      campaignData.affiliateLink || null,
+      campaignData.status || 'active',
+      campaignData.isActive !== false ? 1 : 0,
+      0, // traffic starts at 0
+      JSON.stringify(launches),
+      0, // maxLaunchNumber
+      1  // totalLaunches
+    ).run();
+    
+    // Fetch and return the created campaign
+    const created = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    const response = {
+      ...created,
+      regions: JSON.parse(created.regions),
+      launches: JSON.parse(created.launches),
+      isActive: created.is_active === 1,
+      tiktokStoreId: created.tiktok_store_id,
+      redirectStoreId: created.redirect_store_id,
+      templateId: created.template_id,
+      redirectType: created.redirect_type,
+      customRedirectLink: created.custom_redirect_link,
+      affiliateLink: created.affiliate_link,
+      maxLaunchNumber: created.max_launch_number,
+      totalLaunches: created.total_launches,
+      createdAt: created.created_at,
+      updatedAt: created.updated_at
+    };
+    
+    return new Response(JSON.stringify(response), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to create campaign',
+        message: error.message 
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Update an existing campaign
+ */
+async function updateCampaign(db, campaignId, request) {
+  try {
+    // Check if campaign exists
+    const existingCampaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!existingCampaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const campaignData = await request.json();
+    
+    // Validate required fields
+    if (!campaignData.name || !campaignData.regions || campaignData.regions.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Update campaign
+    await db.prepare(`
+      UPDATE campaigns SET
+        name = ?,
+        description = ?,
+        regions = ?,
+        tiktok_store_id = ?,
+        redirect_store_id = ?,
+        template_id = ?,
+        redirect_type = ?,
+        custom_redirect_link = ?,
+        affiliate_link = ?,
+        status = ?,
+        is_active = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      campaignData.name,
+      campaignData.description || null,
+      JSON.stringify(campaignData.regions),
+      campaignData.tiktokStoreId || existingCampaign.tiktok_store_id,
+      campaignData.redirectStoreId || null,
+      campaignData.templateId || null,
+      campaignData.redirectType || 'template',
+      campaignData.customRedirectLink || null,
+      campaignData.affiliateLink || null,
+      campaignData.status || existingCampaign.status,
+      campaignData.isActive !== false ? 1 : 0,
+      campaignId
+    ).run();
+    
+    // Fetch and return the updated campaign
+    const updated = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    const response = {
+      ...updated,
+      regions: JSON.parse(updated.regions),
+      launches: JSON.parse(updated.launches),
+      isActive: updated.is_active === 1,
+      tiktokStoreId: updated.tiktok_store_id,
+      redirectStoreId: updated.redirect_store_id,
+      templateId: updated.template_id,
+      redirectType: updated.redirect_type,
+      customRedirectLink: updated.custom_redirect_link,
+      affiliateLink: updated.affiliate_link,
+      maxLaunchNumber: updated.max_launch_number,
+      totalLaunches: updated.total_launches,
+      createdAt: updated.created_at,
+      updatedAt: updated.updated_at
+    };
+    
+    return new Response(
+      JSON.stringify(response),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to update campaign',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Delete a campaign
+ */
+async function deleteCampaign(db, campaignId) {
+  try {
+    // Check if campaign exists
+    const existingCampaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!existingCampaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Delete campaign
+    await db.prepare(
+      'DELETE FROM campaigns WHERE id = ?'
+    ).bind(campaignId).run();
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        message: 'Campaign deleted successfully',
+        campaignId: campaignId
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to delete campaign',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Toggle campaign active status
+ */
+async function toggleCampaignActive(db, campaignId) {
+  try {
+    const existingCampaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!existingCampaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const newIsActive = existingCampaign.is_active === 1 ? 0 : 1;
+    const newStatus = newIsActive ? 'active' : 'paused';
+    
+    await db.prepare(`
+      UPDATE campaigns SET 
+        is_active = ?,
+        status = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(newIsActive, newStatus, campaignId).run();
+    
+    return new Response(
+      JSON.stringify({
+        success: true,
+        campaignId,
+        isActive: newIsActive === 1,
+        status: newStatus
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to toggle campaign active state',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Update campaign status
+ */
+async function toggleCampaignStatus(db, campaignId, request) {
+  try {
+    const existingCampaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!existingCampaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const { status } = await request.json();
+    
+    if (!['active', 'paused', 'completed'].includes(status)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid status' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const isActive = status === 'active' ? 1 : 0;
+    
+    await db.prepare(`
+      UPDATE campaigns SET 
+        status = ?,
+        is_active = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(status, isActive, campaignId).run();
+    
+    // Fetch and return the updated campaign
+    const updated = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    const response = {
+      ...updated,
+      regions: JSON.parse(updated.regions),
+      launches: JSON.parse(updated.launches),
+      isActive: updated.is_active === 1,
+      tiktokStoreId: updated.tiktok_store_id,
+      redirectStoreId: updated.redirect_store_id,
+      templateId: updated.template_id,
+      redirectType: updated.redirect_type,
+      customRedirectLink: updated.custom_redirect_link,
+      affiliateLink: updated.affiliate_link,
+      maxLaunchNumber: updated.max_launch_number,
+      totalLaunches: updated.total_launches,
+      createdAt: updated.created_at,
+      updatedAt: updated.updated_at
+    };
+    
+    return new Response(
+      JSON.stringify(response),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to update campaign status',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Manage campaign launches (add, toggle)
+ */
+async function manageCampaignLaunches(db, campaignId, request) {
+  try {
+    const requestData = await request.json();
+    const { action, launchData } = requestData;
+    
+    console.log(`Managing launches for campaign ${campaignId}: ${action}`);
+    
+    const campaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!campaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    let launches = JSON.parse(campaign.launches || '{}');
+    let maxLaunchNumber = campaign.max_launch_number || 0;
+    let result = {};
+    
+    switch (action) {
+      case 'add':
+        const newLaunchNumber = maxLaunchNumber + 1;
+        launches[newLaunchNumber] = {
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          generatedAt: null
+        };
+        maxLaunchNumber = newLaunchNumber;
+        
+        result = {
+          action: 'added',
+          launchNumber: newLaunchNumber,
+          totalLaunches: Object.keys(launches).length
+        };
+        break;
+        
+      case 'toggle':
+        const launchNum = parseInt(launchData.launchNumber);
+        if (launches[launchNum]) {
+          launches[launchNum].isActive = !launches[launchNum].isActive;
+          result = {
+            action: 'toggled',
+            launchNumber: launchNum,
+            isActive: launches[launchNum].isActive
+          };
+        } else {
+          throw new Error(`Launch ${launchNum} not found`);
+        }
+        break;
+        
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+    
+    // Update campaign with new launches
+    await db.prepare(`
+      UPDATE campaigns SET 
+        launches = ?,
+        max_launch_number = ?,
+        total_launches = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      JSON.stringify(launches),
+      maxLaunchNumber,
+      Object.keys(launches).length,
+      campaignId
+    ).run();
+    
+    return new Response(JSON.stringify({
+      success: true,
+      campaignId: campaignId,
+      result: result,
+      launches: launches
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+  } catch (error) {
+    console.error('Error managing campaign launches:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to manage campaign launches',
+        message: error.message 
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Generate campaign link
+ * Note: This is a simplified version that returns the campaign data
+ * The actual link generation would need to integrate with Shopify API
+ */
+async function generateCampaignLink(db, request) {
+  try {
+    const requestData = await request.json();
+    const { campaignId, launchNumber } = requestData;
+        
+    if (!campaignId) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign ID is required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const launch = launchNumber !== undefined ? launchNumber : 0;
+    
+    // Fetch campaign data
+    const campaign = await db.prepare(
+      'SELECT * FROM campaigns WHERE id = ?'
+    ).bind(campaignId).first();
+    
+    if (!campaign) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Campaign not found',
+          campaignId: campaignId
+        }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const launches = JSON.parse(campaign.launches || '{}');
+    
+    // Update launch info
+    if (!launches[launch.toString()]) {
+      launches[launch.toString()] = {
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+    }
+    
+    // Update the generatedAt timestamp
+    launches[launch.toString()].generatedAt = new Date().toISOString();
+    
+    // Save the updated campaign
+    await db.prepare(`
+      UPDATE campaigns SET 
+        launches = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(JSON.stringify(launches), campaignId).run();
+    
+    // Generate the link format (simplified - actual implementation would integrate with Shopify)
+    const pageHandle = `cloak-${campaignId}-${launch}`;
+    const linkUrl = `https://example.myshopify.com/pages/${pageHandle}`;
+    
+    return new Response(JSON.stringify({
+      success: true,
+      campaignId: campaignId,
+      launchNumber: launch,
+      link: linkUrl,
+      displayLink: linkUrl,
+      message: 'Link generated successfully',
+      pageHandle: pageHandle
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+  } catch (error) {
+    console.error('Error generating campaign link:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to generate campaign link',
+        message: error.message 
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Main handler function for campaign endpoints
+ */
+export default async function handleCampaignsAPI(request, env, path) {
+  const db = env.DASHBOARD_DB;
+  
+  // CORS headers
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400'
+  };
+  
+  // Handle OPTIONS requests
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders 
+    });
+  }
+  
+  // Initialize table on first request
+  await initializeCampaignsTable(db);
+  
+  // Extract campaign ID from path if present
+  const pathParts = path.split('/').filter(p => p);
+  const campaignId = pathParts[2]; // /api/campaigns/{id}
+  const subPath = pathParts[3]; // /api/campaigns/{id}/{subpath}
+  
+  console.log('Campaigns API called:', {
+    path,
+    method: request.method,
+    pathParts,
+    campaignId,
+    subPath,
+    pathPartsLength: pathParts.length
+  });
+  
+  try {
+    // Route to appropriate handler based on method and path
+    switch (true) {
+      // List campaigns
+      case path === '/api/campaigns' && request.method === 'GET':
+        return await listCampaigns(db, request);
+      
+      // Create campaign
+      case path === '/api/campaigns' && request.method === 'POST':
+        return await createCampaign(db, request);
+      
+      // Generate link
+      case path === '/api/campaigns/generate-link' && request.method === 'POST':
+        return await generateCampaignLink(db, request);
+      
+      // Get single campaign - match pattern /api/campaigns/{id}
+      case pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'campaigns' && request.method === 'GET' && campaignId && !subPath:
+        return await getCampaign(db, campaignId);
+      
+      // Update campaign
+      case pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'campaigns' && request.method === 'PUT' && campaignId && !subPath:
+        return await updateCampaign(db, campaignId, request);
+      
+      // Delete campaign
+      case pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'campaigns' && request.method === 'DELETE' && campaignId && !subPath:
+        return await deleteCampaign(db, campaignId);
+      
+      // Toggle active status
+      case subPath === 'toggle-active' && request.method === 'POST':
+        return await toggleCampaignActive(db, campaignId);
+      
+      // Update status
+      case subPath === 'status' && request.method === 'PUT':
+        return await toggleCampaignStatus(db, campaignId, request);
+      
+      // Manage launches
+      case subPath === 'launches' && request.method === 'POST':
+        return await manageCampaignLaunches(db, campaignId, request);
+      
+      default:
+        console.log('No matching route found for:', {
+          path,
+          method: request.method,
+          pathParts,
+          campaignId
+        });
+        return new Response(
+          JSON.stringify({ 
+            error: 'Endpoint not found',
+            path,
+            method: request.method,
+            pathParts,
+            campaignId
+          }),
+          { 
+            status: 404, 
+            headers: { 
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            } 
+          }
+        );
+    }
+  } catch (error) {
+    console.error('Campaign API error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Internal server error',
+        message: error.message 
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        } 
+      }
+    );
+  }
+}

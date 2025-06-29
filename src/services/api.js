@@ -265,4 +265,43 @@ export const shopifyApi = {
   getStoreCredentials: (id) => api.get(`/shopify-stores/${id}/credentials`)
 }
 
+// Campaigns specific API methods
+export const campaignsApi = {
+  // List campaigns with pagination and filtering
+  listCampaigns: (params) => {
+    const queryParams = new URLSearchParams(params).toString()
+    return api.get(`/campaigns${queryParams ? `?${queryParams}` : ''}`)
+  },
+  
+  // Get a specific campaign
+  getCampaign: (id) => api.get(`/campaigns/${id}`),
+  
+  // Create a new campaign
+  createCampaign: (data) => api.post('/campaigns', data),
+  
+  // Update an existing campaign
+  updateCampaign: (id, data) => api.put(`/campaigns/${id}`, data),
+  
+  // Delete a campaign
+  deleteCampaign: (id) => api.delete(`/campaigns/${id}`),
+  
+  // Toggle campaign active status
+  toggleCampaignActive: (id) => api.post(`/campaigns/${id}/toggle-active`),
+  
+  // Update campaign status
+  updateCampaignStatus: (id, status) => api.put(`/campaigns/${id}/status`, { status }),
+  
+  // Manage campaign launches
+  manageLaunches: (id, action, launchData) => api.post(`/campaigns/${id}/launches`, { action, launchData }),
+  
+  // Generate campaign link
+  generateLink: (data) => api.post('/campaigns/generate-link', data),
+  
+  // Get stores list for dropdown
+  getStoresList: () => api.get('/shopify-stores?limit=100'),
+  
+  // Get templates list for dropdown  
+  getTemplatesList: () => api.get('/templates/list')
+}
+
 export default api

@@ -179,7 +179,7 @@
     </div>
     
     <!-- Create/Edit Store Modal -->
-    <v-dialog v-model="showCreateModal" max-width="600px" persistent>
+    <v-dialog v-model="showCreateModal" max-width="600px">
       <v-card>
         <v-card-title>
           {{ editingStore ? 'Edit Store' : 'Add Shopify Store' }}

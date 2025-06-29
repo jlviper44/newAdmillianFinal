@@ -1,0 +1,1795 @@
+<template>
+  <v-container fluid class="campaigns-container pa-4">
+    <v-row>
+      <v-col cols="12">
+        <div class="d-flex justify-space-between align-center mb-6">
+          <div>
+            <h2 class="text-h5 font-weight-bold">Campaigns</h2>
+            <p class="text-subtitle-2 text-grey-darken-1">Manage your marketing campaigns</p>
+          </div>
+          <div class="d-flex gap-2">
+            <v-btn 
+              v-if="selectedCampaigns.length > 0"
+              color="error" 
+              variant="outlined"
+              @click="bulkDelete"
+            >
+              <v-icon class="mr-2">mdi-delete</v-icon>
+              Delete Selected ({{ selectedCampaigns.length }})
+            </v-btn>
+            <v-btn 
+              color="primary" 
+              @click="openCreateModal"
+              class="elevation-0"
+            >
+              <v-icon class="mr-2">mdi-plus</v-icon>
+              Create Campaign
+            </v-btn>
+          </div>
+        </div>
+      </v-col>
+    </v-row>
+    
+    <!-- Search and Filters -->
+    <v-card class="mb-4">
+      <v-card-text>
+        <v-row align="center">
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="searchQuery"
+              label="Search campaigns"
+              append-icon="mdi-magnify"
+              hide-details
+              @keyup.enter="searchCampaigns"
+              placeholder="Search by name or ID..."
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="statusFilter"
+              label="Status"
+              :items="[
+                { title: 'All Status', value: 'all' },
+                { title: 'Draft', value: 'draft' },
+                { title: 'Active', value: 'active' },
+                { title: 'Paused', value: 'paused' },
+                { title: 'Completed', value: 'completed' }
+              ]"
+              hide-details
+              @update:model-value="searchCampaigns"
+            ></v-select>
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="regionFilter"
+              label="Region"
+              :items="[
+                { title: 'All Regions', value: 'all' },
+                { title: 'United States', value: 'US' },
+                { title: 'United Kingdom', value: 'UK' },
+                { title: 'Germany', value: 'DE' },
+                { title: 'Australia', value: 'AU' },
+                { title: 'New Zealand', value: 'NZ' },
+                { title: 'Czech Republic', value: 'CZ' },
+                { title: 'Slovakia', value: 'SK' }
+              ]"
+              hide-details
+              @update:model-value="searchCampaigns"
+            ></v-select>
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-btn color="primary" @click="searchCampaigns" class="ml-2">
+              Search
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+    
+    <!-- Campaigns Grid -->
+    <v-row v-if="isLoading">
+      <v-col cols="12" class="text-center">
+        <v-progress-circular indeterminate color="primary"></v-progress-circular>
+        <p class="mt-2">Loading campaigns...</p>
+      </v-col>
+    </v-row>
+    
+    <v-row v-else-if="campaigns.length === 0">
+      <v-col cols="12" class="text-center">
+        <p class="text-grey">No campaigns found. Create your first campaign to get started.</p>
+      </v-col>
+    </v-row>
+    
+    <v-row v-else>
+      <v-col 
+        v-for="campaign in campaigns" 
+        :key="campaign.id" 
+        cols="12"
+      >
+        <v-card class="campaign-card mb-4" flat>
+          <div class="campaign-header pa-4 pb-3">
+            <div class="d-flex align-center justify-space-between">
+              <div class="d-flex align-center">
+                <v-checkbox
+                  :model-value="selectedCampaigns.includes(campaign.id)"
+                  @update:model-value="toggleSelection(campaign.id)"
+                  hide-details
+                  density="compact"
+                  class="flex-grow-0 mr-3"
+                ></v-checkbox>
+                
+                <div>
+                  <div class="d-flex align-center gap-2 mb-1">
+                    <h3 class="text-h6 font-weight-bold">{{ campaign.name }}</h3>
+                    <v-chip 
+                      :color="getStatusColor(campaign.status)" 
+                      size="small"
+                      label
+                      class="status-chip"
+                    >
+                      {{ campaign.status }}
+                    </v-chip>
+                  </div>
+                  <div class="text-caption text-medium-emphasis">
+                    <v-icon size="x-small" class="mr-1">mdi-identifier</v-icon>
+                    {{ campaign.id }}
+                    <template v-if="campaign.sparkName">
+                      <span class="mx-2">•</span>
+                      <v-icon size="x-small" color="amber" class="mr-1">mdi-lightning-bolt</v-icon>
+                      {{ campaign.sparkName }}
+                    </template>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="d-flex align-center gap-3">
+                <div class="d-flex align-center" style="gap: 4px;">
+                  <span class="text-caption text-medium-emphasis mr-1">{{ campaign.isActive ? 'Active' : 'Inactive' }}</span>
+                  <v-switch
+                    v-model="campaign.isActive"
+                    color="success"
+                    hide-details
+                    density="compact"
+                    @update:model-value="toggleActive(campaign)"
+                    class="flex-grow-0 mr-3"
+                  ></v-switch>
+                </div>
+                
+                <div class="d-flex gap-1">
+                  <v-btn
+                    icon
+                    size="small"
+                    variant="plain"
+                    @click="openLaunchesModal(campaign)"
+                  >
+                    <v-icon color="purple">mdi-rocket-launch</v-icon>
+                    <v-tooltip activator="parent" location="bottom">Manage Launches</v-tooltip>
+                  </v-btn>
+                  
+                  
+                  <v-btn
+                    icon
+                    size="small"
+                    variant="plain"
+                    @click="openEditModal(campaign)"
+                  >
+                    <v-icon color="primary">mdi-pencil</v-icon>
+                    <v-tooltip activator="parent" location="bottom">Edit</v-tooltip>
+                  </v-btn>
+                  
+                  <v-btn
+                    icon
+                    size="small"
+                    variant="plain"
+                    @click="duplicateCampaign(campaign)"
+                  >
+                    <v-icon color="blue">mdi-content-copy</v-icon>
+                    <v-tooltip activator="parent" location="bottom">Duplicate</v-tooltip>
+                  </v-btn>
+                  
+                  <v-btn
+                    icon
+                    size="small"
+                    variant="plain"
+                    @click="confirmDelete(campaign)"
+                  >
+                    <v-icon color="error">mdi-delete</v-icon>
+                    <v-tooltip activator="parent" location="bottom">Delete</v-tooltip>
+                  </v-btn>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <v-divider></v-divider>
+          
+          <div class="pa-4">
+            <v-row>
+              <!-- Stores Section -->
+              <v-col cols="12" sm="6" md="3">
+                <div class="info-section">
+                  <div class="section-title mb-3">
+                    <v-icon size="small" class="mr-1">mdi-store</v-icon>
+                    Stores
+                  </div>
+                  <div class="store-item mb-2">
+                    <div class="store-value flex-wrap">
+                      <div class="d-flex align-center">
+                        <v-icon size="x-small" color="primary" class="mr-1">mdi-shopping</v-icon>
+                        <span class="text-medium-emphasis">TikTok Shop:</span>
+                      </div>
+                      <span class="ml-1 text-break">{{ campaign.tiktokStoreName || campaign.tiktokStoreId || 'Not configured' }}</span>
+                    </div>
+                  </div>
+                  <div class="store-item">
+                    <div class="store-value flex-wrap">
+                      <div class="d-flex align-center">
+                        <v-icon size="x-small" color="secondary" class="mr-1">mdi-store</v-icon>
+                        <span class="text-medium-emphasis">Redirect Store:</span>
+                      </div>
+                      <span class="ml-1 text-break">{{ campaign.redirectStoreName || campaign.redirectStoreId || 'Not configured' }}</span>
+                      <v-icon v-if="campaign.redirectType === 'custom'" size="x-small" color="orange" class="ml-1">
+                        mdi-open-in-new
+                      </v-icon>
+                    </div>
+                  </div>
+                </div>
+              </v-col>
+              
+              <!-- Regions Section -->
+              <v-col cols="12" sm="6" md="3">
+                <div class="info-section">
+                  <div class="section-title mb-3">
+                    <v-icon size="small" class="mr-1">mdi-earth</v-icon>
+                    Target Regions
+                  </div>
+                  <div v-if="campaign.regions && campaign.regions.length > 0" class="regions-grid">
+                    <v-chip
+                      v-for="region in campaign.regions"
+                      :key="region"
+                      size="small"
+                      color="blue"
+                      variant="tonal"
+                      label
+                      class="mr-1 mb-1"
+                    >
+                      {{ region }}
+                    </v-chip>
+                  </div>
+                  <div v-else class="text-caption text-medium-emphasis">
+                    No regions selected
+                  </div>
+                </div>
+              </v-col>
+              
+              <!-- Template Section -->
+              <v-col cols="12" sm="6" md="3">
+                <div class="info-section">
+                  <div class="section-title mb-3">
+                    <v-icon size="small" class="mr-1">mdi-file-document</v-icon>
+                    Template
+                  </div>
+                  <div class="text-body-2">
+                    {{ getTemplateName(campaign.templateId) || 'No template selected' }}
+                  </div>
+                </div>
+              </v-col>
+              
+              <!-- Stats Section -->
+              <v-col cols="12" sm="6" md="3">
+                <div class="stats-section">
+                  <div class="stat-item mb-3">
+                    <div class="stat-value">
+                      <v-icon size="small" color="primary" class="mr-1">mdi-web</v-icon>
+                      {{ campaign.traffic || 0 }}
+                    </div>
+                    <div class="stat-label">Traffic</div>
+                  </div>
+                  <div class="stat-item">
+                    <v-btn
+                      color="purple"
+                      variant="tonal"
+                      size="small"
+                      rounded
+                      @click="openLaunchesModal(campaign)"
+                      class="launches-btn"
+                    >
+                      <v-icon start size="small">mdi-rocket-launch</v-icon>
+                      {{ getActiveLaunches(campaign) }}/{{ getTotalLaunches(campaign) }} Launches
+                    </v-btn>
+                  </div>
+                </div>
+              </v-col>
+            </v-row>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+    
+    <!-- Pagination -->
+    <div class="d-flex justify-space-between align-center mt-4" v-if="campaigns.length > 0">
+      <div class="text-grey">
+        Showing {{ campaigns.length }} campaigns
+      </div>
+      <v-pagination
+        v-if="totalPages > 1"
+        v-model="currentPage"
+        :length="totalPages"
+        @update:model-value="changePage"
+        rounded="circle"
+      ></v-pagination>
+    </div>
+
+    <!-- Create/Edit Campaign Modal -->
+    <v-dialog v-model="showCreateModal" max-width="800px" scrollable>
+      <v-card>
+        <v-card-title>
+          {{ editingCampaign ? 'Edit Campaign' : 'Create Campaign' }}
+          <v-spacer></v-spacer>
+          <v-btn icon variant="text" @click="closeModal">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        
+        <v-card-text>
+          <v-form ref="campaignForm">
+            <!-- Status at the top -->
+            <div class="mb-4">
+              <p class="text-subtitle-2 mb-2">Status</p>
+              <v-chip-group
+                v-model="formData.status"
+                mandatory
+                selected-class="v-chip--selected"
+              >
+                <v-chip
+                  value="draft"
+                  color="grey"
+                  variant="tonal"
+                >
+                  Draft
+                </v-chip>
+                <v-chip
+                  value="active"
+                  color="success"
+                  variant="tonal"
+                >
+                  Active
+                </v-chip>
+                <v-chip
+                  value="paused"
+                  color="warning"
+                  variant="tonal"
+                >
+                  Paused
+                </v-chip>
+                <v-chip
+                  value="completed"
+                  color="info"
+                  variant="tonal"
+                >
+                  Completed
+                </v-chip>
+              </v-chip-group>
+            </div>
+
+            <!-- Basic Information -->
+            <v-text-field
+              v-model="formData.name"
+              label="Campaign Name"
+              :rules="[v => !!v || 'Campaign name is required']"
+              variant="outlined"
+              class="mb-4"
+            ></v-text-field>
+            
+            <v-textarea
+              v-model="formData.description"
+              label="Description (Optional)"
+              variant="outlined"
+              rows="2"
+              class="mb-4"
+            ></v-textarea>
+
+            <!-- Store Configuration -->
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="formData.tiktokStoreId"
+                  label="TikTok Store"
+                  :items="stores"
+                  item-title="store_name"
+                  item-value="id"
+                  variant="outlined"
+                  :rules="[v => !!v || 'TikTok store is required']"
+                >
+                  <template v-slot:append-inner>
+                    <v-btn
+                      icon
+                      size="small"
+                      variant="text"
+                      @click.stop="testStoreConnection(formData.tiktokStoreId, 'tiktok')"
+                      :loading="testingConnection.tiktok"
+                      :disabled="!formData.tiktokStoreId"
+                    >
+                      <v-icon>mdi-connection</v-icon>
+                    </v-btn>
+                  </template>
+                </v-select>
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="formData.redirectType"
+                  label="Redirect Type"
+                  :items="['shopify', 'custom']"
+                  variant="outlined"
+                  @update:model-value="onRedirectTypeChange"
+                >
+                  <template v-slot:item="{ item, props }">
+                    <v-list-item v-bind="props">
+                      <template v-slot:prepend>
+                        <v-icon>{{ item.value === 'shopify' ? 'mdi-shopping' : 'mdi-open-in-new' }}</v-icon>
+                      </template>
+                      <v-list-item-title>{{ item.value === 'shopify' ? 'Shopify Store' : 'Custom URL' }}</v-list-item-title>
+                    </v-list-item>
+                  </template>
+                </v-select>
+              </v-col>
+            </v-row>
+
+            <v-row v-if="formData.redirectType === 'shopify'">
+              <v-col cols="12">
+                <v-select
+                  v-model="formData.redirectStoreId"
+                  label="Redirect Store"
+                  :items="stores"
+                  item-title="store_name"
+                  item-value="id"
+                  variant="outlined"
+                  :rules="formData.redirectType === 'shopify' ? [v => !!v || 'Redirect store is required'] : []"
+                >
+                  <template v-slot:append-inner>
+                    <v-btn
+                      icon
+                      size="small"
+                      variant="text"
+                      @click.stop="testStoreConnection(formData.redirectStoreId, 'redirect')"
+                      :loading="testingConnection.redirect"
+                      :disabled="!formData.redirectStoreId"
+                    >
+                      <v-icon>mdi-connection</v-icon>
+                    </v-btn>
+                  </template>
+                </v-select>
+              </v-col>
+            </v-row>
+
+            <v-row v-else>
+              <v-col cols="12">
+                <v-text-field
+                  v-model="formData.customRedirectUrl"
+                  label="Custom Redirect URL"
+                  placeholder="https://example.com"
+                  variant="outlined"
+                  :rules="formData.redirectType === 'custom' ? [
+                    v => !!v || 'Custom URL is required',
+                    v => /^https?:\/\/.+/.test(v) || 'Invalid URL format'
+                  ] : []"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <!-- Landing Page Template -->
+            <v-select
+              v-model="formData.templateId"
+              label="Landing Page Template"
+              :items="templates"
+              item-title="name"
+              item-value="id"
+              variant="outlined"
+              :loading="loadingTemplates"
+              class="mb-4"
+            >
+              <template v-slot:item="{ item, props }">
+                <v-list-item v-bind="props">
+                  <v-list-item-subtitle>{{ item.category }}</v-list-item-subtitle>
+                </v-list-item>
+              </template>
+            </v-select>
+
+            <!-- Spark Selection -->
+            <v-select
+              v-model="formData.sparkId"
+              label="Spark (Optional)"
+              :items="sparks"
+              item-title="name"
+              item-value="id"
+              variant="outlined"
+              clearable
+              class="mb-4"
+            >
+              <template v-slot:item="{ item, props }">
+                <v-list-item v-bind="props">
+                  <template v-slot:prepend>
+                    <v-icon color="yellow">mdi-lightning-bolt</v-icon>
+                  </template>
+                  <v-list-item-subtitle>{{ item.tiktok_url }}</v-list-item-subtitle>
+                </v-list-item>
+              </template>
+            </v-select>
+
+            <!-- Region Selection -->
+            <div class="mb-4">
+              <p class="text-subtitle-2 mb-2">Target Regions</p>
+              <v-chip-group
+                v-model="formData.regions"
+                multiple
+                selected-class="v-chip--selected"
+              >
+                <v-chip
+                  v-for="region in availableRegions"
+                  :key="region.value"
+                  :value="region.value"
+                  color="primary"
+                  variant="tonal"
+                >
+                  {{ region.title }}
+                </v-chip>
+              </v-chip-group>
+            </div>
+
+            <!-- Affiliate Links Configuration -->
+            <v-divider class="my-4"></v-divider>
+            <div class="text-subtitle-1 mb-4">Affiliate Links Configuration</div>
+            
+            <v-expansion-panels v-model="expandedPanels" multiple>
+              <v-expansion-panel
+                v-for="region in formData.regions"
+                :key="region"
+                :value="region"
+              >
+                <v-expansion-panel-title>
+                  <v-icon class="mr-2">mdi-earth</v-icon>
+                  {{ getRegionName(region) }}
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-row>
+                    <v-col cols="12" md="6">
+                      <v-text-field
+                        v-model="formData.affiliateLinks[region + '_ios']"
+                        label="iOS Link"
+                        placeholder="https://example.com/ios"
+                        variant="outlined"
+                        density="compact"
+                      >
+                        <template v-slot:prepend-inner>
+                          <v-icon size="small">mdi-apple</v-icon>
+                        </template>
+                      </v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-text-field
+                        v-model="formData.affiliateLinks[region + '_android']"
+                        label="Android Link"
+                        placeholder="https://example.com/android"
+                        variant="outlined"
+                        density="compact"
+                      >
+                        <template v-slot:prepend-inner>
+                          <v-icon size="small">mdi-android</v-icon>
+                        </template>
+                      </v-text-field>
+                    </v-col>
+                    <v-col cols="12">
+                      <v-text-field
+                        v-model="formData.affiliateLinks[region]"
+                        label="Default Link (All Devices)"
+                        placeholder="https://example.com/default"
+                        variant="outlined"
+                        density="compact"
+                      >
+                        <template v-slot:prepend-inner>
+                          <v-icon size="small">mdi-devices</v-icon>
+                        </template>
+                      </v-text-field>
+                    </v-col>
+                  </v-row>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </v-form>
+        </v-card-text>
+        
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="closeModal">Cancel</v-btn>
+          <v-btn 
+            color="primary" 
+            variant="flat"
+            @click="saveCampaign"
+            :loading="saving"
+          >
+            {{ editingCampaign ? 'Update' : 'Create' }} Campaign
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Manage Launches Modal -->
+    <v-dialog v-model="showLaunchesModal" max-width="800px" scrollable>
+      <v-card>
+        <v-card-title class="px-4 py-3 border-b">
+          <v-btn icon variant="text" size="small" @click="showLaunchesModal = false" class="mr-3">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <div class="d-flex align-center">
+            <v-icon color="purple" class="mr-2">mdi-rocket-launch</v-icon>
+            <span>Manage Launches</span>
+          </div>
+        </v-card-title>
+        
+        <v-card-text class="pa-0">
+          <!-- Campaign Header Info -->
+          <div class="pa-4 pb-3">
+            <v-card variant="flat" class="pa-4 bg-grey-lighten-5">
+              <h3 class="text-subtitle-1 mb-1 font-weight-medium">{{ currentCampaign?.name }}</h3>
+              <div class="text-body-2">
+                <span>Campaign ID: {{ currentCampaign?.id }}</span>
+                <span class="mx-2">•</span>
+                <span>Total Launches: {{ currentLaunches.length }}</span>
+              </div>
+              
+              <v-alert
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="mt-3 mb-0"
+              >
+                <span class="text-caption">The "Generate Link" button will create/refresh the Shopify pages with the latest campaign settings.</span>
+              </v-alert>
+            </v-card>
+          </div>
+
+          <!-- Add New Launches Section -->
+          <div class="px-4 pb-3">
+            <v-card variant="flat" class="pa-4 bg-grey-lighten-5">
+              <div class="d-flex align-center justify-space-between">
+                <h4 class="text-body-2 font-weight-medium">Add New Launches</h4>
+                <div class="d-flex align-center gap-3">
+                  <span class="text-body-2 font-weight-medium">Count:</span>
+                  <div class="launch-count-wrapper purple-theme">
+                    <button 
+                      type="button"
+                      class="launch-count-btn minus"
+                      @click="decrementLaunchCount"
+                      :disabled="newLaunchCount <= 1"
+                    >
+                      <v-icon size="small">mdi-minus</v-icon>
+                    </button>
+                    <input 
+                      v-model.number="newLaunchCount"
+                      type="number"
+                      min="1"
+                      max="10"
+                      class="launch-count-input"
+                      @input="validateLaunchCount"
+                    />
+                    <button 
+                      type="button"
+                      class="launch-count-btn plus"
+                      @click="incrementLaunchCount"
+                      :disabled="newLaunchCount >= 10"
+                    >
+                      <v-icon size="small">mdi-plus</v-icon>
+                    </button>
+                  </div>
+                  <v-btn
+                    color="purple"
+                    variant="flat"
+                    size="small"
+                    @click="addNewLaunches"
+                    :loading="addingLaunches"
+                    prepend-icon="mdi-plus"
+                    class="mx-2 my-1"
+                  >
+                    Add
+                  </v-btn>
+                </div>
+              </div>
+            </v-card>
+          </div>
+
+          <!-- Existing Launches -->
+          <div class="px-4 pb-4">
+            <h4 class="text-body-2 mb-3 font-weight-medium">Existing Launches</h4>
+            
+            <div v-if="currentLaunches.length === 0" class="text-center py-8">
+              <v-icon size="48" color="grey">mdi-rocket</v-icon>
+              <p class="text-body-1 mt-3 mb-1">No launches found</p>
+              <p class="text-caption text-grey">Click "Add" above to create your first launch</p>
+            </div>
+
+            <div v-else style="max-height: 350px; overflow-y: auto; overflow-x: hidden;" class="pr-2 launches-scroll">
+              <div class="d-flex flex-column ga-2">
+                <v-card
+                  v-for="(launch, index) in currentLaunches" 
+                  :key="index"
+                  :color="launch.isActive ? 'grey-lighten-5' : 'grey-lighten-4'"
+                  :variant="launch.isActive ? 'outlined' : 'flat'"
+                  :style="launch.isActive ? 'border-color: rgb(168, 85, 247);' : ''"
+                  class="pa-3"
+                  style="min-width: 0;"
+                >
+                  <div class="d-flex flex-column flex-sm-row align-start align-sm-center justify-space-between ga-3">
+                    <!-- Launch info -->
+                    <div class="flex-grow-1" style="min-width: 0;">
+                      <div class="d-flex align-center gap-2 mb-1 flex-wrap">
+                        <span class="text-body-1 font-weight-medium text-grey-darken-4">
+                          Launch {{ index }}
+                          <span v-if="index === 0" class="text-caption ml-1">(Default)</span>
+                        </span>
+                        
+                        <v-chip 
+                          :color="launch.isActive ? 'green' : 'grey'"
+                          variant="tonal"
+                          size="x-small"
+                        >
+                          {{ launch.isActive ? 'Active' : 'Disabled' }}
+                        </v-chip>
+                      </div>
+                      
+                      <div class="text-caption text-grey-darken-1" style="word-break: break-word;">
+                        <div v-if="launch.createdAt" class="mb-1">
+                          Created: {{ formatDate(launch.createdAt) }}
+                        </div>
+                        <div v-if="launch.generatedAt">
+                          <template v-if="getTimeSinceGenerated(launch.generatedAt).hours < 1">
+                            <span class="text-green-darken-1">• Recently updated</span>
+                          </template>
+                          <template v-else-if="getTimeSinceGenerated(launch.generatedAt).hours < 24">
+                            <span class="text-blue-darken-1">• Updated {{ getTimeSinceGenerated(launch.generatedAt).hours }}h ago</span>
+                          </template>
+                          <template v-else>
+                            <span class="text-orange-darken-1">• Updated {{ getTimeSinceGenerated(launch.generatedAt).days }}d ago</span>
+                          </template>
+                        </div>
+                        <div v-else class="text-orange-darken-1">
+                          • Not generated
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div class="d-flex align-center gap-3 flex-shrink-0">
+                      <v-btn
+                        :color="launch.generatedAt ? 'purple' : 'purple'"
+                        :variant="launch.generatedAt ? 'tonal' : 'flat'"
+                        size="small"
+                        @click="generateLaunchLink(index)"
+                        :loading="generatingLinkFor === index"
+                        :prepend-icon="launch.generatedAt ? 'mdi-refresh' : 'mdi-link'"
+                        class="mx-1 my-1"
+                      >
+                        {{ launch.generatedAt ? 'Refresh & Copy' : 'Generate Link' }}
+                      </v-btn>
+                      
+                      <v-btn
+                        :color="launch.isActive ? 'grey' : 'green'"
+                        variant="tonal"
+                        size="small"
+                        @click="toggleLaunch(index)"
+                        :loading="togglingLaunch === index"
+                        :prepend-icon="launch.isActive ? 'mdi-pause' : 'mdi-play'"
+                        class="mx-1 my-1"
+                      >
+                        {{ launch.isActive ? 'Disable' : 'Enable' }}
+                      </v-btn>
+                    </div>
+                  </div>
+                </v-card>
+              </div>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="400">
+      <v-card>
+        <v-card-title>Confirm Delete</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete "{{ deletingCampaign?.name }}"? This action cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn 
+            color="error" 
+            variant="flat"
+            @click="deleteCampaign"
+            :loading="deleting"
+          >
+            Delete
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Status Menu -->
+    <v-menu
+      v-model="showStatusMenu"
+      :target="statusMenuTarget"
+      offset="10"
+    >
+      <v-list density="compact">
+        <v-list-item
+          v-for="status in ['draft', 'active', 'paused', 'completed']"
+          :key="status"
+          @click="updateStatus(status)"
+        >
+          <template v-slot:prepend>
+            <v-icon :color="getStatusColor(status)" size="small">
+              mdi-circle
+            </v-icon>
+          </template>
+          <v-list-item-title>{{ status }}</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+
+    <!-- Snackbar for notifications -->
+    <v-snackbar
+      v-model="showSnackbar"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    >
+      {{ snackbarText }}
+      <template v-slot:actions>
+        <v-btn
+          variant="text"
+          @click="showSnackbar = false"
+        >
+          Close
+        </v-btn>
+      </template>
+    </v-snackbar>
+  </v-container>
+</template>
+
+<script setup>
+import { ref, onMounted, computed, watch } from 'vue';
+import { campaignsApi, shopifyApi, templatesApi, sparksApi } from '@/services/api';
+
+// Snackbar state
+const showSnackbar = ref(false);
+const snackbarText = ref('');
+const snackbarColor = ref('success');
+
+// Helper functions for notifications
+const showSuccess = (message) => {
+  snackbarText.value = message;
+  snackbarColor.value = 'success';
+  showSnackbar.value = true;
+};
+
+const showError = (message) => {
+  snackbarText.value = message;
+  snackbarColor.value = 'error';
+  showSnackbar.value = true;
+};
+
+// Data
+const campaigns = ref([]);
+const stores = ref([]);
+const templates = ref([]);
+const sparks = ref([]);
+const isLoading = ref(false);
+const loadingTemplates = ref(false);
+const saving = ref(false);
+const deleting = ref(false);
+const generatingLink = ref(false);
+const testingConnection = ref({ tiktok: false, redirect: false });
+
+// Search and filters
+const searchQuery = ref('');
+const statusFilter = ref('all');
+const regionFilter = ref('all');
+const selectedCampaigns = ref([]);
+const itemsPerPage = ref(10);
+const currentPage = ref(1);
+const totalPages = ref(1);
+
+// Dialogs
+const showCreateModal = ref(false);
+const showDeleteDialog = ref(false);
+const showLaunchesModal = ref(false);
+const showStatusMenu = ref(false);
+const statusMenuTarget = ref(null);
+
+// Current items
+const editingCampaign = ref(null);
+const deletingCampaign = ref(null);
+const currentCampaign = ref(null);
+const currentLaunches = ref([]);
+const generatedLink = ref('');
+const expandedPanels = ref([]);
+
+// Launch management
+const newLaunchCount = ref(1);
+const addingLaunches = ref(false);
+const generatingLinkFor = ref(null);
+const togglingLaunch = ref(null);
+
+// Forms
+const campaignForm = ref(null);
+const linkForm = ref(null);
+
+const formData = ref({
+  name: '',
+  description: '',
+  status: 'draft',
+  tiktokStoreId: '',
+  redirectStoreId: '',
+  redirectType: 'shopify',
+  customRedirectUrl: '',
+  templateId: '',
+  sparkId: '',
+  regions: [],
+  affiliateLinks: {}
+});
+
+const linkFormData = ref({
+  launchNumber: 0,
+  region: 'US',
+  os: 'all',
+  subaffiliateId: ''
+});
+
+// Available regions
+const availableRegions = [
+  { title: 'United States', value: 'US' },
+  { title: 'United Kingdom', value: 'UK' },
+  { title: 'Germany', value: 'DE' },
+  { title: 'Australia', value: 'AU' },
+  { title: 'New Zealand', value: 'NZ' },
+  { title: 'Czech Republic', value: 'CZ' },
+  { title: 'Slovakia', value: 'SK' }
+];
+
+// Table headers
+const headers = [
+  { title: 'Campaign', key: 'name', sortable: true },
+  { title: 'TikTok Store', key: 'tiktokStore', sortable: false },
+  { title: 'Redirect Store', key: 'redirectStore', sortable: false },
+  { title: 'Regions', key: 'regions', sortable: false },
+  { title: 'Launches', key: 'launches', sortable: false, align: 'center' },
+  { title: 'Traffic', key: 'traffic', sortable: true, align: 'center' },
+  { title: 'Status', key: 'status', sortable: true },
+  { title: 'Active', key: 'isActive', sortable: false },
+  { title: 'Actions', key: 'actions', sortable: false, align: 'end' }
+];
+
+// Methods
+const fetchCampaigns = async () => {
+  isLoading.value = true;
+  try {
+    const params = {
+      search: searchQuery.value,
+      status: statusFilter.value,
+      region: regionFilter.value,
+      page: currentPage.value,
+      limit: itemsPerPage.value
+    };
+    
+    const data = await campaignsApi.listCampaigns(params);
+    campaigns.value = data.campaigns || [];
+    totalPages.value = data.totalPages || 1;
+  } catch (error) {
+    showError('Failed to load campaigns');
+    console.error(error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const fetchStores = async () => {
+  try {
+    const data = await shopifyApi.listStores({ limit: 100, status: 'active' });
+    stores.value = data.stores || [];
+  } catch (error) {
+    console.error('Failed to load stores:', error);
+  }
+};
+
+const fetchTemplates = async () => {
+  loadingTemplates.value = true;
+  try {
+    const data = await templatesApi.getTemplatesList();
+    templates.value = data.templates || [];
+  } catch (error) {
+    console.error('Failed to load templates:', error);
+    showError('Failed to load templates');
+  } finally {
+    loadingTemplates.value = false;
+  }
+};
+
+const fetchSparks = async () => {
+  try {
+    const data = await sparksApi.listSparks({ limit: 100, status: 'active' });
+    sparks.value = data.sparks || [];
+  } catch (error) {
+    console.error('Failed to load sparks:', error);
+  }
+};
+
+const searchCampaigns = () => {
+  fetchCampaigns();
+};
+
+const openCreateModal = () => {
+  editingCampaign.value = null;
+  formData.value = {
+    name: '',
+    description: '',
+    status: 'draft',
+    tiktokStoreId: '',
+    redirectStoreId: '',
+    redirectType: 'shopify',
+    customRedirectUrl: '',
+    templateId: '',
+    sparkId: '',
+    regions: [],
+    affiliateLinks: {}
+  };
+  expandedPanels.value = [];
+  showCreateModal.value = true;
+};
+
+const openEditModal = async (campaign) => {
+  try {
+    const data = await campaignsApi.getCampaign(campaign.id);
+    editingCampaign.value = data;
+    
+    formData.value = {
+      name: data.name,
+      description: data.description || '',
+      status: data.status,
+      tiktokStoreId: data.tiktokStoreId,
+      redirectStoreId: data.redirectStoreId || '',
+      redirectType: data.redirectType || 'shopify',
+      customRedirectUrl: data.customRedirectUrl || '',
+      templateId: data.templateId || '',
+      sparkId: data.sparkId || '',
+      regions: data.regions || [],
+      affiliateLinks: data.affiliateLinks || {}
+    };
+    
+    expandedPanels.value = data.regions || [];
+    showCreateModal.value = true;
+  } catch (error) {
+    showError('Failed to load campaign details');
+  }
+};
+
+const closeModal = () => {
+  showCreateModal.value = false;
+  editingCampaign.value = null;
+  campaignForm.value?.reset();
+};
+
+const saveCampaign = async () => {
+  const { valid } = await campaignForm.value.validate();
+  if (!valid) return;
+  
+  saving.value = true;
+  try {
+    const campaignData = {
+      ...formData.value,
+      isActive: formData.value.status === 'active'
+    };
+    
+    // Find store names
+    const tiktokStore = stores.value.find(s => s.id === campaignData.tiktokStoreId);
+    if (tiktokStore) {
+      campaignData.tiktokStoreName = tiktokStore.store_name;
+    }
+    
+    if (campaignData.redirectType === 'shopify' && campaignData.redirectStoreId) {
+      const redirectStore = stores.value.find(s => s.id === campaignData.redirectStoreId);
+      if (redirectStore) {
+        campaignData.redirectStoreName = redirectStore.store_name;
+      }
+    }
+    
+    // Find spark name
+    if (campaignData.sparkId) {
+      const spark = sparks.value.find(s => s.id === campaignData.sparkId);
+      if (spark) {
+        campaignData.sparkName = spark.name;
+      }
+    }
+    
+    let data;
+    if (editingCampaign.value) {
+      data = await campaignsApi.updateCampaign(editingCampaign.value.id, campaignData);
+    } else {
+      data = await campaignsApi.createCampaign(campaignData);
+    }
+    
+    showSuccess(editingCampaign.value ? 'Campaign updated successfully' : 'Campaign created successfully');
+    closeModal();
+    fetchCampaigns();
+  } catch (error) {
+    showError(editingCampaign.value ? 'Failed to update campaign' : 'Failed to create campaign');
+  } finally {
+    saving.value = false;
+  }
+};
+
+
+const confirmDelete = (campaign) => {
+  deletingCampaign.value = campaign;
+  showDeleteDialog.value = true;
+};
+
+const deleteCampaign = async () => {
+  if (!deletingCampaign.value) return;
+  
+  deleting.value = true;
+  try {
+    await campaignsApi.deleteCampaign(deletingCampaign.value.id);
+    showSuccess('Campaign deleted successfully');
+    showDeleteDialog.value = false;
+    fetchCampaigns();
+  } catch (error) {
+    showError('Failed to delete campaign');
+  } finally {
+    deleting.value = false;
+    deletingCampaign.value = null;
+  }
+};
+
+const bulkDelete = async () => {
+  if (selectedCampaigns.value.length === 0) return;
+  
+  if (!confirm(`Delete ${selectedCampaigns.value.length} campaigns?`)) return;
+  
+  try {
+    await Promise.all(
+      selectedCampaigns.value.map(id => campaignsApi.deleteCampaign(id))
+    );
+    showSuccess(`${selectedCampaigns.value.length} campaigns deleted`);
+    selectedCampaigns.value = [];
+    fetchCampaigns();
+  } catch (error) {
+    showError('Failed to delete some campaigns');
+  }
+};
+
+const duplicateCampaign = async (campaign) => {
+  try {
+    const data = await campaignsApi.getCampaign(campaign.id);
+    
+    const newCampaign = {
+      ...data,
+      name: `${data.name} (Copy)`,
+      status: 'draft',
+      isActive: false,
+      traffic: 0
+    };
+    
+    delete newCampaign.id;
+    delete newCampaign.createdAt;
+    delete newCampaign.updatedAt;
+    
+    await campaignsApi.createCampaign(newCampaign);
+    showSuccess('Campaign duplicated successfully');
+    fetchCampaigns();
+  } catch (error) {
+    showError('Failed to duplicate campaign');
+  }
+};
+
+const toggleActive = async (campaign) => {
+  try {
+    await campaignsApi.toggleCampaignActive(campaign.id);
+    showSuccess(`Campaign ${campaign.isActive ? 'activated' : 'deactivated'}`);
+  } catch (error) {
+    showError('Failed to toggle campaign status');
+    campaign.isActive = !campaign.isActive;
+  }
+};
+
+const openStatusMenu = (campaign, event) => {
+  currentCampaign.value = campaign;
+  statusMenuTarget.value = event.target;
+  showStatusMenu.value = true;
+};
+
+const updateStatus = async (status) => {
+  if (!currentCampaign.value) return;
+  
+  try {
+    await campaignsApi.updateCampaignStatus(currentCampaign.value.id, status);
+    currentCampaign.value.status = status;
+    showSuccess('Campaign status updated');
+    showStatusMenu.value = false;
+  } catch (error) {
+    showError('Failed to update status');
+  }
+};
+
+const openLaunchesModal = async (campaign) => {
+  try {
+    // Fetch fresh campaign data
+    const data = await campaignsApi.getCampaign(campaign.id);
+    currentCampaign.value = data;
+    
+    // Convert launches object to array and sort by number
+    if (data.launches && Object.keys(data.launches).length > 0) {
+      const launchesArray = Object.entries(data.launches)
+        .map(([num, launch]) => ({
+          ...launch,
+          number: parseInt(num)
+        }))
+        .sort((a, b) => a.number - b.number);
+      currentLaunches.value = launchesArray;
+    } else {
+      // Initialize with default launch if none exist
+      currentLaunches.value = [{
+        number: 0,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        generatedAt: null
+      }];
+    }
+    
+    newLaunchCount.value = 1;
+    showLaunchesModal.value = true;
+  } catch (error) {
+    showError('Failed to load launch details');
+  }
+};
+
+const addNewLaunches = async () => {
+  if (!currentCampaign.value || !newLaunchCount.value) return;
+  
+  addingLaunches.value = true;
+  try {
+    // Get current campaign with fresh data
+    const campaignData = await campaignsApi.getCampaign(currentCampaign.value.id);
+    
+    // Initialize launches if not present
+    if (!campaignData.launches) {
+      campaignData.launches = {
+        "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null }
+      };
+      campaignData.maxLaunchNumber = 0;
+      campaignData.totalLaunches = 1;
+    }
+    
+    // Find the actual max launch number
+    const existingNumbers = Object.keys(campaignData.launches).map(k => parseInt(k));
+    const currentMax = existingNumbers.length > 0 ? Math.max(...existingNumbers) : -1;
+    
+    // Add new launches
+    const newLaunches = [];
+    for (let i = 1; i <= newLaunchCount.value; i++) {
+      const newNumber = currentMax + i;
+      campaignData.launches[newNumber.toString()] = {
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        generatedAt: null
+      };
+      newLaunches.push(newNumber);
+    }
+    
+    // Update campaign metadata
+    campaignData.maxLaunchNumber = currentMax + newLaunchCount.value;
+    campaignData.totalLaunches = Object.keys(campaignData.launches).length;
+    campaignData.updatedAt = new Date().toISOString();
+    
+    // Update the campaign
+    await campaignsApi.updateCampaign(campaignData.id, campaignData);
+    
+    showSuccess(`Successfully added ${newLaunchCount.value} new launch(es): ${newLaunches.join(', ')}`);
+    
+    // Refresh the modal
+    await openLaunchesModal(currentCampaign.value);
+    
+    // Refresh main campaigns list
+    fetchCampaigns();
+  } catch (error) {
+    showError('Failed to add launches: ' + error.message);
+  } finally {
+    addingLaunches.value = false;
+  }
+};
+
+const toggleLaunch = async (launchNumber) => {
+  togglingLaunch.value = launchNumber;
+  try {
+    // Get current campaign
+    const campaignData = await campaignsApi.getCampaign(currentCampaign.value.id);
+    
+    // Toggle the launch state
+    if (campaignData.launches && campaignData.launches[launchNumber.toString()]) {
+      campaignData.launches[launchNumber.toString()].isActive = !campaignData.launches[launchNumber.toString()].isActive;
+      campaignData.updatedAt = new Date().toISOString();
+      
+      // Update the campaign
+      await campaignsApi.updateCampaign(campaignData.id, campaignData);
+      
+      // Update local state
+      const launchIndex = currentLaunches.value.findIndex(l => l.number === launchNumber);
+      if (launchIndex !== -1) {
+        currentLaunches.value[launchIndex].isActive = !currentLaunches.value[launchIndex].isActive;
+      }
+      
+      showSuccess('Launch status updated');
+      
+      // Refresh main campaigns list
+      fetchCampaigns();
+    }
+  } catch (error) {
+    showError('Failed to update launch status');
+  } finally {
+    togglingLaunch.value = null;
+  }
+};
+
+const generateLaunchLink = async (launchNumber) => {
+  generatingLinkFor.value = launchNumber;
+  try {
+    const data = await campaignsApi.generateLink({
+      campaignId: currentCampaign.value.id,
+      launchNumber: launchNumber,
+      params: {
+        utm_source: 'tiktok',
+        utm_medium: 'cpc',
+        utm_campaign: currentCampaign.value.id
+      }
+    });
+    
+    if (data.success && data.link) {
+      // Copy to clipboard
+      await navigator.clipboard.writeText(data.link);
+      
+      if (data.refreshed) {
+        showSuccess('Shopify pages have been refreshed with the latest campaign settings. Link copied to clipboard!');
+      } else {
+        showSuccess('Link generated and copied to clipboard!');
+      }
+      
+      // Update the generatedAt timestamp in local state
+      const launchIndex = currentLaunches.value.findIndex(l => l.number === launchNumber);
+      if (launchIndex !== -1) {
+        currentLaunches.value[launchIndex].generatedAt = new Date().toISOString();
+      }
+      
+      // Refresh the modal to show updated timestamp
+      setTimeout(() => {
+        openLaunchesModal(currentCampaign.value);
+      }, 1000);
+    }
+  } catch (error) {
+    let errorMessage = 'Error generating link: ' + error.message;
+    
+    // Check for specific error types
+    if (error.message?.includes('store is missing admin API token')) {
+      errorMessage = 'Error: The TikTok store is missing its Admin API token. Please update the store configuration in Shopify Stores admin.';
+    } else if (error.message?.includes('store not found')) {
+      errorMessage = 'Error: One of the configured stores was not found. Please check the campaign configuration.';
+    } else if (error.message?.includes('Launch') && error.message?.includes('does not exist')) {
+      errorMessage = 'Error: ' + error.message + '. Please use the "Add Launches" button first.';
+    }
+    
+    showError(errorMessage);
+  } finally {
+    generatingLinkFor.value = null;
+  }
+};
+
+
+const testStoreConnection = async (storeId, type) => {
+  if (!storeId) return;
+  
+  testingConnection.value[type] = true;
+  try {
+    const data = await shopifyApi.testConnection(storeId);
+    
+    if (data.connected) {
+      showSuccess(`${type === 'tiktok' ? 'TikTok' : 'Redirect'} store connected successfully`);
+    } else {
+      showError(data.error || 'Connection failed');
+    }
+  } catch (error) {
+    showError('Failed to test connection');
+  } finally {
+    testingConnection.value[type] = false;
+  }
+};
+
+const onRedirectTypeChange = () => {
+  if (formData.value.redirectType === 'custom') {
+    formData.value.redirectStoreId = '';
+  } else {
+    formData.value.customRedirectUrl = '';
+  }
+};
+
+// Helper functions
+const getStatusColor = (status) => {
+  const colors = {
+    draft: 'grey',
+    active: 'success',
+    paused: 'warning',
+    completed: 'info'
+  };
+  return colors[status] || 'grey';
+};
+
+const getRegionName = (region) => {
+  const regionObj = availableRegions.find(r => r.value === region);
+  return regionObj ? regionObj.title : region;
+};
+
+const getActiveLaunches = (campaign) => {
+  if (!campaign.launches) return 1;
+  return Object.values(campaign.launches).filter(l => l.isActive).length;
+};
+
+const getTotalLaunches = (campaign) => {
+  if (!campaign.launches) return 1;
+  return Object.keys(campaign.launches).length;
+};
+
+const getTemplateName = (templateId) => {
+  if (!templateId) return null;
+  const template = templates.value.find(t => t.id === templateId);
+  return template ? template.name : 'Unknown template';
+};
+
+const getLaunchOptions = () => {
+  if (!currentCampaign.value?.launches) {
+    return [{ title: 'Launch #0 (Default)', value: 0 }];
+  }
+  
+  return Object.keys(currentCampaign.value.launches).map(num => ({
+    title: `Launch #${num}${num === '0' ? ' (Default)' : ''}`,
+    value: parseInt(num)
+  }));
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString();
+};
+
+const formatDateTime = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+};
+
+const getTimeSinceGenerated = (generatedAt) => {
+  if (!generatedAt) return { hours: 0, days: 0 };
+  
+  const genDate = new Date(generatedAt);
+  const now = new Date();
+  const diffMs = now - genDate;
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  
+  return { hours, days };
+};
+
+const toggleSelection = (campaignId) => {
+  const index = selectedCampaigns.value.indexOf(campaignId);
+  if (index > -1) {
+    selectedCampaigns.value.splice(index, 1);
+  } else {
+    selectedCampaigns.value.push(campaignId);
+  }
+};
+
+const changePage = (page) => {
+  currentPage.value = page;
+  fetchCampaigns();
+};
+
+// Launch count controls
+const incrementLaunchCount = () => {
+  if (newLaunchCount.value < 10) {
+    newLaunchCount.value++;
+  }
+};
+
+const decrementLaunchCount = () => {
+  if (newLaunchCount.value > 1) {
+    newLaunchCount.value--;
+  }
+};
+
+const validateLaunchCount = () => {
+  if (newLaunchCount.value < 1) {
+    newLaunchCount.value = 1;
+  } else if (newLaunchCount.value > 10) {
+    newLaunchCount.value = 10;
+  }
+};
+
+// Watch regions to update expanded panels
+watch(() => formData.value.regions, (newRegions) => {
+  expandedPanels.value = newRegions;
+});
+
+// Lifecycle
+onMounted(() => {
+  fetchCampaigns();
+  fetchStores();
+  fetchTemplates();
+  fetchSparks();
+});
+</script>
+
+<style scoped>
+.campaigns-container {
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.campaign-card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.2s;
+  overflow: hidden;
+}
+
+.campaign-card:hover {
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.campaign-header {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.status-chip {
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.section-title {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+}
+
+.info-section {
+  min-height: 100px;
+}
+
+.store-item {
+  margin-bottom: 0.5rem;
+}
+
+.store-value {
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+}
+
+.regions-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.stats-section {
+  text-align: center;
+}
+
+.stat-item {
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.6);
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+
+.launches-btn {
+  width: 100%;
+}
+
+.campaign-card .v-btn--variant-plain {
+  opacity: 1 !important;
+}
+
+.campaign-card .v-btn--variant-plain .v-icon {
+  opacity: 1 !important;
+}
+
+.campaign-card .v-btn--variant-plain:hover {
+  opacity: 0.8;
+}
+
+/* Launch Modal Styles */
+.border-b {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.border-green-darken-1 {
+  border-color: rgba(76, 175, 80, 0.5) !important;
+}
+
+.border-grey {
+  border-color: rgba(158, 158, 158, 0.5) !important;
+}
+
+/* Launch count input with stepper buttons */
+.launch-count-wrapper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgb(134, 239, 172); /* green-300 */
+  border-radius: 4px;
+  background-color: white;
+  overflow: hidden;
+}
+
+.launch-count-wrapper.purple-theme {
+  border-color: rgb(216, 180, 254); /* purple-300 */
+}
+
+.launch-count-input {
+  border: none;
+  padding: 6px 8px;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  background-color: transparent;
+  color: rgba(0, 0, 0, 0.87);
+  text-align: center;
+  width: 50px;
+  height: 32px;
+  -moz-appearance: textfield;
+}
+
+.launch-count-input:focus {
+  outline: none;
+}
+
+.launch-count-input::-webkit-inner-spin-button,
+.launch-count-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.launch-count-btn {
+  background-color: transparent;
+  border: none;
+  padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  color: rgb(34, 197, 94); /* green-500 */
+  min-width: 32px;
+  height: 32px;
+}
+
+.purple-theme .launch-count-btn {
+  color: rgb(168, 85, 247); /* purple-500 */
+}
+
+.launch-count-btn:hover:not(:disabled) {
+  background-color: rgba(134, 239, 172, 0.2);
+}
+
+.purple-theme .launch-count-btn:hover:not(:disabled) {
+  background-color: rgba(216, 180, 254, 0.2);
+}
+
+.launch-count-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  color: rgba(0, 0, 0, 0.38);
+}
+
+.launch-count-btn.minus {
+  border-right: 1px solid rgb(134, 239, 172);
+}
+
+.purple-theme .launch-count-btn.minus {
+  border-right: 1px solid rgb(216, 180, 254);
+}
+
+.launch-count-btn.plus {
+  border-left: 1px solid rgb(134, 239, 172);
+}
+
+.purple-theme .launch-count-btn.plus {
+  border-left: 1px solid rgb(216, 180, 254);
+}
+
+/* Dark theme support */
+.v-theme--dark .launch-count-wrapper {
+  background-color: rgba(255, 255, 255, 0.09);
+  border-color: rgba(134, 239, 172, 0.5);
+}
+
+.v-theme--dark .launch-count-input {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.v-theme--dark .launch-count-btn {
+  color: rgba(134, 239, 172, 0.9);
+}
+
+.v-theme--dark .launch-count-btn:hover:not(:disabled) {
+  background-color: rgba(134, 239, 172, 0.1);
+}
+
+.v-theme--dark .launch-count-btn:disabled {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.v-theme--dark .launch-count-btn.minus {
+  border-right-color: rgba(134, 239, 172, 0.5);
+}
+
+.v-theme--dark .launch-count-btn.plus {
+  border-left-color: rgba(134, 239, 172, 0.5);
+}
+
+/* Custom scrollbar for launches list */
+.launches-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.launches-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.launches-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.launches-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.v-theme--dark .launches-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.v-theme--dark .launches-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.v-theme--dark .launches-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+</style>

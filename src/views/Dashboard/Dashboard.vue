@@ -64,6 +64,15 @@
                 title="Shopify Stores"
                 rounded="lg"
               ></v-list-item>
+              
+              <v-list-item
+                value="campaigns"
+                :active="selectedTab === 'campaigns'"
+                @click="selectedTab = 'campaigns'"
+                prepend-icon="mdi-bullhorn"
+                title="Campaigns"
+                rounded="lg"
+              ></v-list-item>
             </v-list>
           </v-card>
         </v-col>
@@ -96,6 +105,11 @@
           <div v-if="selectedTab === 'shopify'">
             <ShopifyStoresView />
           </div>
+          
+          <!-- Campaigns Tab -->
+          <div v-if="selectedTab === 'campaigns'">
+            <CampaignsView />
+          </div>
         </v-col>
       </v-row>
     </v-container>
@@ -109,6 +123,7 @@ import MetricsView from './components/Metrics/MetricsView.vue';
 import SparksView from './components/Sparks/SparksView.vue';
 import TemplatesView from './components/Templates/TemplatesView.vue';
 import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
+import CampaignsView from './components/Campaigns/CampaignsView.vue';
 
 const selectedTab = ref('overview');
 </script>
