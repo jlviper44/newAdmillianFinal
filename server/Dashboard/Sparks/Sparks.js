@@ -16,6 +16,8 @@ async function initializeSparksTable(db) {
       const hasDataColumn = tableInfo.results.some(col => col.name === 'data');
       const hasNameColumn = tableInfo.results.some(col => col.name === 'name');
       
+      const hasUserIdColumn = tableInfo.results.some(col => col.name === 'user_id');
+      
       if (hasDataColumn && !hasNameColumn) {
         console.log('Migrating sparks table from old schema to new schema...');
         
@@ -23,6 +25,7 @@ async function initializeSparksTable(db) {
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS sparks_new (
             id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
             name TEXT NOT NULL,
             tiktok_link TEXT NOT NULL,
             spark_code TEXT NOT NULL,
@@ -43,11 +46,12 @@ async function initializeSparksTable(db) {
             const sparkData = JSON.parse(row.data);
             await db.prepare(`
               INSERT INTO sparks_new 
-              (id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, 
+              (id, user_id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, 
                status, traffic, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
               row.id,
+              row.user_id || 'default_user', // Use existing user_id or default
               sparkData.name || 'Untitled Spark',
               sparkData.tiktokLink || '',
               sparkData.sparkCode || '',
@@ -69,12 +73,16 @@ async function initializeSparksTable(db) {
         await db.prepare('ALTER TABLE sparks_new RENAME TO sparks').run();
         
         console.log('Migration completed successfully');
+      } else if (!hasUserIdColumn) {
+        // Table exists with new schema but missing user_id column
+        console.log('Table exists but missing user_id column, will add it later...');
       }
     } else {
       // Table doesn't exist, create it with new schema
       await db.prepare(`
         CREATE TABLE IF NOT EXISTS sparks (
           id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
           name TEXT NOT NULL,
           tiktok_link TEXT NOT NULL,
           spark_code TEXT NOT NULL,
@@ -101,6 +109,30 @@ async function initializeSparksTable(db) {
     await db.prepare(`
       CREATE INDEX IF NOT EXISTS idx_sparks_created ON sparks(created_at)
     `).run();
+    
+    await db.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_sparks_user_id ON sparks(user_id)
+    `).run();
+    
+    // Add user_id column if it doesn't exist (for existing tables)
+    try {
+      // Check if user_id column exists
+      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+      const hasUserIdColumn = tableInfo.results.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('Adding user_id column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        console.log('Added user_id column to sparks table');
+        
+        // Update existing rows to have a default user_id
+        await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+        console.log('Updated existing sparks with default user_id');
+      }
+    } catch (error) {
+      console.error('Error checking/adding user_id column:', error);
+      // Continue execution as this might not be critical
+    }
 
     // Create trigger to automatically update the updated_at timestamp
     await db.prepare(`
@@ -116,6 +148,36 @@ async function initializeSparksTable(db) {
   } catch (error) {
     console.error('Sparks table initialization error:', error);
     return false;
+  }
+}
+
+/**
+ * Extract user_id from session
+ */
+async function getUserIdFromSession(request, env) {
+  try {
+    const sessionCookie = request.headers.get('Cookie');
+    if (!sessionCookie) {
+      throw new Error('No session cookie found');
+    }
+    
+    const sessionId = sessionCookie.split('session=')[1]?.split(';')[0];
+    if (!sessionId) {
+      throw new Error('No session ID found in cookie');
+    }
+    
+    const session = await env.USERS_DB.prepare(
+      'SELECT user_id FROM sessions WHERE session_id = ? AND expires_at > datetime("now")'
+    ).bind(sessionId).first();
+    
+    if (!session) {
+      throw new Error('Invalid or expired session');
+    }
+    
+    return session.user_id;
+  } catch (error) {
+    console.error('Error extracting user_id from session:', error);
+    throw new Error('Authentication required');
   }
 }
 
@@ -184,42 +246,42 @@ export async function handleSparkData(request, env) {
   try {
     // List Sparks
     if (path === '' && method === 'GET') {
-      return await listSparks(request, db, corsHeaders);
+      return await listSparks(request, db, corsHeaders, env);
     }
     
     // Create Spark
     if (path === '' && method === 'POST') {
-      return await createSpark(request, db, corsHeaders);
+      return await createSpark(request, db, corsHeaders, env);
     }
     
     // Get Spark Details
     if (path.match(/^\/[\w-]+$/) && method === 'GET') {
       const sparkId = path.substring(1); // Remove leading slash
-      return await getSpark(sparkId, db, corsHeaders);
+      return await getSpark(sparkId, request, db, corsHeaders, env);
     }
     
     // Update Spark
     if (path.match(/^\/[\w-]+$/) && method === 'PUT') {
       const sparkId = path.substring(1); // Remove leading slash
-      return await updateSpark(sparkId, request, db, corsHeaders);
+      return await updateSpark(sparkId, request, db, corsHeaders, env);
     }
     
     // Delete Spark
     if (path.match(/^\/[\w-]+$/) && method === 'DELETE') {
       const sparkId = path.substring(1); // Remove leading slash
-      return await deleteSpark(sparkId, db, corsHeaders);
+      return await deleteSpark(sparkId, request, db, corsHeaders, env);
     }
     
     // Toggle Spark Status
     if (path.match(/^\/[\w-]+\/toggle-status$/) && method === 'PUT') {
       const sparkId = path.substring(1).split('/')[0]; // Extract ID from path
-      return await toggleSparkStatus(sparkId, db, corsHeaders);
+      return await toggleSparkStatus(sparkId, request, db, corsHeaders, env);
     }
     
     // Get Spark Stats
     if (path.match(/^\/[\w-]+\/stats$/) && method === 'GET') {
       const sparkId = path.substring(1).split('/')[0]; // Extract ID from path
-      return await getSparkStats(sparkId, db, corsHeaders);
+      return await getSparkStats(sparkId, request, db, corsHeaders, env);
     }
     
     // Extract TikTok Thumbnail
@@ -494,17 +556,34 @@ async function generateCustomThumbnail(videoId) {
 /**
  * List sparks with pagination and filtering
  */
-async function listSparks(request, db, corsHeaders) {
+async function listSparks(request, db, corsHeaders, env) {
   try {
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('Sparks table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
+    
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '10');
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
     
-    // Build the query
-    let query = 'SELECT * FROM sparks WHERE 1=1';
-    const params = [];
+    // Build the query - always include user_id filter
+    let query = 'SELECT * FROM sparks WHERE user_id = ?';
+    const params = [userId];
     
     // Apply search filter
     if (search) {
@@ -575,10 +654,27 @@ async function listSparks(request, db, corsHeaders) {
 /**
  * Get a specific spark by ID
  */
-async function getSpark(sparkId, db, corsHeaders) {
+async function getSpark(sparkId, request, db, corsHeaders, env) {
   try {
-    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('Sparks table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
+    
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     if (!spark) {
@@ -629,8 +725,25 @@ async function getSpark(sparkId, db, corsHeaders) {
 /**
  * Create a new spark
  */
-async function createSpark(request, db, corsHeaders) {
+async function createSpark(request, db, corsHeaders, env) {
   try {
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('Sparks table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
+    
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const sparkData = await request.json();
     
     // Validate required fields
@@ -707,8 +820,8 @@ async function createSpark(request, db, corsHeaders) {
         )
       `).run();
       
-      const template = await db.prepare('SELECT name FROM templates WHERE id = ?')
-        .bind(sparkData.offer)
+      const template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
+        .bind(sparkData.offer, userId)
         .first();
       
       if (template) {
@@ -756,10 +869,11 @@ async function createSpark(request, db, corsHeaders) {
     // Insert into database
     await db.prepare(`
       INSERT INTO sparks 
-      (id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
+      userId,
       sparkData.name,
       sparkData.tiktokLink,
       sparkData.sparkCode,
@@ -771,8 +885,8 @@ async function createSpark(request, db, corsHeaders) {
     ).run();
     
     // Fetch the created spark
-    const createdSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(id)
+    const createdSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(id, userId)
       .first();
     
     return new Response(
@@ -810,13 +924,16 @@ async function createSpark(request, db, corsHeaders) {
 /**
  * Update an existing spark
  */
-async function updateSpark(sparkId, request, db, corsHeaders) {
+async function updateSpark(sparkId, request, db, corsHeaders, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const sparkData = await request.json();
     
-    // Get existing spark
-    const existingSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    // Get existing spark - filtered by user_id
+    const existingSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     if (!existingSpark) {
@@ -889,8 +1006,8 @@ async function updateSpark(sparkId, request, db, corsHeaders) {
     let offerName = existingSpark.offer_name;
     if (sparkData.offer !== existingSpark.offer) {
       try {
-        const template = await db.prepare('SELECT name FROM templates WHERE id = ?')
-          .bind(sparkData.offer)
+        const template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
+          .bind(sparkData.offer, userId)
           .first();
         
         if (template) {
@@ -933,12 +1050,12 @@ async function updateSpark(sparkId, request, db, corsHeaders) {
       }
     }
     
-    // Update the spark
+    // Update the spark - filtered by user_id
     await db.prepare(`
       UPDATE sparks 
       SET name = ?, tiktok_link = ?, spark_code = ?, offer = ?, offer_name = ?, 
           thumbnail = ?, status = ?
-      WHERE id = ?
+      WHERE id = ? AND user_id = ?
     `).bind(
       sparkData.name,
       sparkData.tiktokLink,
@@ -947,12 +1064,13 @@ async function updateSpark(sparkId, request, db, corsHeaders) {
       offerName,
       thumbnail,
       sparkData.status || existingSpark.status,
-      sparkId
+      sparkId,
+      userId
     ).run();
     
     // Fetch the updated spark
-    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     return new Response(
@@ -990,11 +1108,14 @@ async function updateSpark(sparkId, request, db, corsHeaders) {
 /**
  * Delete a spark
  */
-async function deleteSpark(sparkId, db, corsHeaders) {
+async function deleteSpark(sparkId, request, db, corsHeaders, env) {
   try {
-    // Check if spark exists
-    const existingSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    // Check if spark exists - filtered by user_id
+    const existingSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     if (!existingSpark) {
@@ -1010,8 +1131,8 @@ async function deleteSpark(sparkId, db, corsHeaders) {
       );
     }
     
-    // Delete the spark
-    await db.prepare('DELETE FROM sparks WHERE id = ?').bind(sparkId).run();
+    // Delete the spark - filtered by user_id
+    await db.prepare('DELETE FROM sparks WHERE id = ? AND user_id = ?').bind(sparkId, userId).run();
     
     return new Response(
       JSON.stringify({ 
@@ -1048,11 +1169,14 @@ async function deleteSpark(sparkId, db, corsHeaders) {
 /**
  * Toggle spark status (active/inactive)
  */
-async function toggleSparkStatus(sparkId, db, corsHeaders) {
+async function toggleSparkStatus(sparkId, request, db, corsHeaders, env) {
   try {
-    // Get current spark
-    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    // Get current spark - filtered by user_id
+    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     if (!spark) {
@@ -1071,13 +1195,13 @@ async function toggleSparkStatus(sparkId, db, corsHeaders) {
     // Toggle status
     const newStatus = spark.status === 'active' ? 'inactive' : 'active';
     
-    await db.prepare('UPDATE sparks SET status = ? WHERE id = ?')
-      .bind(newStatus, sparkId)
+    await db.prepare('UPDATE sparks SET status = ? WHERE id = ? AND user_id = ?')
+      .bind(newStatus, sparkId, userId)
       .run();
     
     // Fetch updated spark
-    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     return new Response(
@@ -1115,11 +1239,14 @@ async function toggleSparkStatus(sparkId, db, corsHeaders) {
 /**
  * Get spark statistics (placeholder for now)
  */
-async function getSparkStats(sparkId, db, corsHeaders) {
+async function getSparkStats(sparkId, request, db, corsHeaders, env) {
   try {
-    // Get spark to ensure it exists
-    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
-      .bind(sparkId)
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    // Get spark to ensure it exists - filtered by user_id
+    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
+      .bind(sparkId, userId)
       .first();
     
     if (!spark) {

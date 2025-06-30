@@ -9,15 +9,6 @@
           </div>
           <div class="d-flex gap-2">
             <v-btn 
-              v-if="selectedCampaigns.length > 0"
-              color="error" 
-              variant="outlined"
-              @click="bulkDelete"
-            >
-              <v-icon class="mr-2">mdi-delete</v-icon>
-              Delete Selected ({{ selectedCampaigns.length }})
-            </v-btn>
-            <v-btn 
               color="primary" 
               @click="openCreateModal"
               class="elevation-0"
@@ -86,6 +77,83 @@
       </v-card-text>
     </v-card>
     
+    <!-- Bulk Actions Menu -->
+    <v-card 
+      class="mb-4"
+      variant="flat"
+    >
+      <v-card-text class="pa-3">
+        <div class="d-flex align-center justify-space-between">
+          <div class="d-flex align-center gap-3">
+            <v-btn
+              :color="selectedCampaigns.length === campaigns.length && campaigns.length > 0 ? 'primary' : 'default'"
+              :variant="selectedCampaigns.length === campaigns.length && campaigns.length > 0 ? 'tonal' : 'outlined'"
+              size="small"
+              @click="toggleSelectAll()"
+            >
+              <v-icon class="mr-2" size="small">
+                {{ selectedCampaigns.length === campaigns.length && campaigns.length > 0 ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline' }}
+              </v-icon>
+              Select All
+            </v-btn>
+            
+            <div v-if="selectedCampaigns.length > 0" class="d-flex align-center gap-2">
+              <v-divider vertical class="mx-2" />
+              <span class="text-body-2 text-medium-emphasis">
+                {{ selectedCampaigns.length }} campaign{{ selectedCampaigns.length !== 1 ? 's' : '' }} selected
+              </span>
+            </div>
+          </div>
+          
+          <transition
+            name="slide-fade"
+            mode="out-in"
+          >
+            <div v-if="selectedCampaigns.length > 0" class="d-flex align-center">
+              <v-menu>
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    color="primary"
+                    variant="tonal"
+                    v-bind="props"
+                    size="small"
+                    class="mr-3"
+                  >
+                    <v-icon class="mr-2" size="small">mdi-tag-multiple</v-icon>
+                    Set Status
+                  </v-btn>
+                </template>
+                <v-list density="compact">
+                  <v-list-item
+                    v-for="status in ['draft', 'active', 'paused', 'completed']"
+                    :key="status"
+                    @click="bulkUpdateStatus(status)"
+                  >
+                    <template v-slot:prepend>
+                      <v-icon :color="getStatusColor(status)" size="small">
+                        mdi-circle
+                      </v-icon>
+                    </template>
+                    <v-list-item-title>{{ status }}</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+              
+              <v-btn 
+                color="error" 
+                variant="tonal"
+                size="small"
+                @click="bulkDelete"
+              >
+                <v-icon class="mr-2" size="small">mdi-delete</v-icon>
+                Delete Selected
+              </v-btn>
+            </div>
+          </transition>
+        </div>
+      </v-card-text>
+    </v-card>
+    
     <!-- Campaigns Grid -->
     <v-row v-if="isLoading">
       <v-col cols="12" class="text-center">
@@ -106,8 +174,8 @@
         :key="campaign.id" 
         cols="12"
       >
-        <v-card class="campaign-card mb-4" flat>
-          <div class="campaign-header pa-4 pb-3">
+        <v-card class="campaign-card mb-3" flat>
+          <div class="campaign-header pa-3">
             <div class="d-flex align-center justify-space-between">
               <div class="d-flex align-center">
                 <v-checkbox
@@ -118,97 +186,97 @@
                   class="flex-grow-0 mr-3"
                 ></v-checkbox>
                 
-                <div>
-                  <div class="d-flex align-center gap-2 mb-1">
-                    <h3 class="text-h6 font-weight-bold">{{ campaign.name }}</h3>
-                    <v-chip 
-                      :color="getStatusColor(campaign.status)" 
-                      size="small"
-                      label
-                      class="status-chip"
-                    >
-                      {{ campaign.status }}
-                    </v-chip>
-                  </div>
-                  <div class="text-caption text-medium-emphasis">
-                    <v-icon size="x-small" class="mr-1">mdi-identifier</v-icon>
-                    {{ campaign.id }}
-                    <template v-if="campaign.sparkName">
-                      <span class="mx-2">•</span>
-                      <v-icon size="x-small" color="amber" class="mr-1">mdi-lightning-bolt</v-icon>
-                      {{ campaign.sparkName }}
+                <div class="d-flex align-center gap-2">
+                  <v-select
+                    :model-value="campaign.status"
+                    :items="statusOptions"
+                    @update:model-value="(value) => updateCampaignStatus(campaign.id, value)"
+                    density="compact"
+                    hide-details
+                    variant="solo"
+                    flat
+                    style="max-width: 140px;"
+                    class="campaign-status-select"
+                  >
+                    <template v-slot:selection="{ item }">
+                      <v-chip
+                        :color="getStatusColor(item.value)"
+                        size="x-small"
+                      >
+                        {{ item.title }}
+                      </v-chip>
                     </template>
-                  </div>
+                    <template v-slot:item="{ item, props }">
+                      <v-list-item v-bind="props" :title="item.title" density="compact">
+                        <template v-slot:prepend>
+                          <v-icon :color="getStatusColor(item.value)" size="small">
+                            mdi-circle
+                          </v-icon>
+                        </template>
+                      </v-list-item>
+                    </template>
+                  </v-select>
+                  <h3 class="text-subtitle-1 font-weight-bold">{{ campaign.name }}</h3>
+                  <template v-if="campaign.sparkName">
+                    <v-icon size="x-small" color="amber">mdi-lightning-bolt</v-icon>
+                    <span class="text-caption text-medium-emphasis">{{ campaign.sparkName }}</span>
+                  </template>
                 </div>
               </div>
               
-              <div class="d-flex align-center gap-3">
-                <div class="d-flex align-center" style="gap: 4px;">
-                  <span class="text-caption text-medium-emphasis mr-1">{{ campaign.isActive ? 'Active' : 'Inactive' }}</span>
-                  <v-switch
-                    v-model="campaign.isActive"
-                    color="success"
-                    hide-details
-                    density="compact"
-                    @update:model-value="toggleActive(campaign)"
-                    class="flex-grow-0 mr-3"
-                  ></v-switch>
-                </div>
+              <div class="d-flex gap-1">
+                <v-btn
+                  icon
+                  size="small"
+                  variant="plain"
+                  @click="openLaunchesModal(campaign)"
+                >
+                  <v-icon color="purple">mdi-rocket-launch</v-icon>
+                  <v-tooltip activator="parent" location="bottom">Manage Launches</v-tooltip>
+                </v-btn>
                 
-                <div class="d-flex gap-1">
-                  <v-btn
-                    icon
-                    size="small"
-                    variant="plain"
-                    @click="openLaunchesModal(campaign)"
-                  >
-                    <v-icon color="purple">mdi-rocket-launch</v-icon>
-                    <v-tooltip activator="parent" location="bottom">Manage Launches</v-tooltip>
-                  </v-btn>
-                  
-                  
-                  <v-btn
-                    icon
-                    size="small"
-                    variant="plain"
-                    @click="openEditModal(campaign)"
-                  >
-                    <v-icon color="primary">mdi-pencil</v-icon>
-                    <v-tooltip activator="parent" location="bottom">Edit</v-tooltip>
-                  </v-btn>
-                  
-                  <v-btn
-                    icon
-                    size="small"
-                    variant="plain"
-                    @click="duplicateCampaign(campaign)"
-                  >
-                    <v-icon color="blue">mdi-content-copy</v-icon>
-                    <v-tooltip activator="parent" location="bottom">Duplicate</v-tooltip>
-                  </v-btn>
-                  
-                  <v-btn
-                    icon
-                    size="small"
-                    variant="plain"
-                    @click="confirmDelete(campaign)"
-                  >
-                    <v-icon color="error">mdi-delete</v-icon>
-                    <v-tooltip activator="parent" location="bottom">Delete</v-tooltip>
-                  </v-btn>
-                </div>
+                
+                <v-btn
+                  icon
+                  size="small"
+                  variant="plain"
+                  @click="openEditModal(campaign)"
+                >
+                  <v-icon color="primary">mdi-pencil</v-icon>
+                  <v-tooltip activator="parent" location="bottom">Edit</v-tooltip>
+                </v-btn>
+                
+                <v-btn
+                  icon
+                  size="small"
+                  variant="plain"
+                  @click="duplicateCampaign(campaign)"
+                >
+                  <v-icon color="blue">mdi-content-copy</v-icon>
+                  <v-tooltip activator="parent" location="bottom">Duplicate</v-tooltip>
+                </v-btn>
+                
+                <v-btn
+                  icon
+                  size="small"
+                  variant="plain"
+                  @click="confirmDelete(campaign)"
+                >
+                  <v-icon color="error">mdi-delete</v-icon>
+                  <v-tooltip activator="parent" location="bottom">Delete</v-tooltip>
+                </v-btn>
               </div>
             </div>
           </div>
           
           <v-divider></v-divider>
           
-          <div class="pa-4">
+          <div class="pa-3">
             <v-row>
               <!-- Stores Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="info-section">
-                  <div class="section-title mb-3">
+                  <div class="section-title mb-2">
                     <v-icon size="small" class="mr-1">mdi-store</v-icon>
                     Stores
                   </div>
@@ -239,7 +307,7 @@
               <!-- Regions Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="info-section">
-                  <div class="section-title mb-3">
+                  <div class="section-title mb-2">
                     <v-icon size="small" class="mr-1">mdi-earth</v-icon>
                     Target Regions
                   </div>
@@ -265,7 +333,7 @@
               <!-- Template Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="info-section">
-                  <div class="section-title mb-3">
+                  <div class="section-title mb-2">
                     <v-icon size="small" class="mr-1">mdi-file-document</v-icon>
                     Template
                   </div>
@@ -278,7 +346,7 @@
               <!-- Stats Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="stats-section">
-                  <div class="stat-item mb-3">
+                  <div class="stat-item mb-2">
                     <div class="stat-value">
                       <v-icon size="small" color="primary" class="mr-1">mdi-web</v-icon>
                       {{ campaign.traffic || 0 }}
@@ -334,43 +402,32 @@
         <v-card-text>
           <v-form ref="campaignForm">
             <!-- Status at the top -->
-            <div class="mb-4">
-              <p class="text-subtitle-2 mb-2">Status</p>
-              <v-chip-group
-                v-model="formData.status"
-                mandatory
-                selected-class="v-chip--selected"
-              >
+            <v-select
+              v-model="formData.status"
+              label="Status"
+              :items="statusOptions"
+              variant="outlined"
+              class="mb-4"
+              :rules="[v => !!v || 'Status is required']"
+            >
+              <template v-slot:selection="{ item }">
                 <v-chip
-                  value="draft"
-                  color="grey"
-                  variant="tonal"
+                  :color="getStatusColor(item.value)"
+                  size="small"
                 >
-                  Draft
+                  {{ item.title }}
                 </v-chip>
-                <v-chip
-                  value="active"
-                  color="success"
-                  variant="tonal"
-                >
-                  Active
-                </v-chip>
-                <v-chip
-                  value="paused"
-                  color="warning"
-                  variant="tonal"
-                >
-                  Paused
-                </v-chip>
-                <v-chip
-                  value="completed"
-                  color="info"
-                  variant="tonal"
-                >
-                  Completed
-                </v-chip>
-              </v-chip-group>
-            </div>
+              </template>
+              <template v-slot:item="{ item, props }">
+                <v-list-item v-bind="props" :title="item.title">
+                  <template v-slot:prepend>
+                    <v-icon :color="getStatusColor(item.value)" size="small">
+                      mdi-circle
+                    </v-icon>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
 
             <!-- Basic Information -->
             <v-text-field
@@ -896,6 +953,7 @@ const searchQuery = ref('');
 const statusFilter = ref('all');
 const regionFilter = ref('all');
 const selectedCampaigns = ref([]);
+const selectAllCheckbox = ref(false);
 const itemsPerPage = ref(10);
 const currentPage = ref(1);
 const totalPages = ref(1);
@@ -957,6 +1015,14 @@ const availableRegions = [
   { title: 'Slovakia', value: 'SK' }
 ];
 
+// Status options for select
+const statusOptions = [
+  { title: 'Draft', value: 'draft' },
+  { title: 'Active', value: 'active' },
+  { title: 'Paused', value: 'paused' },
+  { title: 'Completed', value: 'completed' }
+];
+
 // Table headers
 const headers = [
   { title: 'Campaign', key: 'name', sortable: true },
@@ -985,6 +1051,10 @@ const fetchCampaigns = async () => {
     const data = await campaignsApi.listCampaigns(params);
     campaigns.value = data.campaigns || [];
     totalPages.value = data.totalPages || 1;
+    
+    // Reset selections when fetching new data
+    selectAllCheckbox.value = false;
+    selectedCampaigns.value = [];
   } catch (error) {
     showError('Failed to load campaigns');
     console.error(error);
@@ -1168,6 +1238,21 @@ const bulkDelete = async () => {
   }
 };
 
+const bulkUpdateStatus = async (status) => {
+  if (selectedCampaigns.value.length === 0) return;
+  
+  try {
+    await Promise.all(
+      selectedCampaigns.value.map(id => campaignsApi.updateCampaignStatus(id, status))
+    );
+    showSuccess(`${selectedCampaigns.value.length} campaigns updated to ${status}`);
+    selectedCampaigns.value = [];
+    fetchCampaigns();
+  } catch (error) {
+    showError('Failed to update some campaigns');
+  }
+};
+
 const duplicateCampaign = async (campaign) => {
   try {
     const data = await campaignsApi.getCampaign(campaign.id);
@@ -1218,6 +1303,22 @@ const updateStatus = async (status) => {
     showStatusMenu.value = false;
   } catch (error) {
     showError('Failed to update status');
+  }
+};
+
+const updateCampaignStatus = async (campaignId, status) => {
+  try {
+    await campaignsApi.updateCampaignStatus(campaignId, status);
+    // Update the campaign in the local list
+    const campaign = campaigns.value.find(c => c.id === campaignId);
+    if (campaign) {
+      campaign.status = status;
+    }
+    showSuccess('Campaign status updated');
+  } catch (error) {
+    showError('Failed to update status');
+    // Refresh the list to revert the change
+    fetchCampaigns();
   }
 };
 
@@ -1494,6 +1595,26 @@ const toggleSelection = (campaignId) => {
   } else {
     selectedCampaigns.value.push(campaignId);
   }
+  
+  // Update select all checkbox state
+  selectAllCheckbox.value = selectedCampaigns.value.length === campaigns.value.length && campaigns.value.length > 0;
+};
+
+const toggleSelectAll = () => {
+  if (selectedCampaigns.value.length === campaigns.value.length && campaigns.value.length > 0) {
+    // All are selected, so deselect all
+    selectedCampaigns.value = [];
+    selectAllCheckbox.value = false;
+  } else {
+    // Not all are selected, so select all
+    selectedCampaigns.value = campaigns.value.map(c => c.id);
+    selectAllCheckbox.value = true;
+  }
+};
+
+const clearSelection = () => {
+  selectedCampaigns.value = [];
+  selectAllCheckbox.value = false;
 };
 
 const changePage = (page) => {
@@ -1562,7 +1683,7 @@ onMounted(() => {
 .status-chip {
   font-weight: 500;
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: 0.625rem;
 }
 
 .section-title {
@@ -1575,7 +1696,7 @@ onMounted(() => {
 }
 
 .info-section {
-  min-height: 100px;
+  min-height: 80px;
 }
 
 .store-item {
@@ -1603,7 +1724,7 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1790,6 +1911,54 @@ onMounted(() => {
 
 .v-theme--dark .launches-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Active chip menu */
+.active-chip-menu {
+  cursor: pointer;
+}
+
+.active-chip-menu:hover {
+  opacity: 0.8;
+}
+
+/* Slide fade transition */
+.slide-fade-enter-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.slide-fade-enter-from {
+  transform: translateX(10px);
+  opacity: 0;
+}
+
+.slide-fade-leave-to {
+  transform: translateX(-10px);
+  opacity: 0;
+}
+
+/* Cursor pointer utility */
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Campaign status select */
+.campaign-status-select :deep(.v-field) {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.campaign-status-select :deep(.v-field__input) {
+  padding: 0;
+  min-height: auto;
+}
+
+.campaign-status-select :deep(.v-field__append-inner) {
+  padding-top: 0;
 }
 
 </style>

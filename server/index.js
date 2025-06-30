@@ -7,6 +7,7 @@ import { handleSparkData } from './Dashboard/Sparks/Sparks';
 import { handleTemplateData } from './Dashboard/Templates/Templates';
 import { handleShopifyStoresData } from './Dashboard/ShopifyStores/ShopifyStores';
 import handleCampaignsAPI from './Dashboard/Campaigns/Campaigns';
+import { handleLogsData } from './Dashboard/Logs/Logs';
 
 export default {
   async fetch(request, env) {
@@ -84,6 +85,13 @@ export default {
       if (path.startsWith('/api/campaigns')) {
         return requireAuth(request, env, async (req, env) => {
           return handleCampaignsAPI(req, env, path);
+        });
+      }
+      
+      // Route Logs API requests (protected)
+      if (path.startsWith('/api/logs')) {
+        return requireAuth(request, env, async (req, env) => {
+          return handleLogsData(req, env);
         });
       }
       

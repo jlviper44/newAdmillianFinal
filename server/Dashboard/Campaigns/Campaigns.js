@@ -12,6 +12,7 @@ async function initializeCampaignsTable(db) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS campaigns (
         id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
         regions TEXT NOT NULL, -- JSON array of regions
@@ -32,6 +33,25 @@ async function initializeCampaignsTable(db) {
       )
     `).run();
     
+    // Add user_id column if it doesn't exist (for existing tables)
+    try {
+      // Check if user_id column exists
+      const tableInfo = await db.prepare(`PRAGMA table_info(campaigns)`).all();
+      const hasUserIdColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        // Add user_id column with default value
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        console.log('Added user_id column to campaigns table');
+        
+        // Update any NULL user_id values to 'default_user'
+        await db.prepare(`UPDATE campaigns SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+        console.log('Updated NULL user_id values to default_user');
+      }
+    } catch (error) {
+      console.error('Error handling user_id column:', error);
+    }
+    
     console.log('Campaigns table initialized successfully');
   } catch (error) {
     console.error('Error initializing campaigns table:', error);
@@ -49,20 +69,68 @@ function generateId() {
 }
 
 /**
+ * Extract user_id from session
+ */
+async function getUserIdFromSession(request, env) {
+  try {
+    const sessionCookie = request.headers.get('Cookie');
+    if (!sessionCookie) {
+      throw new Error('No session cookie found');
+    }
+    
+    const sessionId = sessionCookie.split('session=')[1]?.split(';')[0];
+    if (!sessionId) {
+      throw new Error('No session ID found in cookie');
+    }
+    
+    const session = await env.USERS_DB.prepare(
+      'SELECT user_id FROM sessions WHERE session_id = ? AND expires_at > datetime("now")'
+    ).bind(sessionId).first();
+    
+    if (!session) {
+      throw new Error('Invalid or expired session');
+    }
+    
+    return session.user_id;
+  } catch (error) {
+    console.error('Error extracting user_id from session:', error);
+    throw new Error('Authentication required');
+  }
+}
+
+/**
  * List all campaigns with filtering and pagination
  */
-async function listCampaigns(db, request) {
+async function listCampaigns(db, request, env) {
   try {
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(campaigns)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('campaigns table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE campaigns SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
+    
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '10');
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
+    const region = url.searchParams.get('region') || 'all';
     const offset = (page - 1) * limit;
     
-    // Build query conditions
-    let whereConditions = [];
-    let params = [];
+    // Build query conditions - always include user_id filter
+    let whereConditions = ['user_id = ?'];
+    let params = [userId];
     
     if (search) {
       whereConditions.push('(name LIKE ? OR id LIKE ?)');
@@ -74,9 +142,23 @@ async function listCampaigns(db, request) {
       params.push(status);
     }
     
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}`
-      : '';
+    if (region !== 'all') {
+      // Since regions is stored as a JSON array, we need to search within it
+      // Using LIKE operator for compatibility with Cloudflare D1
+      whereConditions.push(`regions LIKE ?`);
+      params.push(`%"${region}"%`);
+    }
+    
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+    
+    // Log query details for debugging
+    console.log('Campaign query filters:', {
+      search,
+      status,
+      region,
+      whereClause,
+      params
+    });
     
     // Get total count
     const countQuery = `SELECT COUNT(*) as total FROM campaigns ${whereClause}`;
@@ -148,9 +230,23 @@ async function listCampaigns(db, request) {
 /**
  * Get a single campaign by ID
  */
-async function getCampaign(db, campaignId) {
+async function getCampaign(db, campaignId, request, env) {
   try {
     console.log('Getting campaign:', campaignId);
+    
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(campaigns)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('campaigns table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE campaigns SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
     
     if (!campaignId) {
       return new Response(
@@ -162,9 +258,12 @@ async function getCampaign(db, campaignId) {
       );
     }
     
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const campaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!campaign) {
       return new Response(
@@ -222,8 +321,11 @@ async function getCampaign(db, campaignId) {
 /**
  * Create a new campaign
  */
-async function createCampaign(db, request) {
+async function createCampaign(db, request, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const campaignData = await request.json();
     
     // Validate required fields
@@ -312,12 +414,13 @@ async function createCampaign(db, request) {
     // Insert campaign
     await db.prepare(`
       INSERT INTO campaigns (
-        id, name, description, regions, tiktok_store_id, redirect_store_id,
+        id, user_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
         status, is_active, traffic, launches, max_launch_number, total_launches
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
+      userId,
       campaignData.name,
       campaignData.description || null,
       JSON.stringify(campaignData.regions),
@@ -337,8 +440,8 @@ async function createCampaign(db, request) {
     
     // Fetch and return the created campaign
     const created = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     const response = {
       ...created,
@@ -375,12 +478,15 @@ async function createCampaign(db, request) {
 /**
  * Update an existing campaign
  */
-async function updateCampaign(db, campaignId, request) {
+async function updateCampaign(db, campaignId, request, env) {
   try {
-    // Check if campaign exists
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    // Check if campaign exists and belongs to user
     const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!existingCampaign) {
       return new Response(
@@ -420,7 +526,7 @@ async function updateCampaign(db, campaignId, request) {
         status = ?,
         is_active = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
+      WHERE id = ? AND user_id = ?
     `).bind(
       campaignData.name,
       campaignData.description || null,
@@ -433,13 +539,14 @@ async function updateCampaign(db, campaignId, request) {
       campaignData.affiliateLink || null,
       campaignData.status || existingCampaign.status,
       campaignData.isActive !== false ? 1 : 0,
-      campaignId
+      campaignId,
+      userId
     ).run();
     
     // Fetch and return the updated campaign
     const updated = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     const response = {
       ...updated,
@@ -481,12 +588,15 @@ async function updateCampaign(db, campaignId, request) {
 /**
  * Delete a campaign
  */
-async function deleteCampaign(db, campaignId) {
+async function deleteCampaign(db, campaignId, request, env) {
   try {
-    // Check if campaign exists
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    // Check if campaign exists and belongs to user
     const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!existingCampaign) {
       return new Response(
@@ -500,8 +610,8 @@ async function deleteCampaign(db, campaignId) {
     
     // Delete campaign
     await db.prepare(
-      'DELETE FROM campaigns WHERE id = ?'
-    ).bind(campaignId).run();
+      'DELETE FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).run();
     
     return new Response(
       JSON.stringify({ 
@@ -530,11 +640,14 @@ async function deleteCampaign(db, campaignId) {
 /**
  * Toggle campaign active status
  */
-async function toggleCampaignActive(db, campaignId) {
+async function toggleCampaignActive(db, campaignId, request, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!existingCampaign) {
       return new Response(
@@ -554,8 +667,8 @@ async function toggleCampaignActive(db, campaignId) {
         is_active = ?,
         status = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(newIsActive, newStatus, campaignId).run();
+      WHERE id = ? AND user_id = ?
+    `).bind(newIsActive, newStatus, campaignId, userId).run();
     
     return new Response(
       JSON.stringify({
@@ -585,11 +698,14 @@ async function toggleCampaignActive(db, campaignId) {
 /**
  * Update campaign status
  */
-async function toggleCampaignStatus(db, campaignId, request) {
+async function toggleCampaignStatus(db, campaignId, request, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!existingCampaign) {
       return new Response(
@@ -603,7 +719,7 @@ async function toggleCampaignStatus(db, campaignId, request) {
     
     const { status } = await request.json();
     
-    if (!['active', 'paused', 'completed'].includes(status)) {
+    if (!['draft', 'active', 'paused', 'completed'].includes(status)) {
       return new Response(
         JSON.stringify({ error: 'Invalid status' }),
         {
@@ -620,13 +736,13 @@ async function toggleCampaignStatus(db, campaignId, request) {
         status = ?,
         is_active = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(status, isActive, campaignId).run();
+      WHERE id = ? AND user_id = ?
+    `).bind(status, isActive, campaignId, userId).run();
     
     // Fetch and return the updated campaign
     const updated = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     const response = {
       ...updated,
@@ -668,16 +784,19 @@ async function toggleCampaignStatus(db, campaignId, request) {
 /**
  * Manage campaign launches (add, toggle)
  */
-async function manageCampaignLaunches(db, campaignId, request) {
+async function manageCampaignLaunches(db, campaignId, request, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const requestData = await request.json();
     const { action, launchData } = requestData;
     
     console.log(`Managing launches for campaign ${campaignId}: ${action}`);
     
     const campaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!campaign) {
       return new Response(
@@ -732,12 +851,13 @@ async function manageCampaignLaunches(db, campaignId, request) {
         max_launch_number = ?,
         total_launches = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
+      WHERE id = ? AND user_id = ?
     `).bind(
       JSON.stringify(launches),
       maxLaunchNumber,
       Object.keys(launches).length,
-      campaignId
+      campaignId,
+      userId
     ).run();
     
     return new Response(JSON.stringify({
@@ -766,8 +886,11 @@ async function manageCampaignLaunches(db, campaignId, request) {
  * Note: This is a simplified version that returns the campaign data
  * The actual link generation would need to integrate with Shopify API
  */
-async function generateCampaignLink(db, request) {
+async function generateCampaignLink(db, request, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const requestData = await request.json();
     const { campaignId, launchNumber } = requestData;
         
@@ -782,8 +905,8 @@ async function generateCampaignLink(db, request) {
     
     // Fetch campaign data
     const campaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ?'
-    ).bind(campaignId).first();
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+    ).bind(campaignId, userId).first();
     
     if (!campaign) {
       return new Response(
@@ -813,8 +936,8 @@ async function generateCampaignLink(db, request) {
       UPDATE campaigns SET 
         launches = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(JSON.stringify(launches), campaignId).run();
+      WHERE id = ? AND user_id = ?
+    `).bind(JSON.stringify(launches), campaignId, userId).run();
     
     // Generate the link format (simplified - actual implementation would integrate with Shopify)
     const pageHandle = `cloak-${campaignId}-${launch}`;
@@ -888,39 +1011,39 @@ export default async function handleCampaignsAPI(request, env, path) {
     switch (true) {
       // List campaigns
       case path === '/api/campaigns' && request.method === 'GET':
-        return await listCampaigns(db, request);
+        return await listCampaigns(db, request, env);
       
       // Create campaign
       case path === '/api/campaigns' && request.method === 'POST':
-        return await createCampaign(db, request);
+        return await createCampaign(db, request, env);
       
       // Generate link
       case path === '/api/campaigns/generate-link' && request.method === 'POST':
-        return await generateCampaignLink(db, request);
+        return await generateCampaignLink(db, request, env);
       
       // Get single campaign - match pattern /api/campaigns/{id}
       case pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'campaigns' && request.method === 'GET' && campaignId && !subPath:
-        return await getCampaign(db, campaignId);
+        return await getCampaign(db, campaignId, request, env);
       
       // Update campaign
       case pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'campaigns' && request.method === 'PUT' && campaignId && !subPath:
-        return await updateCampaign(db, campaignId, request);
+        return await updateCampaign(db, campaignId, request, env);
       
       // Delete campaign
       case pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'campaigns' && request.method === 'DELETE' && campaignId && !subPath:
-        return await deleteCampaign(db, campaignId);
+        return await deleteCampaign(db, campaignId, request, env);
       
       // Toggle active status
       case subPath === 'toggle-active' && request.method === 'POST':
-        return await toggleCampaignActive(db, campaignId);
+        return await toggleCampaignActive(db, campaignId, request, env);
       
       // Update status
       case subPath === 'status' && request.method === 'PUT':
-        return await toggleCampaignStatus(db, campaignId, request);
+        return await toggleCampaignStatus(db, campaignId, request, env);
       
       // Manage launches
       case subPath === 'launches' && request.method === 'POST':
-        return await manageCampaignLaunches(db, campaignId, request);
+        return await manageCampaignLaunches(db, campaignId, request, env);
       
       default:
         console.log('No matching route found for:', {

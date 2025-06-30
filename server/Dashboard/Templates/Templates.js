@@ -67,6 +67,7 @@ async function initializeTemplatesTable(db) {
       await db.prepare(`
         CREATE TABLE IF NOT EXISTS templates (
           id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
           name TEXT NOT NULL,
           description TEXT,
           category TEXT DEFAULT 'general',
@@ -90,6 +91,25 @@ async function initializeTemplatesTable(db) {
     await db.prepare(`
       CREATE INDEX IF NOT EXISTS idx_templates_updated ON templates(updated_at)
     `).run();
+    
+    // Add user_id column if it doesn't exist (for existing tables)
+    try {
+      // Check if user_id column exists
+      const tableInfo = await db.prepare(`PRAGMA table_info(templates)`).all();
+      const hasUserIdColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        // Add user_id column with default value
+        await db.prepare(`ALTER TABLE templates ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        console.log('Added user_id column to templates table');
+        
+        // Update any NULL user_id values to 'default_user'
+        await db.prepare(`UPDATE templates SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+        console.log('Updated NULL user_id values to default_user');
+      }
+    } catch (error) {
+      console.error('Error handling user_id column:', error);
+    }
 
     // Create trigger to automatically update the updated_at timestamp
     await db.prepare(`
@@ -105,6 +125,37 @@ async function initializeTemplatesTable(db) {
   } catch (error) {
     console.error('Templates table initialization error:', error);
     return false;
+  }
+}
+
+/**
+ * Extract user_id from session
+ */
+async function getUserIdFromSession(request, env) {
+  try {
+    const sessionCookie = request.headers.get('Cookie');
+    if (!sessionCookie) {
+      throw new Error('No session cookie found');
+    }
+    
+    // Fix: Look for 'session=' instead of 'session_id='
+    const sessionId = sessionCookie.split('session=')[1]?.split(';')[0];
+    if (!sessionId) {
+      throw new Error('No session ID found in cookie');
+    }
+    
+    const session = await env.USERS_DB.prepare(
+      'SELECT user_id FROM sessions WHERE session_id = ? AND expires_at > datetime("now")'
+    ).bind(sessionId).first();
+    
+    if (!session) {
+      throw new Error('Invalid or expired session');
+    }
+    
+    return session.user_id;
+  } catch (error) {
+    console.error('Error extracting user_id from session:', error);
+    throw new Error('Authentication required');
   }
 }
 
@@ -173,40 +224,40 @@ export async function handleTemplateData(request, env) {
   try {
     // List Templates
     if (path === '/api/templates' && method === 'GET') {
-      return await listTemplates(request, db, corsHeaders);
+      return await listTemplates(request, db, corsHeaders, env);
     }
 
     if (path === '/api/templates/list' && method === 'GET') {
-      return await listTemplatesForDropdown(db, corsHeaders);
+      return await listTemplatesForDropdown(request, db, corsHeaders, env);
     }
     
     // Create Template
     if (path === '/api/templates' && method === 'POST') {
-      return await createTemplate(request, db, corsHeaders);
+      return await createTemplate(request, db, corsHeaders, env);
     }
     
     // Get Template Details
     if (path.match(/^\/api\/templates\/[\w-]+$/) && method === 'GET') {
       const templateId = path.split('/').pop();
-      return await getTemplate(templateId, db, corsHeaders);
+      return await getTemplate(templateId, request, db, corsHeaders, env);
     }
     
     // Update Template
     if (path.match(/^\/api\/templates\/[\w-]+$/) && method === 'PUT') {
       const templateId = path.split('/').pop();
-      return await updateTemplate(templateId, request, db, corsHeaders);
+      return await updateTemplate(templateId, request, db, corsHeaders, env);
     }
     
     // Delete Template
     if (path.match(/^\/api\/templates\/[\w-]+$/) && method === 'DELETE') {
       const templateId = path.split('/').pop();
-      return await deleteTemplate(templateId, db, corsHeaders);
+      return await deleteTemplate(templateId, request, db, corsHeaders, env);
     }
     
     // Duplicate Template
     if (path.match(/^\/api\/templates\/[\w-]+\/duplicate$/) && method === 'POST') {
       const templateId = path.split('/').slice(-2)[0];
-      return await duplicateTemplate(templateId, db, corsHeaders);
+      return await duplicateTemplate(templateId, request, db, corsHeaders, env);
     }
     
     // Template Categories
@@ -247,13 +298,30 @@ export async function handleTemplateData(request, env) {
 /**
  * List templates with pagination and filtering
  */
-async function listTemplates(request, db, corsHeaders) {
+async function listTemplates(request, db, corsHeaders, env) {
   try {
     console.log('listTemplates called');
     
     if (!db) {
       throw new Error('Database connection is null');
     }
+    
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(templates)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('templates table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE templates ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE templates SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
+    
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -263,9 +331,9 @@ async function listTemplates(request, db, corsHeaders) {
     
     console.log('Query params:', { page, limit, search, category });
     
-    // Build the query
-    let query = 'SELECT * FROM templates WHERE 1=1';
-    const params = [];
+    // Build the query - always include user_id filter
+    let query = 'SELECT * FROM templates WHERE user_id = ?';
+    const params = [userId];
     
     // Apply search filter
     if (search) {
@@ -349,10 +417,27 @@ async function listTemplates(request, db, corsHeaders) {
 /**
  * Get a specific template by ID
  */
-async function getTemplate(templateId, db, corsHeaders) {
+async function getTemplate(templateId, request, db, corsHeaders, env) {
   try {
-    const template = await db.prepare('SELECT * FROM templates WHERE id = ?')
-      .bind(templateId)
+    // First ensure the table has user_id column
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(templates)`).all();
+      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
+      
+      if (!hasUserIdColumn) {
+        console.log('templates table missing user_id column, adding it now...');
+        await db.prepare(`ALTER TABLE templates ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
+        await db.prepare(`UPDATE templates SET user_id = 'default_user' WHERE user_id IS NULL`).run();
+      }
+    } catch (e) {
+      console.error('Error checking/adding user_id column:', e);
+    }
+    
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
+    const template = await db.prepare('SELECT * FROM templates WHERE id = ? AND user_id = ?')
+      .bind(templateId, userId)
       .first();
     
     if (!template) {
@@ -400,8 +485,11 @@ async function getTemplate(templateId, db, corsHeaders) {
 /**
  * Create a new template
  */
-async function createTemplate(request, db, corsHeaders) {
+async function createTemplate(request, db, corsHeaders, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     const templateData = await request.json();
     
     // Validate required fields
@@ -438,10 +526,11 @@ async function createTemplate(request, db, corsHeaders) {
     
     // Insert into database
     await db.prepare(`
-      INSERT INTO templates (id, name, description, category, html, version)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO templates (id, user_id, name, description, category, html, version)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
+      userId,
       templateData.name,
       description,
       category,
@@ -486,11 +575,14 @@ async function createTemplate(request, db, corsHeaders) {
 /**
  * Update an existing template
  */
-async function updateTemplate(templateId, request, db, corsHeaders) {
+async function updateTemplate(templateId, request, db, corsHeaders, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     // Get existing template
-    const existingTemplate = await db.prepare('SELECT * FROM templates WHERE id = ?')
-      .bind(templateId)
+    const existingTemplate = await db.prepare('SELECT * FROM templates WHERE id = ? AND user_id = ?')
+      .bind(templateId, userId)
       .first();
     
     if (!existingTemplate) {
@@ -540,18 +632,19 @@ async function updateTemplate(templateId, request, db, corsHeaders) {
     await db.prepare(`
       UPDATE templates 
       SET name = ?, description = ?, category = ?, html = ?, version = version + 1
-      WHERE id = ?
+      WHERE id = ? AND user_id = ?
     `).bind(
       templateData.name,
       templateData.description || existingTemplate.description || '',
       templateData.category || existingTemplate.category || 'general',
       templateData.html,
-      templateId
+      templateId,
+      userId
     ).run();
     
     // Fetch the updated template
-    const updatedTemplate = await db.prepare('SELECT * FROM templates WHERE id = ?')
-      .bind(templateId)
+    const updatedTemplate = await db.prepare('SELECT * FROM templates WHERE id = ? AND user_id = ?')
+      .bind(templateId, userId)
       .first();
     
     return new Response(
@@ -586,11 +679,14 @@ async function updateTemplate(templateId, request, db, corsHeaders) {
 /**
  * Delete a template
  */
-async function deleteTemplate(templateId, db, corsHeaders) {
+async function deleteTemplate(templateId, request, db, corsHeaders, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     // Get existing template
-    const existingTemplate = await db.prepare('SELECT * FROM templates WHERE id = ?')
-      .bind(templateId)
+    const existingTemplate = await db.prepare('SELECT * FROM templates WHERE id = ? AND user_id = ?')
+      .bind(templateId, userId)
       .first();
     
     if (!existingTemplate) {
@@ -643,7 +739,7 @@ async function deleteTemplate(templateId, db, corsHeaders) {
     }
     
     // Delete from database
-    await db.prepare('DELETE FROM templates WHERE id = ?').bind(templateId).run();
+    await db.prepare('DELETE FROM templates WHERE id = ? AND user_id = ?').bind(templateId, userId).run();
     
     return new Response(
       JSON.stringify({ 
@@ -680,11 +776,14 @@ async function deleteTemplate(templateId, db, corsHeaders) {
 /**
  * Duplicate a template
  */
-async function duplicateTemplate(templateId, db, corsHeaders) {
+async function duplicateTemplate(templateId, request, db, corsHeaders, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     // Get existing template
-    const existingTemplate = await db.prepare('SELECT * FROM templates WHERE id = ?')
-      .bind(templateId)
+    const existingTemplate = await db.prepare('SELECT * FROM templates WHERE id = ? AND user_id = ?')
+      .bind(templateId, userId)
       .first();
     
     if (!existingTemplate) {
@@ -705,10 +804,11 @@ async function duplicateTemplate(templateId, db, corsHeaders) {
     const newName = `${existingTemplate.name} (Copy)`;
     
     await db.prepare(`
-      INSERT INTO templates (id, name, description, category, html, version)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO templates (id, user_id, name, description, category, html, version)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(
       newId,
+      userId,
       newName,
       existingTemplate.description,
       existingTemplate.category,
@@ -717,8 +817,8 @@ async function duplicateTemplate(templateId, db, corsHeaders) {
     ).run();
     
     // Fetch the created template
-    const newTemplate = await db.prepare('SELECT * FROM templates WHERE id = ?')
-      .bind(newId)
+    const newTemplate = await db.prepare('SELECT * FROM templates WHERE id = ? AND user_id = ?')
+      .bind(newId, userId)
       .first();
     
     return new Response(
@@ -804,14 +904,18 @@ function generateId() {
     .join('');
 }
 
-async function listTemplatesForDropdown(db, corsHeaders) {
+async function listTemplatesForDropdown(request, db, corsHeaders, env) {
   try {
+    // Get user_id from session
+    const userId = await getUserIdFromSession(request, env);
+    
     // Fetch only essential data for dropdown
     const result = await db.prepare(`
       SELECT id, name, category 
       FROM templates 
+      WHERE user_id = ?
       ORDER BY category, name
-    `).all();
+    `).bind(userId).all();
     
     const templates = result.results;
     
