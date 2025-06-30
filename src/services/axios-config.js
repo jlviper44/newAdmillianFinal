@@ -32,7 +32,6 @@ axiosInstance.interceptors.response.use(
       // Don't logout for metrics endpoints
       const url = error.config?.url || ''
       if (url.includes('/metrics/') || url.includes('/affiliate/')) {
-        console.warn('Metrics API requires authentication')
         return Promise.reject(error)
       }
       

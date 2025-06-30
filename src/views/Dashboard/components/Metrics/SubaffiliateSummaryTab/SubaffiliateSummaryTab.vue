@@ -109,7 +109,6 @@ watch(
     if ((newApiKey && newAffiliateId) && 
         (newApiKey !== oldApiKey || newAffiliateId !== oldAffiliateId) &&
         startDateLocal.value && endDateLocal.value) {
-      console.log('API credentials changed, refreshing data')
       applyDateFilter()
     }
   }
@@ -232,31 +231,14 @@ const fetchDayData = async (date) => {
     const dayEnd = new Date(date)
     dayEnd.setHours(23, 59, 59, 999)
     
-    console.log(`Fetching subaffiliate data for ${dayStart.toLocaleDateString()}`)
     
     const requestParams = getRequestParams(dayStart, dayEnd)
-    console.log('Subaffiliate request params:', {
-      api_key: requestParams.api_key ? `${requestParams.api_key.substring(0, 10)}...` : 'MISSING',
-      affiliate_id: requestParams.affiliate_id || 'MISSING',
-      start_date: requestParams.start_date,
-      end_date: requestParams.end_date,
-      fields: requestParams.fields
-    })
     
     const response = await metricsApi.getSubaffiliateSummary(requestParams)
-    
-    console.log('Subaffiliate API Response:', {
-      status: response.status,
-      hasData: response.data?.data !== undefined,
-      success: response.data?.success,
-      error: response.data?.error,
-      dataLength: Array.isArray(response.data?.data) ? response.data.data.length : 'N/A'
-    })
     
     // Add date information to each record
     let data = []
     if (response.data && response.data.success === false) {
-      console.error('Subaffiliate API error:', response.data.error)
       throw new Error(response.data.error || 'Failed to fetch subaffiliate data')
     } else if (response.data?.data?.data?.data && Array.isArray(response.data.data.data.data)) {
       // Affluent API returns nested structure: { data: { success: true, data: { row_count: X, data: [...] } } }
@@ -265,39 +247,24 @@ const fetchDayData = async (date) => {
         fetched_date: dayStart.toISOString().split('T')[0] // Add date in YYYY-MM-DD format
       }))
       const rowCount = response.data.data.data.row_count || data.length
-      console.log(`Loaded ${data.length} subaffiliate records for ${dayStart.toLocaleDateString()} (total rows: ${rowCount})`)
     } else if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
       // Alternative structure: { data: { success: true, data: [...] } }
       data = response.data.data.data.map(item => ({
         ...item,
         fetched_date: dayStart.toISOString().split('T')[0]
       }))
-      console.log(`Loaded ${data.length} subaffiliate records for ${dayStart.toLocaleDateString()}`)
     } else if (response.data?.data && Array.isArray(response.data.data)) {
       // Simpler structure: { data: [...] }
       data = response.data.data.map(item => ({
         ...item,
         fetched_date: dayStart.toISOString().split('T')[0]
       }))
-      console.log(`Loaded ${data.length} subaffiliate records (simple structure) for ${dayStart.toLocaleDateString()}`)
     } else {
-      console.log('No subaffiliate data found in response. Structure:', {
-        hasData: !!response.data,
-        hasDataData: !!response.data?.data,
-        hasDataDataData: !!response.data?.data?.data,
-        hasDataDataDataData: !!response.data?.data?.data?.data
-      })
       data = []
     }
     
     return data
   } catch (error) {
-    console.error(`Error fetching data for ${date}:`, error)
-    console.error('Error details:', {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status
-    })
     throw error
   }
 }
@@ -339,7 +306,6 @@ const applyDateFilter = async () => {
         .catch(error => {
           // Update progress even on error, but return empty array
           processedDays.value++
-          console.error(`Error processing day ${date.toLocaleDateString()}:`, error)
           return [] // Return empty array to continue with other dates
         })
     })
@@ -356,7 +322,6 @@ const applyDateFilter = async () => {
       localErrorState.value = "No data found for the selected date range."
     }
   } catch (error) {
-    console.error("Error fetching daily data:", error)
     localErrorState.value = error.message || "Failed to fetch data for the selected date range."
   } finally {
     localLoadingState.value = false

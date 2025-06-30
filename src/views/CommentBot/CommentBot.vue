@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { commentBotApi, usersApi } from '@/services/api';
 import AuthGuard from '@/components/AuthGuard.vue';
@@ -59,6 +59,9 @@ const showCreateGroupDialog = ref(false);
 const showEditGroupDialog = ref(false);
 const showGroupDetailDialog = ref(false);
 const currentTab = ref('orders');
+
+// Get route
+const route = useRoute();
 
 // Polling management
 const pollingIntervals = ref({});
@@ -153,8 +156,6 @@ const createOrder = async (newOrder) => {
       try {
         // Calculate total credits needed - 1 credit per order
         const totalCreditsNeeded = pendingOrders.value.length;
-        console.log('Processing orders:', pendingOrders.value.length);
-        console.log('Total credits needed:', totalCreditsNeeded);
         
         // Deduct all credits at once
         const creditResult = await usersApi.useCredits({ 
@@ -222,7 +223,6 @@ const fetchCredits = async () => {
     const commentBotData = data.subscriptions?.comment_bot;
     remainingCredits.value = commentBotData?.totalCredits || 0;
     
-    console.log('Comment Bot credits:', remainingCredits.value);
   } catch (err) {
     error.value.credits = err.message || 'Failed to fetch credits';
     remainingCredits.value = 0;
@@ -233,7 +233,6 @@ const fetchCredits = async () => {
 
 // Order status polling
 const pollOrderStatus = async (orderId) => {
-  // console.log(orderId)
   try {
     const data = await commentBotApi.getOrderStatus(orderId);
     if (data.order) {
@@ -259,7 +258,6 @@ const pollOrderStatus = async (orderId) => {
       }
     }
   } catch (err) {
-    console.error(`Failed to poll status for order ${orderId}:`, err);
   }
 };
 
@@ -360,6 +358,13 @@ const deleteCommentGroup = async () => {
   }
 };
 
+// Watch for route query changes
+watch(() => route.query.tab, (newTab) => {
+  if (newTab && ['orders', 'credits'].includes(newTab)) {
+    currentTab.value = newTab;
+  }
+});
+
 // Lifecycle hooks
 onMounted(() => {
   fetchCommentGroups();
@@ -367,9 +372,10 @@ onMounted(() => {
   fetchAccountPools();
   fetchCredits();
   
-  // Check if we should show credits tab
-  const route = useRoute();
-  if (route.query.showCredits === 'true') {
+  // Set initial tab from query parameter
+  if (route.query.tab && ['orders', 'credits'].includes(route.query.tab)) {
+    currentTab.value = route.query.tab;
+  } else if (route.query.showCredits === 'true') {
     currentTab.value = 'credits';
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -387,120 +393,129 @@ onUnmounted(() => {
 
 <template>
   <AuthGuard>
-    <v-container fluid class="pa-4">
-    <v-row>
-      <v-col cols="12">
-        <div class="d-flex justify-space-between align-center mb-6">
-          <div>
-            <h1 class="text-h4 font-weight-bold">
-              <v-icon icon="mdi-comment-multiple" size="x-large" class="mr-2"></v-icon>
-              Comment Bot
-            </h1>
-            <p class="text-subtitle-1 text-grey-darken-1 mt-1">Automated comment posting system for TikTok videos</p>
+    <v-container fluid>
+      <v-row>
+        <v-col cols="12">
+          <div class="d-flex justify-space-between align-center mb-6">
+            <div>
+              <h1 class="text-h4 font-weight-bold">
+                <v-icon icon="mdi-comment-multiple" size="x-large" class="mr-2"></v-icon>
+                Comment Bot
+              </h1>
+              <p class="text-subtitle-1 text-grey-darken-1 mt-1">Automated comment posting system for TikTok videos</p>
+            </div>
           </div>
-        </div>
-      </v-col>
-    </v-row>
+        </v-col>
+      </v-row>
 
-    <!-- Tabs -->
-    <v-row>
-      <v-col cols="12">
-        <v-tabs v-model="currentTab" class="mb-6">
-          <v-tab value="orders">Orders</v-tab>
-          <v-tab value="credits">Credits</v-tab>
-        </v-tabs>
-      </v-col>
-    </v-row>
+      <v-row>
+        <!-- Content Area -->
+        <v-col cols="12">
+          <!-- Orders Tab -->
+          <div v-if="currentTab === 'orders'">
+                  <!-- Account Pools Info -->
+                  <div class="mb-6" v-if="false">
+                    <AccountPools 
+                      :account-pools="accountPools" 
+                      :loading="loading.accountPools"
+                      :error="error.accountPools"
+                      :has-edit-permission="true"
+                      @refresh="fetchAccountPools"
+                      @check-accounts="checkAccounts"
+                    />
+                  </div>
 
-    <!-- Tab Content -->
-    <v-window v-model="currentTab">
-      <!-- Orders Tab -->
-      <v-window-item value="orders">
+                  <!-- Comment Groups Section -->
+                  <v-card class="mb-6 elevation-1 rounded-lg">
+                    <v-card-title class="d-flex align-center pb-2">
+                      <v-icon icon="mdi-comment-text-multiple" color="primary" class="mr-2"></v-icon>
+                      <span class="text-h6">Comment Groups</span>
+                    </v-card-title>
+                    
+                    <v-divider></v-divider>
+                    
+                    <v-card-text class="pa-4">
+                      <CommentGroups 
+                        :comment-groups="commentGroups"
+                        :loading="loading.commentGroups"
+                        :error="error.commentGroups"
+                        :has-edit-permission="true"
+                        @refresh="fetchCommentGroups"
+                        @create-group="openCreateGroupDialog"
+                        @view-details="fetchCommentGroupDetail"
+                        @edit-group="openEditGroupDialog"
+                      />
+                    </v-card-text>
+                  </v-card>
 
-    <!-- Account Pools Info -->
-    <v-row class="mb-6" v-if="false">
-      <v-col cols="12">
-        <AccountPools 
-          :account-pools="accountPools" 
-          :loading="loading.accountPools"
-          :error="error.accountPools"
-          :has-edit-permission="true"
-          @refresh="fetchAccountPools"
-          @check-accounts="checkAccounts"
-        />
-      </v-col>
-    </v-row>
+                  <!-- Create Order Section -->
+                  <v-card class="mb-6 elevation-1 rounded-lg">
+                    <v-card-title class="d-flex align-center justify-space-between pb-2">
+                      <div class="d-flex align-center">
+                        <v-icon icon="mdi-plus-box" color="primary" class="mr-2"></v-icon>
+                        <span class="text-h6">Create Order</span>
+                      </div>
+                      <v-chip 
+                        color="primary" 
+                        variant="elevated"
+                        size="large"
+                        @click="fetchCredits"
+                      >
+                        <v-icon start>mdi-wallet</v-icon>
+                        <span class="font-weight-bold">{{ remainingCredits.toLocaleString() }} credits</span>
+                        <v-icon 
+                          end 
+                          size="small"
+                          :class="{ 'mdi-spin': loading.credits }"
+                        >
+                          mdi-refresh
+                        </v-icon>
+                      </v-chip>
+                    </v-card-title>
+                    
+                    <v-divider></v-divider>
+                    
+                    <v-card-text class="pa-4">
+                      <CreateOrder 
+                        :comment-groups="commentGroups"
+                        :loading="loading.createOrder"
+                        :error="error.createOrder"
+                        :has-edit-permission="true"
+                        :remaining-credits="remainingCredits"
+                        @create-order="createOrder"
+                      />
+                    </v-card-text>
+                  </v-card>
 
-    <!-- Comment Groups List -->
-    <v-row class="mb-6">
-      <v-col cols="12">
-        <CommentGroups 
-          :comment-groups="commentGroups"
-          :loading="loading.commentGroups"
-          :error="error.commentGroups"
-          :has-edit-permission="true"
-          @refresh="fetchCommentGroups"
-          @create-group="openCreateGroupDialog"
-          @view-details="fetchCommentGroupDetail"
-          @edit-group="openEditGroupDialog"
-        />
-      </v-col>
-    </v-row>
-
-    <!-- Create Order section -->
-    <v-row class="mt-6">
-      <v-col cols="12">
-        <div class="d-flex align-center justify-space-between mb-4">
-          <h2 class="text-h5">Create Order</h2>
-          <v-chip 
-            color="primary" 
-            variant="elevated"
-            size="large"
-            @click="fetchCredits"
-          >
-            <v-icon start>mdi-wallet</v-icon>
-            <span class="font-weight-bold">{{ remainingCredits.toLocaleString() }} credits</span>
-            <v-icon 
-              end 
-              size="small"
-              :class="{ 'mdi-spin': loading.credits }"
-            >
-              mdi-refresh
-            </v-icon>
-          </v-chip>
-        </div>
-        <CreateOrder 
-          :comment-groups="commentGroups"
-          :loading="loading.createOrder"
-          :error="error.createOrder"
-          :has-edit-permission="true"
-          :remaining-credits="remainingCredits"
-          @create-order="createOrder"
-        />
-      </v-col>
-    </v-row>
-
-    <!-- Active Orders -->
-    <v-row>
-      <v-col cols="12">
-        <ActiveOrders 
-          :orders="activeOrders"
-          :order-progress="orderProgress"
-          :loading="loading.orders"
-          :error="error.orders"
-          :has-edit-permission="true"
-          @refresh="fetchOrders"
-          @poll-status="startPollingOrder"
-        />
-      </v-col>
-    </v-row>
-      </v-window-item>
-
-      <!-- Credits Tab -->
-      <v-window-item value="credits">
-        <CommentBotCredits />
-      </v-window-item>
-    </v-window>
+                  <!-- Active Orders Section -->
+                  <v-card class="elevation-1 rounded-lg">
+                    <v-card-title class="d-flex align-center pb-2">
+                      <v-icon icon="mdi-clock-outline" color="primary" class="mr-2"></v-icon>
+                      <span class="text-h6">Active Orders</span>
+                    </v-card-title>
+                    
+                    <v-divider></v-divider>
+                    
+                    <v-card-text class="pa-4">
+                      <ActiveOrders 
+                        :orders="activeOrders"
+                        :order-progress="orderProgress"
+                        :loading="loading.orders"
+                        :error="error.orders"
+                        :has-edit-permission="true"
+                        @refresh="fetchOrders"
+                        @poll-status="startPollingOrder"
+                      />
+                    </v-card-text>
+                  </v-card>
+          </div>
+          
+          <!-- Credits Tab -->
+          <div v-if="currentTab === 'credits'">
+            <CommentBotCredits />
+          </div>
+        </v-col>
+      </v-row>
 
     <!-- Create Comment Group Dialog -->
     <v-dialog v-model="showCreateGroupDialog" max-width="800" persistent>
@@ -570,5 +585,24 @@ onUnmounted(() => {
 
 .mdi-spin {
   animation: spin 1s linear infinite;
+}
+
+.tab-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.v-theme--dark .tab-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.tab-content {
+  min-height: 500px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .tab-content {
+    min-height: 400px;
+  }
 }
 </style>

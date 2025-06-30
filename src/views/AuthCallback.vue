@@ -88,7 +88,6 @@ const processCallback = async () => {
     }, 1500)
     
   } catch (err) {
-    console.error('Auth callback error:', err)
     error.value = err.message
     loading.value = false
     // Close window after a short delay

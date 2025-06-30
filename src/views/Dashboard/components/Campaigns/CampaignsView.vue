@@ -686,7 +686,7 @@
         <v-card-text class="pa-0">
           <!-- Campaign Header Info -->
           <div class="pa-4 pb-3">
-            <v-card variant="flat" class="pa-4 bg-grey-lighten-5">
+            <v-card variant="flat" class="pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
               <h3 class="text-subtitle-1 mb-1 font-weight-medium">{{ currentCampaign?.name }}</h3>
               <div class="text-body-2">
                 <span>Campaign ID: {{ currentCampaign?.id }}</span>
@@ -707,7 +707,7 @@
 
           <!-- Add New Launches Section -->
           <div class="px-4 pb-3">
-            <v-card variant="flat" class="pa-4 bg-grey-lighten-5">
+            <v-card variant="flat" class="pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
               <div class="d-flex align-center justify-space-between">
                 <h4 class="text-body-2 font-weight-medium">Add New Launches</h4>
                 <div class="d-flex align-center gap-3">
@@ -769,7 +769,7 @@
                 <v-card
                   v-for="(launch, index) in currentLaunches" 
                   :key="index"
-                  :color="launch.isActive ? 'grey-lighten-5' : 'grey-lighten-4'"
+                  :color="launch.isActive ? ($vuetify.theme.current.dark ? 'grey-darken-2' : 'grey-lighten-5') : ($vuetify.theme.current.dark ? 'grey-darken-3' : 'grey-lighten-4')"
                   :variant="launch.isActive ? 'outlined' : 'flat'"
                   :style="launch.isActive ? 'border-color: rgb(168, 85, 247);' : ''"
                   class="pa-3"
@@ -779,7 +779,7 @@
                     <!-- Launch info -->
                     <div class="flex-grow-1" style="min-width: 0;">
                       <div class="d-flex align-center gap-2 mb-1 flex-wrap">
-                        <span class="text-body-1 font-weight-medium text-grey-darken-4">
+                        <span class="text-body-1 font-weight-medium" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-2' : 'text-grey-darken-4'">
                           Launch {{ index }}
                           <span v-if="index === 0" class="text-caption ml-1">(Default)</span>
                         </span>
@@ -793,7 +793,7 @@
                         </v-chip>
                       </div>
                       
-                      <div class="text-caption text-grey-darken-1" style="word-break: break-word;">
+                      <div class="text-caption" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-1' : 'text-grey-darken-1'" style="word-break: break-word;">
                         <div v-if="launch.createdAt" class="mb-1">
                           Created: {{ formatDate(launch.createdAt) }}
                         </div>
@@ -1057,7 +1057,6 @@ const fetchCampaigns = async () => {
     selectedCampaigns.value = [];
   } catch (error) {
     showError('Failed to load campaigns');
-    console.error(error);
   } finally {
     isLoading.value = false;
   }
@@ -1068,7 +1067,6 @@ const fetchStores = async () => {
     const data = await shopifyApi.listStores({ limit: 100, status: 'active' });
     stores.value = data.stores || [];
   } catch (error) {
-    console.error('Failed to load stores:', error);
   }
 };
 
@@ -1078,7 +1076,6 @@ const fetchTemplates = async () => {
     const data = await templatesApi.getTemplatesList();
     templates.value = data.templates || [];
   } catch (error) {
-    console.error('Failed to load templates:', error);
     showError('Failed to load templates');
   } finally {
     loadingTemplates.value = false;
@@ -1090,7 +1087,6 @@ const fetchSparks = async () => {
     const data = await sparksApi.listSparks({ limit: 100, status: 'active' });
     sparks.value = data.sparks || [];
   } catch (error) {
-    console.error('Failed to load sparks:', error);
   }
 };
 
@@ -1676,8 +1672,21 @@ onMounted(() => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 }
 
+.v-theme--dark .campaign-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.v-theme--dark .campaign-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(255, 255, 255, 0.08);
+}
+
 .campaign-header {
   background-color: rgba(0, 0, 0, 0.02);
+}
+
+.v-theme--dark .campaign-header {
+  background-color: rgba(255, 255, 255, 0.02);
 }
 
 .status-chip {
@@ -1693,6 +1702,10 @@ onMounted(() => {
   color: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
+}
+
+.v-theme--dark .section-title {
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .info-section {
@@ -1738,6 +1751,10 @@ onMounted(() => {
   margin-top: 0.25rem;
 }
 
+.v-theme--dark .stat-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 .launches-btn {
   width: 100%;
 }
@@ -1757,6 +1774,10 @@ onMounted(() => {
 /* Launch Modal Styles */
 .border-b {
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.v-theme--dark .border-b {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .border-green-darken-1 {

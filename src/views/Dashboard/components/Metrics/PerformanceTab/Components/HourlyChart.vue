@@ -162,19 +162,13 @@ const peakClickHour = computed(() => {
 
 // Function to create and update the chart
 const updateChart = () => {
-  console.log('Updating chart with data', { 
-    clicksLength: filteredClicksData.value.length, 
-    conversionsLength: filteredConversionsData.value.length 
-  })
   
   if (!hourlyChartRef.value) {
-    console.log('Chart reference not available yet')
     return
   }
   
   // If a chart instance already exists, destroy it
   if (chartInstance) {
-    console.log('Destroying existing chart')
     chartInstance.destroy()
   }
   

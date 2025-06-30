@@ -114,7 +114,6 @@ const fetchCheckoutLink = async () => {
     const data = await usersApi.getCheckoutLink()
     checkoutLink.value = data.checkoutLink || ''
   } catch (err) {
-    console.error('Failed to fetch checkout link:', err)
   }
 }
 

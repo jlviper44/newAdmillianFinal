@@ -105,7 +105,6 @@ window.addEventListener('themeChange', (event) => {
     // Theme change logic centralized here
     applyTheme(darkMode);
   } catch (error) {
-    console.warn('Error updating theme:', error);
   }
 });
 
@@ -150,7 +149,6 @@ const initializeTheme = () => {
         }
       });
   } catch (error) {
-    console.warn('Error initializing theme:', error);
   }
 };
 

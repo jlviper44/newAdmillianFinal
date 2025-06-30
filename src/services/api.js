@@ -19,7 +19,6 @@ async function apiRequest(url, options = {}) {
     if (response.status === 401) {
       // Special handling for metrics endpoints - don't logout immediately
       if (url.includes('/metrics/') || url.includes('/affiliate/')) {
-        console.warn('Metrics API requires authentication')
         return { success: false, error: 'Authentication required', data: [] }
       }
       
@@ -35,7 +34,6 @@ async function apiRequest(url, options = {}) {
     
     return await response.json()
   } catch (error) {
-    console.error('API request failed:', error)
     throw error
   }
 }

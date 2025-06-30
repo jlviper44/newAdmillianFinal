@@ -556,7 +556,6 @@ const loadLogs = async () => {
     logs.value = response.logs;
     totalLogs.value = response.pagination.total;
   } catch (error) {
-    console.error('Error loading logs:', error);
   } finally {
     loading.value = false;
   }
@@ -567,7 +566,6 @@ const loadStats = async () => {
     const response = await logsAPI.getLogsSummary();
     stats.value = response;
   } catch (error) {
-    console.error('Error loading stats:', error);
   }
 };
 
@@ -576,7 +574,6 @@ const loadCampaigns = async () => {
     const response = await logsAPI.getCampaignsList();
     campaigns.value = response.campaigns;
   } catch (error) {
-    console.error('Error loading campaigns:', error);
   }
 };
 
@@ -616,7 +613,6 @@ const viewLogDetail = async (log) => {
     selectedLog.value = response;
     showDetailDialog.value = true;
   } catch (error) {
-    console.error('Error loading log detail:', error);
   }
 };
 
@@ -626,7 +622,6 @@ const confirmClearLogs = async () => {
     showClearDialog.value = false;
     refreshData();
   } catch (error) {
-    console.error('Error clearing logs:', error);
   }
 };
 

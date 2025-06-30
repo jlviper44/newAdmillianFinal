@@ -51,7 +51,6 @@ const fetchAffluentAPIs = async () => {
     // Use authenticated endpoint to fetch user's APIs
     const response = await metricsApi.getFluentApis()
     
-    console.log('Fetch APIs response:', response)
     
     // The response should have success and data properties
     let apiData = []
@@ -87,7 +86,6 @@ const fetchAffluentAPIs = async () => {
       };
     });
     
-    console.log('Normalized API data:', normalizedApiData)
     
     if (normalizedApiData.length > 0) {
       affluentAPIs.value = normalizedApiData
@@ -95,8 +93,6 @@ const fetchAffluentAPIs = async () => {
       // Set default selected API (first in the list)
       selectedAPI.value = affluentAPIs.value[0]
       
-      console.log('APIs loaded:', affluentAPIs.value)
-      console.log('Selected API after load:', selectedAPI.value)
       
       // Show success notification
       showNotification(`Connected to API: ${selectedAPI.value.name}`, 'success')
@@ -107,14 +103,12 @@ const fetchAffluentAPIs = async () => {
       showNotification('No APIs configured yet. Click "Add API" to get started.', 'info')
     }
   } catch (error) {
-    console.error('Error fetching Affluent APIs:', error)
     affluentAPIs.value = []
     selectedAPI.value = null
     
     // Handle different error scenarios
     if (error.response?.status === 401 || error.message?.includes('Authentication required')) {
       // User is not authenticated - this is ok, just show empty state
-      console.log('User not authenticated for metrics - showing empty state')
     } else if (error.response?.status !== 500) {
       showNotification('Unable to load APIs. Click "Add API" to add your first API.', 'info')
     }
@@ -133,16 +127,12 @@ const showNotification = (text, color = 'success') => {
 // Handle API change
 const onAPIChange = (api) => {
   if (api) {
-    console.log('Selected API:', api)
-    console.log('API Key:', api.api_key ? `${api.api_key.substring(0, 10)}...` : 'MISSING')
-    console.log('Affiliate ID:', api.affiliate_id || 'MISSING')
     showNotification(`Now using API: ${api.name}`, 'info')
   }
 }
 
 // Add new Affluent API
 const addNewApi = async () => {
-  console.log('addNewApi called, isAuthenticated:', isAuthenticated.value)
   
   if (!newApi.value.name || !newApi.value.api_key || !newApi.value.affiliate_id) {
     showNotification('Please fill in all fields', 'error')
@@ -158,7 +148,6 @@ const addNewApi = async () => {
       affiliate_id: newApi.value.affiliate_id.trim()
     })
     
-    console.log('Add API response:', response)
     
     if (response && response.success) {
       showNotification('API added successfully', 'success')
@@ -177,7 +166,6 @@ const addNewApi = async () => {
       showNotification(response?.error || 'Failed to add API', 'error')
     }
   } catch (error) {
-    console.error('Error adding API:', error)
     
     if (error.response?.status === 401) {
       showNotification('Please sign in to add APIs', 'warning')
@@ -222,7 +210,6 @@ const deleteSelectedApi = async () => {
     // Use authenticated endpoint to delete the API
     const response = await metricsApi.deleteFluentApi(selectedAPI.value.id || selectedAPI.value.name)
     
-    console.log('Delete API response:', response)
     
     if (response && response.success) {
       showNotification('API deleted successfully', 'success')
@@ -237,7 +224,6 @@ const deleteSelectedApi = async () => {
       showNotification('Failed to delete API', 'error')
     }
   } catch (error) {
-    console.error('Error deleting API:', error)
     showNotification(error.response?.data?.error || 'Failed to delete API', 'error')
   } finally {
     deletingApi.value = false
@@ -258,7 +244,6 @@ const testAPIConnection = async () => {
       end_date: '2024-01-01 23:59:59'
     })
     
-    console.log('API Test Response:', response.data)
     
     if (response.data.success) {
       showNotification('API connection successful!', 'success')
@@ -266,20 +251,17 @@ const testAPIConnection = async () => {
       showNotification(`API test failed: ${response.data.status} - ${JSON.stringify(response.data.data)}`, 'error')
     }
   } catch (error) {
-    console.error('API test error:', error)
     showNotification(`API test error: ${error.message}`, 'error')
   }
 }
 
 // Fetch Affluent APIs on component mount
 onMounted(() => {
-  console.log('MetricsView mounted, isAuthenticated:', isAuthenticated.value)
   
   // Only fetch APIs if user is authenticated
   if (isAuthenticated.value) {
     fetchAffluentAPIs()
   } else {
-    console.log('User not authenticated, skipping API fetch')
   }
 })
 </script>

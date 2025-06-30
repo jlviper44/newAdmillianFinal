@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AuthGuard from '@/components/AuthGuard.vue';
 import BCGenCredits from './components/BCGenCredits.vue';
@@ -14,6 +14,7 @@ const refundsViewRef = ref(null);
 
 // State management
 const currentTab = ref('orders');
+const route = useRoute();
 const loading = ref({
   credits: false
 });
@@ -36,7 +37,6 @@ const fetchCredits = async () => {
     const bcGenData = data.subscriptions?.bc_gen;
     remainingCredits.value = bcGenData?.totalCredits || 0;
     
-    console.log('BC Gen credits:', remainingCredits.value);
   } catch (err) {
     error.value.credits = err.message || 'Failed to fetch credits';
     remainingCredits.value = 0;
@@ -69,13 +69,21 @@ const handleRefundRequested = () => {
   }
 };
 
+// Watch for route query changes
+watch(() => route.query.tab, (newTab) => {
+  if (newTab && ['orders', 'my-orders', 'refunds', 'credits'].includes(newTab)) {
+    currentTab.value = newTab;
+  }
+});
+
 // Lifecycle hooks
 onMounted(() => {
   fetchCredits();
   
-  // Check if we should show credits tab
-  const route = useRoute();
-  if (route.query.showCredits === 'true') {
+  // Set initial tab from query parameter
+  if (route.query.tab && ['orders', 'my-orders', 'refunds', 'credits'].includes(route.query.tab)) {
+    currentTab.value = route.query.tab;
+  } else if (route.query.showCredits === 'true') {
     currentTab.value = 'credits';
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -85,7 +93,7 @@ onMounted(() => {
 
 <template>
   <AuthGuard>
-    <v-container fluid class="pa-4">
+    <v-container fluid>
       <v-row>
         <v-col cols="12">
           <div class="d-flex justify-space-between align-center mb-6">
@@ -100,108 +108,30 @@ onMounted(() => {
         </v-col>
       </v-row>
 
-      <!-- Tabs -->
       <v-row>
+        <!-- Content Area -->
         <v-col cols="12">
-          <v-tabs v-model="currentTab" class="mb-6">
-            <v-tab value="orders">Orders</v-tab>
-            <v-tab value="my-orders">My Orders</v-tab>
-            <v-tab value="refunds">Refunds</v-tab>
-            <v-tab value="credits">Credits</v-tab>
-          </v-tabs>
+          <!-- Place Order Tab -->
+          <div v-if="currentTab === 'orders'">
+            <PlaceOrderView @orderCreated="handleOrderCreated" />
+          </div>
+
+          <!-- My Orders Tab -->
+          <div v-if="currentTab === 'my-orders'">
+            <OrdersView ref="ordersViewRef" @refund-requested="handleRefundRequested" />
+          </div>
+
+          <!-- Refunds Tab -->
+          <div v-if="currentTab === 'refunds'">
+            <RefundsView ref="refundsViewRef" />
+          </div>
+
+          <!-- Credits Tab -->
+          <div v-if="currentTab === 'credits'">
+            <BCGenCredits />
+          </div>
         </v-col>
       </v-row>
-
-      <!-- Tab Content -->
-      <v-window v-model="currentTab">
-        <!-- Orders Tab -->
-        <v-window-item value="orders">
-          <PlaceOrderView @orderCreated="handleOrderCreated" />
-        </v-window-item>
-
-        <!-- My Orders Tab -->
-        <v-window-item value="my-orders">
-          <OrdersView ref="ordersViewRef" @refund-requested="handleRefundRequested" />
-        </v-window-item>
-
-        <!-- Refunds Tab -->
-        <v-window-item value="refunds">
-          <RefundsView ref="refundsViewRef" />
-        </v-window-item>
-
-        <!-- Overview Tab -->
-        <v-window-item value="overview">
-          <v-row>
-            <v-col cols="12">
-              <v-card elevation="2">
-                <v-card-title class="d-flex align-center">
-                  <v-icon start>mdi-information</v-icon>
-                  BC Gen Overview
-                  <v-spacer></v-spacer>
-                  <v-chip 
-                    color="primary" 
-                    variant="elevated"
-                    size="large"
-                    @click="fetchCredits"
-                  >
-                    <v-icon start>mdi-wallet</v-icon>
-                    <span class="font-weight-bold">{{ remainingCredits.toLocaleString() }} credits</span>
-                    <v-icon 
-                      end 
-                      size="small"
-                      :class="{ 'mdi-spin': loading.credits }"
-                    >
-                      mdi-refresh
-                    </v-icon>
-                  </v-chip>
-                </v-card-title>
-                <v-card-text>
-                  <v-alert type="info" variant="tonal" class="mb-4">
-                    BC Gen functionality is coming soon. This service will allow you to create accounts efficiently.
-                  </v-alert>
-                  
-                  <div class="text-h6 mb-3">Features (Coming Soon)</div>
-                  <v-list density="comfortable">
-                    <v-list-item>
-                      <template v-slot:prepend>
-                        <v-icon color="primary">mdi-check-circle</v-icon>
-                      </template>
-                      <v-list-item-title>Bulk account creation</v-list-item-title>
-                      <v-list-item-subtitle>Create multiple accounts quickly and efficiently</v-list-item-subtitle>
-                    </v-list-item>
-                    <v-list-item>
-                      <template v-slot:prepend>
-                        <v-icon color="primary">mdi-check-circle</v-icon>
-                      </template>
-                      <v-list-item-title>Account management</v-list-item-title>
-                      <v-list-item-subtitle>Manage and organize created accounts</v-list-item-subtitle>
-                    </v-list-item>
-                    <v-list-item>
-                      <template v-slot:prepend>
-                        <v-icon color="primary">mdi-check-circle</v-icon>
-                      </template>
-                      <v-list-item-title>Profile customization</v-list-item-title>
-                      <v-list-item-subtitle>Customize account profiles and settings</v-list-item-subtitle>
-                    </v-list-item>
-                    <v-list-item>
-                      <template v-slot:prepend>
-                        <v-icon color="primary">mdi-check-circle</v-icon>
-                      </template>
-                      <v-list-item-title>Export accounts</v-list-item-title>
-                      <v-list-item-subtitle>Export account data in various formats</v-list-item-subtitle>
-                    </v-list-item>
-                  </v-list>
-                </v-card-text>
-              </v-card>
-            </v-col>
-          </v-row>
-        </v-window-item>
-
-        <!-- Credits Tab -->
-        <v-window-item value="credits">
-          <BCGenCredits />
-        </v-window-item>
-      </v-window>
     </v-container>
   </AuthGuard>
 </template>
@@ -218,5 +148,24 @@ onMounted(() => {
 
 .mdi-spin {
   animation: spin 1s linear infinite;
+}
+
+.tab-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.v-theme--dark .tab-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.tab-content {
+  min-height: 500px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .tab-content {
+    min-height: 400px;
+  }
 }
 </style>

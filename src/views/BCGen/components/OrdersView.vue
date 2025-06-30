@@ -721,7 +721,6 @@ const generateTOTP = async (secret, timeStep = 30) => {
     // Pad with leading zeros
     return code.toString().padStart(6, '0')
   } catch (error) {
-    console.error('TOTP generation error:', error)
     return null
   }
 }

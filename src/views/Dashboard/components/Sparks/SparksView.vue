@@ -814,7 +814,6 @@ const fetchOfferTemplates = async () => {
       offerTemplates.value = [];
     }
   } catch (error) {
-    console.error('Failed to fetch templates:', error);
     // Provide fallback templates if API fails
     offerTemplates.value = [];
   }

@@ -129,7 +129,6 @@ const exportClicksData = () => {
     link.click()
     document.body.removeChild(link)
   } catch (error) {
-    console.error('Error exporting clicks data:', error)
   } finally {
     exporting.value.clicks = false
   }
@@ -167,7 +166,6 @@ const exportConversionsData = () => {
     link.click()
     document.body.removeChild(link)
   } catch (error) {
-    console.error('Error exporting conversions data:', error)
   } finally {
     exporting.value.conversions = false
   }

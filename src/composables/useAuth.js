@@ -53,7 +53,6 @@ export function useAuth() {
         // Don't trigger auth modal here, let individual API calls handle 401s
       }
     } catch (error) {
-      console.error('Auth check failed:', error)
       user.value = null
     } finally {
       loading.value = false
@@ -78,7 +77,6 @@ export function useAuth() {
         return true
       }
     } catch (error) {
-      console.error('Access check failed:', error)
     }
     subscriptions.value = null
     return false
@@ -148,7 +146,6 @@ export function useAuth() {
         }
       }, 500)
     } catch (error) {
-      console.error('Sign in failed:', error)
     }
   }
 
@@ -160,7 +157,6 @@ export function useAuth() {
         credentials: 'include'
       })
     } catch (error) {
-      console.error('Logout failed:', error)
     } finally {
       user.value = null
       subscriptions.value = null

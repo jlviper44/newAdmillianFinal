@@ -473,7 +473,6 @@ const fetchStores = async () => {
     }
   } catch (error) {
     showError('Failed to load stores');
-    console.error(error);
   } finally {
     isLoading.value = false;
   }

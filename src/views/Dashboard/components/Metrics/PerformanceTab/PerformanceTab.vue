@@ -76,11 +76,6 @@ const onSelectedDateChange = (date) => {
     // Update local date state
     startDate.value = startDateObj
     endDate.value = endDateObj
-    
-    console.log('Performance date changed:', {
-      startDate: startDate.value,
-      endDate: endDate.value
-    })
   }
 }
 
@@ -146,26 +141,12 @@ const getRequestParams = (fields = []) => {
     fields: fields
   }
   
-  console.log('Request parameters being sent:', {
-    api_key: params.api_key ? `${params.api_key.substring(0, 10)}...` : 'MISSING',
-    affiliate_id: params.affiliate_id || 'MISSING',
-    start_date: params.start_date,
-    end_date: params.end_date,
-    fields: params.fields
-  })
-  
   return params
 }
 
 // Function to fetch clicks data
 const fetchClicksData = async () => {
   if (!startDate.value || !endDate.value || !props.apiKey || !props.affiliateId) {
-    console.log('Missing required data for clicks:', {
-      hasStartDate: !!startDate.value,
-      hasEndDate: !!endDate.value,
-      hasApiKey: !!props.apiKey,
-      hasAffiliateId: !!props.affiliateId
-    })
     return
   }
   
@@ -173,16 +154,7 @@ const fetchClicksData = async () => {
     loadingClicks.value = true
     clicksError.value = null
     
-    console.log('Making clicks API request...')
     const response = await metricsApi.getClicks(getRequestParams(clicksFields))
-    
-    console.log('Clicks API Response:', {
-      status: response.status,
-      data: response.data,
-      hasData: response.data?.data !== undefined,
-      dataType: typeof response.data?.data,
-      dataLength: Array.isArray(response.data?.data) ? response.data.data.length : 'N/A'
-    })
     
     // Process clicks data
     if (response.data && response.data.success === false) {
@@ -193,31 +165,16 @@ const fetchClicksData = async () => {
       // Affluent API returns nested structure: { data: { success: true, data: { row_count: X, data: [...] } } }
       clicksData.value = response.data.data.data.data
       const rowCount = response.data.data.data.row_count || clicksData.value.length
-      console.log(`Loaded ${clicksData.value.length} clicks (total rows: ${rowCount})`)
     } else if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
       // Alternative structure: { data: { success: true, data: [...] } }
       clicksData.value = response.data.data.data
-      console.log(`Loaded ${clicksData.value.length} clicks`)
     } else if (response.data?.data && Array.isArray(response.data.data)) {
       // Simpler structure: { data: [...] }
       clicksData.value = response.data.data
-      console.log(`Loaded ${clicksData.value.length} clicks (simple structure)`)
     } else {
       clicksData.value = []
-      console.log('No clicks data found in response. Structure:', {
-        hasData: !!response.data,
-        hasDataData: !!response.data?.data,
-        hasDataDataData: !!response.data?.data?.data,
-        hasDataDataDataData: !!response.data?.data?.data?.data
-      })
     }
   } catch (err) {
-    console.error(`Error fetching clicks data:`, err)
-    console.error('Error details:', {
-      message: err.message,
-      response: err.response?.data,
-      status: err.response?.status
-    })
     clicksError.value = err.response?.data?.error || err.message || `Failed to fetch clicks data`
   } finally {
     loadingClicks.value = false
@@ -227,12 +184,6 @@ const fetchClicksData = async () => {
 // Function to fetch conversions data
 const fetchConversionsData = async () => {
   if (!startDate.value || !endDate.value || !props.apiKey || !props.affiliateId) {
-    console.log('Missing required data for conversions:', {
-      hasStartDate: !!startDate.value,
-      hasEndDate: !!endDate.value,
-      hasApiKey: !!props.apiKey,
-      hasAffiliateId: !!props.affiliateId
-    })
     return
   }
   
@@ -240,16 +191,7 @@ const fetchConversionsData = async () => {
     loadingConversions.value = true
     conversionsError.value = null
     
-    console.log('Making conversions API request...')
     const response = await metricsApi.getConversions(getRequestParams(conversionsFields))
-    
-    console.log('Conversions API Response:', {
-      status: response.status,
-      data: response.data,
-      hasData: response.data?.data !== undefined,
-      dataType: typeof response.data?.data,
-      dataLength: Array.isArray(response.data?.data) ? response.data.data.length : 'N/A'
-    })
     
     // Process conversions data
     if (response.data && response.data.success === false) {
@@ -260,31 +202,16 @@ const fetchConversionsData = async () => {
       // Affluent API returns nested structure: { data: { success: true, data: { row_count: X, data: [...] } } }
       conversionsData.value = response.data.data.data.data
       const rowCount = response.data.data.data.row_count || conversionsData.value.length
-      console.log(`Loaded ${conversionsData.value.length} conversions (total rows: ${rowCount})`)
     } else if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
       // Alternative structure: { data: { success: true, data: [...] } }
       conversionsData.value = response.data.data.data
-      console.log(`Loaded ${conversionsData.value.length} conversions`)
     } else if (response.data?.data && Array.isArray(response.data.data)) {
       // Simpler structure: { data: [...] }
       conversionsData.value = response.data.data
-      console.log(`Loaded ${conversionsData.value.length} conversions (simple structure)`)
     } else {
       conversionsData.value = []
-      console.log('No conversions data found in response. Structure:', {
-        hasData: !!response.data,
-        hasDataData: !!response.data?.data,
-        hasDataDataData: !!response.data?.data?.data,
-        hasDataDataDataData: !!response.data?.data?.data?.data
-      })
     }
   } catch (err) {
-    console.error(`Error fetching conversions data:`, err)
-    console.error('Error details:', {
-      message: err.message,
-      response: err.response?.data,
-      status: err.response?.status
-    })
     conversionsError.value = err.response?.data?.error || err.message || `Failed to fetch conversions data`
   } finally {
     loadingConversions.value = false
@@ -350,7 +277,6 @@ const subIdOptions = computed(() => {
 // Function to apply filters
 const applyFilters = () => {
   // Filters are automatically applied through computed properties
-  console.log('Applying filters - Offer:', filters.value.offerName, 'Sub ID:', filters.value.subId)
 }
 
 // Function to clear filters
@@ -365,7 +291,6 @@ watch(
   ([newApiKey, newAffiliateId], [oldApiKey, oldAffiliateId]) => {
     if ((newApiKey && newAffiliateId) && 
         (newApiKey !== oldApiKey || newAffiliateId !== oldAffiliateId)) {
-      console.log('API credentials changed, refreshing data')
       fetchAllData()
     }
   }

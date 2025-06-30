@@ -142,8 +142,8 @@ onUnmounted(() => {
     <v-container fluid class="pa-0">
 
       <!-- Credits Balance Card -->
-      <v-row justify="center">
-        <v-col cols="12" md="10" lg="8">
+      <v-row>
+        <v-col cols="12">
           <v-card 
             elevation="8" 
             class="credit-balance-card"

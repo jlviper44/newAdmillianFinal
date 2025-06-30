@@ -112,7 +112,6 @@ const exportToCsv = () => {
     link.click()
     document.body.removeChild(link)
   } catch (error) {
-    console.error('Error exporting data to CSV:', error)
   } finally {
     exporting.value = false
   }
