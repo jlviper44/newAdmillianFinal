@@ -347,6 +347,66 @@ export default class BCGen {
     }
   }
 
+  // Check email for an account
+  async checkEmail(data, userId) {
+    try {
+      const { email, username } = data;
+      
+      if (!email) {
+        return { error: 'Email is required' };
+      }
+
+      // Email API credentials (from bcWorker.js)
+      const EMAIL_API_KEY = 'fe37d01598bf639df353742c376579f904458c4423f90db4d4911bcfa0184539';
+      const EMAIL_API_URL = 'https://aws.cubemmo.net/api/get_code';
+
+      // Make request to email API
+      const apiUrl = `${EMAIL_API_URL}?api_key=${EMAIL_API_KEY}&mail=${encodeURIComponent(email)}&all=true`;
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error('Failed to check email');
+      }
+      
+      const emailContent = await response.text();
+      
+      let parsedContent;
+      try {
+        parsedContent = JSON.parse(emailContent);
+      } catch (e) {
+        parsedContent = null;
+      }
+      
+      // Log the email check
+      const checkLog = {
+        userId,
+        email,
+        username: username || 'unknown',
+        checkedAt: new Date().toISOString(),
+        success: true
+      };
+      
+      // Store log with 30-day expiration
+      const logKey = `email-check:${userId}:${Date.now()}`;
+      await this.env.BCGEN_DB.prepare(`
+        INSERT INTO cache (key, data, timestamp) 
+        VALUES (?1, ?2, ?3)
+      `).bind(logKey, JSON.stringify(checkLog), new Date().toISOString()).run();
+      
+      return { 
+        success: true,
+        content: emailContent,
+        parsed: parsedContent
+      };
+    } catch (error) {
+      console.error('Email check error:', error);
+      return { 
+        error: 'Failed to check email',
+        details: error.message 
+      };
+    }
+  }
+
   // Deduct credits from user's BC Gen memberships
   async deductUserCredits(session, credits) {
     try {
@@ -891,6 +951,14 @@ export default class BCGen {
       }
 
       const result = await this.getAllRefundRequests();
+      return new Response(JSON.stringify(result), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (path === '/api/bcgen/check-email' && request.method === 'POST') {
+      const data = await request.json();
+      const result = await this.checkEmail(data, userId);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });

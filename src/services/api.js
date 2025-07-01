@@ -156,6 +156,12 @@ export const bcgenApi = {
     requestId,
     action,
     adminNotes
+  }),
+  
+  // Check email for an account
+  checkEmail: (email, username) => api.post('/bcgen/check-email', {
+    email,
+    username
   })
 }
 

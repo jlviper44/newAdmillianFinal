@@ -903,6 +903,14 @@ async function generateCampaignLink(db, request, env) {
     
     const launch = launchNumber !== undefined ? launchNumber : 0;
     
+    // Validate launch number is not negative
+    if (launch < 0) {
+      return new Response(
+        JSON.stringify({ error: 'Launch number must be non-negative' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
     // Fetch campaign data
     const campaign = await db.prepare(
       'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
@@ -915,6 +923,16 @@ async function generateCampaignLink(db, request, env) {
           campaignId: campaignId
         }),
         { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Validate launch number doesn't exceed total launches
+    if (launch >= campaign.total_launches) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Launch number ${launch} exceeds maximum allowed launches (${campaign.total_launches})` 
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
     
@@ -931,17 +949,42 @@ async function generateCampaignLink(db, request, env) {
     // Update the generatedAt timestamp
     launches[launch.toString()].generatedAt = new Date().toISOString();
     
+    // Update max_launch_number if this is a higher launch number
+    const maxLaunchNumber = Math.max(campaign.max_launch_number || 0, launch);
+    
     // Save the updated campaign
     await db.prepare(`
       UPDATE campaigns SET 
         launches = ?,
+        max_launch_number = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
-    `).bind(JSON.stringify(launches), campaignId, userId).run();
+    `).bind(JSON.stringify(launches), maxLaunchNumber, campaignId, userId).run();
     
-    // Generate the link format (simplified - actual implementation would integrate with Shopify)
+    // Get TikTok store details
+    const tiktokStore = await db.prepare(
+      'SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?'
+    ).bind(campaign.tiktok_store_id, userId).first();
+    
+    if (!tiktokStore) {
+      return new Response(
+        JSON.stringify({ error: 'TikTok store not found' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Ensure store URL is properly formatted
+    let storeUrl = tiktokStore.store_url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (!storeUrl.includes('.myshopify.com') && !storeUrl.includes('.')) {
+      storeUrl = `${storeUrl}.myshopify.com`;
+    }
+    
+    // Generate the link with proper store URL
     const pageHandle = `cloak-${campaignId}-${launch}`;
-    const linkUrl = `https://example.myshopify.com/pages/${pageHandle}`;
+    const linkUrl = `https://${storeUrl}/pages/${pageHandle}`;
+    
+    // TODO: In production, this would integrate with Shopify API to create/update the actual page
+    // For now, we'll just generate the URL format
     
     return new Response(JSON.stringify({
       success: true,
@@ -950,7 +993,9 @@ async function generateCampaignLink(db, request, env) {
       link: linkUrl,
       displayLink: linkUrl,
       message: 'Link generated successfully',
-      pageHandle: pageHandle
+      pageHandle: pageHandle,
+      refreshed: true,
+      storeUrl: storeUrl
     }), {
       headers: { 'Content-Type': 'application/json' }
     });

@@ -279,18 +279,6 @@
                                 ></v-btn>
                               </div>
                               
-                              <!-- Email Password -->
-                              <div class="credential-row" v-if="account['Email Password']">
-                                <span class="credential-label">Email Pass</span>
-                                <code class="credential-value">{{ account['Email Password'] }}</code>
-                                <v-btn 
-                                  @click="copyToClipboard(account['Email Password'], 'Email Password')"
-                                  icon="mdi-content-copy"
-                                  size="x-small"
-                                  variant="text"
-                                  density="compact"
-                                ></v-btn>
-                              </div>
                               
                             </div>
                             
@@ -304,8 +292,20 @@
                                 size="small"
                                 block
                                 prepend-icon="mdi-content-copy"
+                                class="mb-2"
                               >
                                 Copy All Credentials
+                              </v-btn>
+                              <v-btn
+                                v-if="account.Email || account.mail"
+                                @click="checkAccountEmail(account)"
+                                color="secondary"
+                                variant="tonal"
+                                size="small"
+                                block
+                                prepend-icon="mdi-email-check"
+                              >
+                                Check Email
                               </v-btn>
                             </div>
                           </v-card>
@@ -473,6 +473,129 @@
           :loading="refundLoading"
         >
           Submit Request
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- Email Check Dialog -->
+  <v-dialog v-model="emailModal" max-width="800">
+    <v-card>
+      <v-card-title class="d-flex justify-space-between align-center">
+        <div>
+          <v-icon class="mr-2">mdi-email-check</v-icon>
+          Email Check Results
+        </div>
+        <v-btn 
+          icon="mdi-close" 
+          variant="text" 
+          @click="emailModal = false"
+        ></v-btn>
+      </v-card-title>
+      
+      <v-card-text>
+        <div v-if="emailLoading" class="text-center pa-8">
+          <v-progress-circular indeterminate color="primary"></v-progress-circular>
+          <p class="mt-4">Checking emails...</p>
+        </div>
+        
+        <div v-else-if="emailContent && emailContent.parsed && emailContent.parsed.success && emailContent.parsed.data">
+          <v-alert 
+            type="info" 
+            variant="tonal" 
+            class="mb-4"
+          >
+            Found {{ emailContent.parsed.data.length }} email(s) for {{ emailAccount.Email || emailAccount.mail }}
+          </v-alert>
+          
+          <v-card 
+            v-for="(email, index) in emailContent.parsed.data" 
+            :key="index"
+            class="mb-3"
+            variant="outlined"
+          >
+            <v-card-title class="py-3">
+              <div class="d-flex justify-space-between align-center w-100">
+                <div>
+                  <div class="text-subtitle-1">{{ email.from_email || 'Unknown Sender' }}</div>
+                  <div class="text-caption text-grey">{{ email.date || 'No date' }}</div>
+                </div>
+                <v-chip 
+                  v-if="email.subject && email.subject.includes('verification')"
+                  color="primary"
+                  size="small"
+                >
+                  Verification
+                </v-chip>
+              </div>
+            </v-card-title>
+            
+            <v-card-text>
+              <div class="text-subtitle-2 mb-2">{{ email.subject || 'No subject' }}</div>
+              
+              <!-- Show verification codes if found -->
+              <div v-if="email.code || email.verification_code" class="mb-3">
+                <v-alert type="success" variant="tonal" density="compact">
+                  <div class="d-flex justify-space-between align-center">
+                    <div>
+                      <strong>Verification Code:</strong> 
+                      <code class="ml-2 text-h6">{{ email.code || email.verification_code }}</code>
+                    </div>
+                    <v-btn
+                      @click="copyToClipboard(email.code || email.verification_code, 'Verification code')"
+                      color="primary"
+                      size="small"
+                      variant="tonal"
+                      prepend-icon="mdi-content-copy"
+                    >
+                      Copy
+                    </v-btn>
+                  </div>
+                </v-alert>
+              </div>
+              
+              <!-- Email content preview -->
+              <v-expansion-panels v-if="email.text || email.html">
+                <v-expansion-panel>
+                  <v-expansion-panel-title>
+                    <v-icon class="mr-2" size="small">mdi-text</v-icon>
+                    View Full Content
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text>
+                    <pre class="email-content">{{ email.text || stripHtml(email.html) || 'No content' }}</pre>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
+            </v-card-text>
+          </v-card>
+        </div>
+        
+        <div v-else-if="emailContent && emailContent.content">
+          <v-alert type="info" variant="tonal" class="mb-4">
+            Raw email response received
+          </v-alert>
+          <v-card variant="tonal">
+            <v-card-text>
+              <pre class="email-content">{{ emailContent.content }}</pre>
+            </v-card-text>
+          </v-card>
+        </div>
+        
+        <div v-else>
+          <v-alert type="warning" variant="tonal">
+            No emails found for this account
+          </v-alert>
+        </div>
+      </v-card-text>
+      
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+          @click="emailModal = false"
+          color="primary"
+          variant="flat"
+        >
+          Close
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -767,7 +890,6 @@ const copyAccountDetails = async (account) => {
   if (account.Username || account.username) details.push(`Username: ${account.Username || account.username}`)
   if (account.Password || account.passTiktok || account.password) details.push(`Password: ${account.Password || account.passTiktok || account.password}`)
   if (account.Email || account.mail) details.push(`Email: ${account.Email || account.mail}`)
-  if (account['Email Password']) details.push(`Email Password: ${account['Email Password']}`)
   if (account['Recovery Code'] || account.code2fa) details.push(`2FA Secret: ${account['Recovery Code'] || account.code2fa}`)
   if (account.cookies) details.push(`Cookies: ${account.cookies}`)
   
@@ -785,7 +907,6 @@ const copyAccountCredentials = async (account) => {
   if (account.Username || account.username) credentials.push(`Username: ${account.Username || account.username}`)
   if (account.Password || account.passTiktok || account.password) credentials.push(`Password: ${account.Password || account.passTiktok || account.password}`)
   if (account.Email || account.mail) credentials.push(`Email: ${account.Email || account.mail}`)
-  if (account['Email Password']) credentials.push(`Email Password: ${account['Email Password']}`)
   
   try {
     await navigator.clipboard.writeText(credentials.join('\n'))
@@ -820,6 +941,52 @@ const copyAllAccounts = async (order) => {
 // Open account in browser (placeholder)
 const openInBrowser = (account) => {
   showSnackbar('Browser opening feature coming soon!', 'info')
+}
+
+// Email modal state
+const emailModal = ref(false)
+const emailLoading = ref(false)
+const emailContent = ref(null)
+const emailAccount = ref(null)
+
+// Check email for account
+const checkAccountEmail = async (account) => {
+  const email = account.Email || account.mail
+  const username = account.Username || account.username
+  
+  if (!email) {
+    showSnackbar('No email address found for this account', 'warning')
+    return
+  }
+  
+  emailAccount.value = account
+  emailModal.value = true
+  emailLoading.value = true
+  emailContent.value = null
+  
+  try {
+    const response = await bcgenApi.checkEmail(email, username)
+    
+    if (response.error) {
+      showSnackbar(response.error, 'error')
+      emailModal.value = false
+      return
+    }
+    
+    emailContent.value = response
+  } catch (error) {
+    showSnackbar('Failed to check email', 'error')
+    emailModal.value = false
+  } finally {
+    emailLoading.value = false
+  }
+}
+
+// Helper function to strip HTML tags
+const stripHtml = (html) => {
+  const tmp = document.createElement('DIV')
+  tmp.innerHTML = html
+  return tmp.textContent || tmp.innerText || ''
 }
 
 // Load orders on mount
@@ -977,6 +1144,20 @@ defineExpose({
 
 .cookies-code::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Email content styles */
+.email-content {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.02);
+  padding: 12px;
+  border-radius: 4px;
 }
 
 /* Responsive adjustments */
