@@ -53,6 +53,7 @@ const selectedCommentGroup = ref(null);
 const commentGroupDetail = ref(null);
 const editingCommentGroup = ref(null);
 const remainingCredits = ref(0);
+const user = ref(null);
 
 // UI state
 const showCreateGroupDialog = ref(false);
@@ -218,6 +219,9 @@ const fetchCredits = async () => {
   
   try {
     const data = await usersApi.checkAccess();
+    
+    // Store user data including admin status
+    user.value = data.user;
     
     // Get Comment Bot specific credits
     const commentBotData = data.subscriptions?.comment_bot;
@@ -482,6 +486,7 @@ onUnmounted(() => {
                         :error="error.createOrder"
                         :has-edit-permission="true"
                         :remaining-credits="remainingCredits"
+                        :is-admin="user?.isAdmin || false"
                         @create-order="createOrder"
                       />
                     </v-card-text>

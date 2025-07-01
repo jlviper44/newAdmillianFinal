@@ -226,6 +226,16 @@ const closeDialog = () => {
 };
 
 const createCommentGroup = () => {
+  // Validate all messages have text before creating
+  for (const legend of newCommentGroup.value.legends) {
+    for (const convo of legend.conversations) {
+      if (!convo.text || convo.text.trim().length === 0) {
+        showAlert('error', 'All messages must contain at least 1 character');
+        return;
+      }
+    }
+  }
+  
   emit('create', { ...newCommentGroup.value });
 };
 
@@ -239,7 +249,18 @@ const isCreateDisabled = computed(() => {
     group => group.name.toLowerCase() === name.toLowerCase()
   );
   
-  return nameExists;
+  if (nameExists) return true;
+  
+  // Check if all messages have at least 1 character
+  for (const legend of newCommentGroup.value.legends) {
+    for (const convo of legend.conversations) {
+      if (!convo.text || convo.text.trim().length === 0) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
 });
 </script>
 
@@ -418,7 +439,7 @@ const isCreateDisabled = computed(() => {
                     rows="2"
                     auto-grow
                     hide-details
-                    :rules="[v => !!v || 'Message text is required']"
+                    :rules="[v => !!v && v.trim().length > 0 || 'Message text must contain at least 1 character']"
                   ></v-textarea>
                 </v-card-text>
               </v-card>

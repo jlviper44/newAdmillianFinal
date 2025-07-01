@@ -17,6 +17,10 @@ const props = defineProps({
   remainingCredits: {
     type: Number,
     default: 0
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -24,23 +28,19 @@ const emit = defineEmits(['create-order']);
 
 // Form data
 const newOrder = ref({
-  post_id: '',
   post_ids: '', // For multiple post IDs input
   like_count: 0,
   save_count: 0,
   comment_group_id: null
 });
 
-// Parse multiple post IDs from comma or newline separated string
-const parsePostIds = (input) => {
-  if (!input) return [];
-  
-  // Split by commas or newlines, trim whitespace, and filter empty strings
-  return input
-    .split(/[,\n]+/)
-    .map(id => id.trim())
-    .filter(id => id.length > 0);
-};
+// Order creation state
+const isCreatingOrders = ref(false);
+const orderCreationProgress = ref({
+  current: 0,
+  total: 0,
+  message: ''
+});
 
 // Computed properties
 const hasCommentGroups = computed(() => {
@@ -61,19 +61,33 @@ const saveCountError = computed(() => {
   return '';
 });
 
-const parsedPostIds = computed(() => parsePostIds(newOrder.value.post_ids));
-
-const postIdsError = computed(() => {
-  const ids = parsedPostIds.value;
-  if (ids.length === 0 && newOrder.value.post_ids.trim() !== '') {
-    return 'Please enter valid post IDs';
+const postIdError = computed(() => {
+  const postIds = newOrder.value.post_ids
+    .split(/[\n,]+/)
+    .map(id => id.trim())
+    .filter(id => id.length > 0);
+  
+  // No limit for admins
+  if (!props.isAdmin && postIds.length > 10) {
+    return `Maximum 10 post IDs allowed. You have entered ${postIds.length} post IDs.`;
   }
   return '';
 });
 
+const postIdCount = computed(() => {
+  if (!newOrder.value.post_ids) return 0;
+  
+  const postIds = newOrder.value.post_ids
+    .split(/[\n,]+/)
+    .map(id => id.trim())
+    .filter(id => id.length > 0);
+  
+  return postIds.length;
+});
+
 // Calculate required credits for the order - 1 credit per post ID
 const requiredCredits = computed(() => {
-  return parsedPostIds.value.length || 0;
+  return postIdCount.value || 0;
 });
 
 const insufficientCreditsError = computed(() => {
@@ -84,21 +98,40 @@ const insufficientCreditsError = computed(() => {
 });
 
 const isFormValid = computed(() => {
-  return parsedPostIds.value.length > 0 && 
+  return newOrder.value.post_ids && 
     (newOrder.value.like_count > 0 || 
      newOrder.value.save_count > 0 || 
      newOrder.value.comment_group_id) &&
     !likeCountError.value &&
     !saveCountError.value &&
-    !postIdsError.value &&
-    !insufficientCreditsError.value;
+    !postIdError.value &&
+    !insufficientCreditsError.value &&
+    !isCreatingOrders.value;
 });
 
-const createOrder = () => {
-  const postIds = parsedPostIds.value;
+const createOrder = async () => {
+  if (isCreatingOrders.value) return;
   
-  // Create orders for each post ID
-  postIds.forEach(postId => {
+  // Parse multiple post IDs from textarea
+  const postIds = newOrder.value.post_ids
+    .split(/[\n,]+/)
+    .map(id => id.trim())
+    .filter(id => id.length > 0);
+  
+  // Limit to 10 post IDs for non-admins
+  const limitedPostIds = props.isAdmin ? postIds : postIds.slice(0, 10);
+  
+  // Set up progress tracking
+  isCreatingOrders.value = true;
+  orderCreationProgress.value = {
+    current: 0,
+    total: limitedPostIds.length,
+    message: ''
+  };
+  
+  // Create orders for each post ID with 60 second delay between each
+  for (let i = 0; i < limitedPostIds.length; i++) {
+    const postId = limitedPostIds[i];
     const orderData = {
       post_id: postId,
       like_count: Math.min(newOrder.value.like_count, 3000),
@@ -106,16 +139,33 @@ const createOrder = () => {
       comment_group_id: newOrder.value.comment_group_id
     };
     
+    orderCreationProgress.value.current = i + 1;
+    orderCreationProgress.value.message = `Creating order ${i + 1} of ${limitedPostIds.length} for post ID: ${postId}`;
+    
+    console.log(`Creating order ${i + 1} of ${limitedPostIds.length} for post ID: ${postId}`);
     emit('create-order', orderData);
-  });
+    
+    // Wait 60 seconds before creating the next order (except for the last one)
+    if (i < limitedPostIds.length - 1) {
+      orderCreationProgress.value.message = `Waiting 60 seconds before creating next order...`;
+      console.log(`Waiting 60 seconds before creating next order...`);
+      await new Promise(resolve => setTimeout(resolve, 60000));
+    }
+  }
   
-  // Reset form after submission
+  // Reset form and progress after submission
   newOrder.value = {
-    post_id: '',
     post_ids: '',
     like_count: 0,
     save_count: 0,
     comment_group_id: null
+  };
+  
+  isCreatingOrders.value = false;
+  orderCreationProgress.value = {
+    current: 0,
+    total: 0,
+    message: ''
   };
 };
 </script>
@@ -128,20 +178,38 @@ const createOrder = () => {
     </v-card-title>
     
     <v-card-text>
+      <div v-if="isCreatingOrders" class="mb-4">
+        <v-alert type="info" variant="outlined">
+          <v-icon slot="prepend">mdi-progress-clock</v-icon>
+          <div>{{ orderCreationProgress.message }}</div>
+          <v-progress-linear
+            v-if="orderCreationProgress.total > 0"
+            :model-value="(orderCreationProgress.current / orderCreationProgress.total) * 100"
+            color="primary"
+            height="10"
+            rounded
+            class="mt-2"
+          ></v-progress-linear>
+          <div v-if="orderCreationProgress.total > 0" class="text-caption mt-1">
+            Progress: {{ orderCreationProgress.current }} / {{ orderCreationProgress.total }} orders
+          </div>
+        </v-alert>
+      </div>
       
       <v-form @submit.prevent="createOrder">
         <v-row>
           <v-col cols="12">
             <v-textarea
               v-model="newOrder.post_ids"
-              label="TikTok Post IDs"
+              :label="`TikTok Post IDs (${postIdCount}${!isAdmin ? '/10' : ''})`"
               placeholder="Enter TikTok post IDs (one per line or comma-separated)"
               variant="outlined"
+              :disabled="isCreatingOrders"
+              required
+              :error-messages="postIdError || error"
               rows="3"
               auto-grow
-              required
-              :error-messages="postIdsError || error"
-              :hint="`${parsedPostIds.length} post ID(s) entered`"
+              :hint="isAdmin ? 'You can enter multiple post IDs separated by commas or new lines (no limit for admins)' : 'You can enter multiple post IDs separated by commas or new lines (maximum 10 post IDs)'"
               persistent-hint
             ></v-textarea>
           </v-col>
@@ -152,6 +220,7 @@ const createOrder = () => {
               label="Number of Likes"
               type="number"
               min="0"
+              :disabled="isCreatingOrders"
               variant="outlined"
               hint="Maximum: 3,000 likes"
               persistent-hint
@@ -165,6 +234,7 @@ const createOrder = () => {
               label="Number of Saves"
               type="number"
               min="0"
+              :disabled="isCreatingOrders"
               variant="outlined"
               hint="Maximum: 500 saves"
               persistent-hint
@@ -181,7 +251,7 @@ const createOrder = () => {
               item-value="id"
               variant="outlined"
               :loading="loading"
-              :disabled="loading || !hasCommentGroups"
+              :disabled="loading || !hasCommentGroups || isCreatingOrders"
               :hint="!hasCommentGroups ? 'No comment groups available' : ''"
               persistent-hint
             ></v-select>
@@ -189,7 +259,7 @@ const createOrder = () => {
         </v-row>
         
         <!-- Credits Summary -->
-        <v-row v-if="parsedPostIds.length > 0 && (newOrder.like_count > 0 || newOrder.save_count > 0 || newOrder.comment_group_id)" class="mt-4">
+        <v-row v-if="postIdCount > 0 && (newOrder.like_count > 0 || newOrder.save_count > 0 || newOrder.comment_group_id)" class="mt-4">
           <v-col cols="12">
             <v-alert 
               :type="insufficientCreditsError ? 'error' : 'info'" 
@@ -200,7 +270,7 @@ const createOrder = () => {
                 <span>
                   <strong>Credits Required:</strong> {{ requiredCredits }}
                   <span class="text-caption ml-2">
-                    ({{ parsedPostIds.length }} {{ parsedPostIds.length === 1 ? 'post' : 'posts' }} × 1 credit each)
+                    ({{ postIdCount }} {{ postIdCount === 1 ? 'post' : 'posts' }} × 1 credit each)
                   </span>
                 </span>
                 <span>
@@ -222,7 +292,7 @@ const createOrder = () => {
               :loading="loading"
               :disabled="!isFormValid"
             >
-              Create Order
+              Create Order{{ postIdCount > 1 ? 's' : '' }}
             </v-btn>
           </v-col>
         </v-row>

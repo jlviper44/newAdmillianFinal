@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
 const props = defineProps({
   commentGroup: {
@@ -201,6 +201,16 @@ const removeMessage = (legendIndex, messageIndex) => {
 };
 
 const updateCommentGroup = () => {
+  // Validate all messages have text before updating
+  for (const legend of editedGroup.value.legends) {
+    for (const message of legend.conversations) {
+      if (!message || message.trim().length === 0) {
+        showAlert('error', 'All messages must contain at least 1 character');
+        return;
+      }
+    }
+  }
+  
   emit('update', { ...editedGroup.value });
 };
 
@@ -219,6 +229,18 @@ const deleteCommentGroup = () => {
 const closeDialog = () => {
   emit('cancel');
 };
+// Computed property to check if form is valid
+const isFormValid = computed(() => {
+  // Check if all messages have at least 1 character
+  for (const legend of editedGroup.value.legends) {
+    for (const message of legend.conversations) {
+      if (!message || message.trim().length === 0) {
+        return false;
+      }
+    }
+  }
+  return true;
+});
 </script>
 
 <template>
@@ -413,7 +435,7 @@ const closeDialog = () => {
                       auto-grow
                       :disabled="loading"
                       hide-details
-                      :rules="[v => !!v || 'Message text is required']"
+                      :rules="[v => !!v && v.trim().length > 0 || 'Message text must contain at least 1 character']"
                     ></v-textarea>
                   </v-card-text>
                 </v-card>
@@ -460,7 +482,7 @@ const closeDialog = () => {
               variant="elevated"
               type="submit"
               :loading="loading"
-              :disabled="!editedGroup.name || editedGroup.legends.length === 0 || deleteLoading"
+              :disabled="!editedGroup.name || editedGroup.legends.length === 0 || deleteLoading || !isFormValid"
             >
               Save Changes
             </v-btn>
