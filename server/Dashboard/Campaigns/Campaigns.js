@@ -1374,39 +1374,47 @@ function generateHideShopifyElementsCSS() {
     document.documentElement.style.visibility = 'visible';
   }
   
-  // Decide which approach to use based on the page structure
-  function initializeNuclearOption() {
-    // Wait a bit for the page to load
-    setTimeout(() => {
-      const offerContent = document.getElementById('offer-content');
+  // Execute nuclear option immediately - don't wait
+  function executeNuclearOption() {
+    // First, try to stop all scripts immediately
+    const stopScripts = document.createElement('script');
+    stopScripts.textContent = `
+      // Override all Shopify objects immediately
+      Object.defineProperty(window, 'Shopify', { value: undefined, writable: false });
+      Object.defineProperty(window, 'ShopifyAnalytics', { value: undefined, writable: false });
+      Object.defineProperty(window, 'trekkie', { value: undefined, writable: false });
       
-      if (!offerContent) {
-        console.error('Cannot find offer content - aborting nuclear option');
-        document.documentElement.style.visibility = 'visible';
-        return;
-      }
-      
-      // Check if there are many Shopify elements
-      const shopifyElements = document.querySelectorAll(
-        '.shopify-section, .header, .footer, .announcement-bar, [id*="shopify-section"]'
-      );
-      
-      if (shopifyElements.length > 5) {
-        // Too many Shopify elements - use nuclear option
-        nukeAndRebuild();
-      } else {
-        // Fewer elements - use aggressive hide
-        aggressiveHide();
-      }
-    }, 100);
+      // Block fetch and XHR
+      const originalFetch = window.fetch;
+      window.fetch = function(url) {
+        const urlStr = url.toString();
+        if (urlStr.includes('shopify') || urlStr.includes('sf_private_access_tokens')) {
+          return Promise.reject(new Error('Blocked'));
+        }
+        return originalFetch.apply(this, arguments);
+      };
+    `;
+    document.head.insertBefore(stopScripts, document.head.firstChild);
+    
+    // Now execute the nuclear option
+    const offerContent = document.getElementById('offer-content');
+    if (offerContent) {
+      nukeAndRebuild();
+    } else {
+      // If no offer content yet, wait for it
+      const observer = new MutationObserver((mutations) => {
+        const offerContent = document.getElementById('offer-content');
+        if (offerContent) {
+          observer.disconnect();
+          nukeAndRebuild();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
   
-  // Start the process
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeNuclearOption);
-  } else {
-    initializeNuclearOption();
-  }
+  // Execute immediately - don't wait for DOM ready
+  executeNuclearOption();
 })();
 </script>`;
 }
