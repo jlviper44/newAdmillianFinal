@@ -1177,8 +1177,25 @@ function generateAffiliateLinksScript(affiliateLinks) {
       link.setAttribute('rel', 'noopener noreferrer');
     });
     
-    // Also replace any text instances of AFFILIATE_LINK
-    document.body.innerHTML = document.body.innerHTML.replace(/AFFILIATE_LINK/g, affiliateLink);
+    // Also replace any text instances of AFFILIATE_LINK in text nodes only
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    const nodesToUpdate = [];
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeValue && node.nodeValue.includes('AFFILIATE_LINK')) {
+        nodesToUpdate.push(node);
+      }
+    }
+    
+    nodesToUpdate.forEach(function(node) {
+      node.nodeValue = node.nodeValue.replace(/AFFILIATE_LINK/g, affiliateLink);
+    });
   });
 })();
 </script>
@@ -1195,9 +1212,31 @@ function generateHideShopifyElementsCSS() {
   html { visibility: hidden !important; }
 </style>
 
+<!-- Immediate page takeover -->
 <script>
+// IMMEDIATE EXECUTION - Replace page before Shopify can load
+document.open();
+document.write('<!DOCTYPE html><html><head></head><body></body></html>');
+document.close();
+
+// Now rebuild with our content
 (function() {
   'use strict';
+  
+  // Override everything Shopify immediately
+  Object.defineProperty(window, 'Shopify', { value: undefined, writable: false, configurable: false });
+  Object.defineProperty(window, 'ShopifyAnalytics', { value: undefined, writable: false, configurable: false });
+  Object.defineProperty(window, 'trekkie', { value: undefined, writable: false, configurable: false });
+  
+  // Block all network requests
+  const originalFetch = window.fetch;
+  window.fetch = function(url) {
+    const urlStr = url.toString();
+    if (urlStr.includes('shopify') || urlStr.includes('sf_private') || urlStr.includes('/admin/') || urlStr.includes('/cart/')) {
+      return Promise.reject(new Error('Blocked'));
+    }
+    return originalFetch.apply(this, arguments);
+  };
   
   // Function to completely replace page content
   function nukeAndRebuild() {
@@ -1416,7 +1455,8 @@ function generateHideShopifyElementsCSS() {
   // Execute immediately - don't wait for DOM ready
   executeNuclearOption();
 })();
-</script>`;
+</script>
+`;
 }
 
 /**
@@ -1426,21 +1466,27 @@ function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumbe
   const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
-  return `
-${hideShopifyElementsCSS}
-
+  // Ensure affiliateLinks is properly formatted
+  const affiliateLinksData = campaign.affiliateLinks || {};
+  
+  // Put the nuclear CSS at the very beginning to execute first
+  return `${hideShopifyElementsCSS}
 <!-- Offer Content Container -->
 <div id="offer-content">
-${templateHTML}
+${templateHTML || '<h1>Loading...</h1>'}
 </div>
 
 <!-- Affiliate Link Replacement Script -->
 <script>
 // Store affiliate links globally for the nuclear option
-window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
+try {
+  window.affiliateLinks = ${JSON.stringify(affiliateLinksData)};
+} catch (e) {
+  console.error('Error setting affiliate links:', e);
+  window.affiliateLinks = {};
+}
 </script>
-${affiliateLinksScript}
-`;
+${affiliateLinksScript}`;
 }
 
 /**
@@ -1455,15 +1501,7 @@ async function createTikTokValidationPage(store, campaign, campaignId, launchNum
       handle: pageHandle,
       body_html: pageContent,
       published: true,
-      template_suffix: null,
-      metafields: [
-        {
-          namespace: "custom",
-          key: "no_template",
-          value: "true",
-          type: "single_line_text_field"
-        }
-      ]
+      template_suffix: null
     }
   };
   
