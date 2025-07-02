@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useTheme } from 'vuetify';
 import { useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
@@ -8,6 +8,7 @@ import UserMenu from '@/components/UserMenu.vue';
 const router = useRouter();
 const theme = useTheme();
 const isDarkMode = ref(false);
+const scrollY = ref(0);
 
 // Authentication
 const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess } = useAuth();
@@ -95,6 +96,11 @@ const isTabActive = (path, tab) => {
   return isActive;
 };
 
+// Handle scroll for parallax effect
+const handleScroll = () => {
+  scrollY.value = window.scrollY;
+};
+
 // Initialize theme on component mount
 onMounted(async () => {
   // Initialize authentication
@@ -111,6 +117,14 @@ onMounted(async () => {
   
   // Apply initial theme
   theme.global.name.value = isDarkMode.value ? 'dark' : 'light';
+  
+  // Add scroll listener for parallax effect
+  window.addEventListener('scroll', handleScroll);
+});
+
+// Clean up scroll listener
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll);
 });
 </script>
 
@@ -121,7 +135,7 @@ onMounted(async () => {
       v-if="isAuthenticated"
       elevation="0"
       height="70"
-      class="futuristic-app-bar"
+      class="futuristic-app-bar header-entrance"
       :style="{
         background: isDarkMode 
           ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 33%, #0f3460 66%, #533483 100%)' 
@@ -134,6 +148,21 @@ onMounted(async () => {
       <!-- Background Pattern -->
       <div class="app-bar-pattern"></div>
       
+      <!-- Floating Particles Animation -->
+      <div class="particles-container" :style="{ transform: `translateY(${scrollY * 0.3}px)` }">
+        <div v-for="i in 15" :key="`particle-${i}`" :class="`particle particle-${i}`"></div>
+      </div>
+      
+      <!-- Animated Border Gradient -->
+      <div class="animated-border"></div>
+      
+      <!-- Glowing Orbs Background -->
+      <div class="orb-container">
+        <div class="orb orb-1" :style="{ transform: `translateY(${scrollY * 0.5}px)` }"></div>
+        <div class="orb orb-2" :style="{ transform: `translateY(${scrollY * 0.3}px)` }"></div>
+        <div class="orb orb-3" :style="{ transform: `translateY(${scrollY * 0.4}px)` }"></div>
+      </div>
+      
       <!-- Menu toggle for responsive design -->
       <v-app-bar-nav-icon 
         @click="toggleDrawer"
@@ -141,7 +170,11 @@ onMounted(async () => {
         style="z-index: 2;"
       ></v-app-bar-nav-icon>
       
-      <v-app-bar-title class="font-weight-bold app-bar-title" :class="isDarkMode ? 'text-grey-lighten-2' : 'text-white'">
+      <v-app-bar-title 
+        class="font-weight-bold app-bar-title" 
+        :class="isDarkMode ? 'text-grey-lighten-2' : 'text-white'"
+        :style="{ transform: `translateX(${scrollY * -0.2}px)` }"
+      >
         <v-icon 
           size="30" 
           class="mr-2"
@@ -444,11 +477,276 @@ onMounted(async () => {
   position: relative;
   display: flex;
   align-items: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.app-bar-title:hover {
+  transform: scale(1.05);
+}
+
+.app-bar-title:hover .v-icon {
+  animation: robot-dance 0.5s ease-in-out;
+}
+
+@keyframes robot-dance {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
+}
+
+.app-bar-title span {
+  background: linear-gradient(45deg, #667eea, #764ba2, #f64f59);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* Hover effects for buttons in app bar */
+.futuristic-app-bar .v-btn {
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
 .futuristic-app-bar .v-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(255, 255, 255, 0.2);
+}
+
+.futuristic-app-bar .v-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.futuristic-app-bar .v-btn:hover::before {
+  width: 100px;
+  height: 100px;
+}
+
+/* Floating Particles Animation */
+.particles-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: float-up 15s infinite;
+}
+
+.particle-1 { left: 5%; animation-delay: 0s; animation-duration: 12s; }
+.particle-2 { left: 10%; animation-delay: 1s; animation-duration: 15s; }
+.particle-3 { left: 15%; animation-delay: 2s; animation-duration: 10s; }
+.particle-4 { left: 20%; animation-delay: 0.5s; animation-duration: 13s; }
+.particle-5 { left: 25%; animation-delay: 3s; animation-duration: 11s; }
+.particle-6 { left: 30%; animation-delay: 1.5s; animation-duration: 14s; }
+.particle-7 { left: 35%; animation-delay: 2.5s; animation-duration: 12s; }
+.particle-8 { left: 40%; animation-delay: 0.3s; animation-duration: 16s; }
+.particle-9 { left: 45%; animation-delay: 1.8s; animation-duration: 10s; }
+.particle-10 { left: 50%; animation-delay: 2.3s; animation-duration: 13s; }
+.particle-11 { left: 55%; animation-delay: 0.8s; animation-duration: 11s; }
+.particle-12 { left: 60%; animation-delay: 3.5s; animation-duration: 15s; }
+.particle-13 { left: 65%; animation-delay: 1.3s; animation-duration: 12s; }
+.particle-14 { left: 70%; animation-delay: 2.8s; animation-duration: 14s; }
+.particle-15 { left: 75%; animation-delay: 0.2s; animation-duration: 10s; }
+
+@keyframes float-up {
+  0% {
+    transform: translateY(100px) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px) translateX(50px);
+    opacity: 0;
+  }
+}
+
+/* Animated Border Gradient */
+.animated-border {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, 
+    transparent,
+    #667eea,
+    #764ba2,
+    #f64f59,
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: border-slide 3s linear infinite;
+}
+
+@keyframes border-slide {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Glowing Orbs */
+.orb-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.4;
+  animation: orb-float 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, #667eea, transparent);
+  top: -50px;
+  left: -50px;
+  animation-duration: 15s;
+}
+
+.orb-2 {
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, #764ba2, transparent);
+  top: -100px;
+  right: 10%;
+  animation-duration: 20s;
+  animation-delay: 5s;
+}
+
+.orb-3 {
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, #f64f59, transparent);
+  bottom: -60px;
+  left: 30%;
+  animation-duration: 18s;
+  animation-delay: 10s;
+}
+
+@keyframes orb-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(30px, -30px) scale(1.1);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  75% {
+    transform: translate(40px, 10px) scale(1.05);
+  }
+}
+
+/* Header Entrance Animation */
+.header-entrance {
+  animation: header-slide-down 0.8s ease-out;
+}
+
+@keyframes header-slide-down {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.header-entrance .app-bar-title {
+  animation: title-fade-in 1s ease-out 0.5s both;
+}
+
+@keyframes title-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.header-entrance .v-btn {
+  animation: button-pop-in 0.6s ease-out backwards;
+}
+
+.header-entrance .v-btn:nth-child(1) { animation-delay: 0.8s; }
+.header-entrance .v-btn:nth-child(2) { animation-delay: 0.9s; }
+.header-entrance .v-btn:nth-child(3) { animation-delay: 1s; }
+
+@keyframes button-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  80% {
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.header-entrance .particles-container {
+  animation: particles-fade-in 2s ease-out 1.2s both;
+}
+
+@keyframes particles-fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* Dark mode specific styles */

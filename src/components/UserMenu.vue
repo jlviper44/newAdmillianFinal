@@ -7,12 +7,12 @@
     
     <v-menu v-else offset-y>
       <template v-slot:activator="{ props }">
-        <v-btn v-bind="props" variant="text">
+        <v-btn v-bind="props" variant="text" class="user-menu-btn">
           <v-avatar size="32" class="mr-2">
             <v-img v-if="user.image" :src="user.image" :alt="user.name"></v-img>
             <v-icon v-else>mdi-account-circle</v-icon>
           </v-avatar>
-          <span class="d-none d-sm-inline">{{ user.name || user.email }}</span>
+          <span class="d-none d-sm-inline user-menu-name">{{ user.name || user.email }}</span>
           <v-chip v-if="user.isAdmin" color="amber" size="x-small" variant="flat" class="ml-2">
             <v-icon start size="x-small">mdi-crown</v-icon>
             Admin
@@ -62,3 +62,31 @@ const viewProfile = () => {
   router.push('/profile')
 }
 </script>
+
+<style scoped>
+/* In light mode, make the username white for better contrast against gradient background */
+.v-theme--light .user-menu-btn {
+  color: white !important;
+}
+
+.v-theme--light .user-menu-btn .user-menu-name {
+  color: white !important;
+}
+
+.v-theme--light .user-menu-btn .v-icon {
+  color: white !important;
+}
+
+/* In dark mode, use the default gray-lighten-2 color */
+.v-theme--dark .user-menu-btn {
+  color: rgb(224, 224, 224) !important;
+}
+
+.v-theme--dark .user-menu-btn .user-menu-name {
+  color: rgb(224, 224, 224) !important;
+}
+
+.v-theme--dark .user-menu-btn .v-icon {
+  color: rgb(224, 224, 224) !important;
+}
+</style>
