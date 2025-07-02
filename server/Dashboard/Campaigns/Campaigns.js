@@ -1090,7 +1090,7 @@ function generatePageContent(campaign, campaignId, launchNumber) {
         window.location.href = redirectUrl.href;
       }
       
-      // Just redirect, no logging to external service
+      // Just redirect without external logging
       performRedirect();
     })
     .catch(function(error) {
@@ -1140,66 +1140,147 @@ function generateAffiliateLinksScript(affiliateLinks) {
   return `
 <script>
 (function() {
-  const affiliateLinks = ${JSON.stringify(affiliateLinks || {})};
+  // Get URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const os = urlParams.get('os') || 'unknown';
+  const geo = urlParams.get('geo') || 'US';
+  const region = urlParams.get('region');
+  const city = urlParams.get('city');
+  const timezone = urlParams.get('tz');
+  const s1 = urlParams.get('s1'); // campaign ID
+  const s2 = urlParams.get('s2'); // launch number
+  const ttclid = urlParams.get('ttclid'); // TikTok Click ID - this is s3
   
-  // Get user's region
-  const region = (new URLSearchParams(window.location.search)).get('region') || 'US';
-  const device = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'ios' : 
-                /Android/i.test(navigator.userAgent) ? 'android' : 'all';
+  console.log('Offer page - Location data:', { 
+    geo: geo, 
+    region: region,
+    city: city,
+    timezone: timezone ? decodeURIComponent(timezone) : 'not provided',
+    os: os, 
+    s1: s1, 
+    s2: s2, 
+    ttclid: ttclid
+  });
   
-  // Function to get the best matching affiliate link
-  function getAffiliateLink() {
-    // Try device-specific link first
-    const deviceKey = region + '_' + device;
-    if (affiliateLinks[deviceKey]) {
-      return affiliateLinks[deviceKey];
+  // Affiliate links data
+  const affiliateLinks = ${JSON.stringify(affiliateLinks)};
+  
+  // Select the best matching affiliate link
+  let affiliateLink = selectAffiliateLink(affiliateLinks, geo, os);
+  
+  console.log('Selected affiliate link:', affiliateLink);
+  console.log('Selection logic used:', getSelectionLogic(affiliateLinks, geo, os));
+  
+  if (affiliateLink) {
+    try {
+      // Build the final URL with only s1, s2, and s3 (ttclid)
+      const finalUrl = buildFinalAffiliateUrl(affiliateLink, { 
+        s1, 
+        s2, 
+        s3: ttclid
+      });
+      console.log('Final affiliate URL:', finalUrl);
+      
+      // Replace all {{AFFILIATE_LINK}} placeholders
+      replaceAffiliateLinkPlaceholders(finalUrl);
+      
+      // Track the redirect for analytics
+      trackRedirect(geo, os, region, city);
+      
+    } catch (error) {
+      console.error('Error processing affiliate link:', error);
     }
-    
-    // Fall back to region default
-    if (affiliateLinks[region]) {
-      return affiliateLinks[region];
+  } else {
+    console.error('No affiliate link found for geo:', geo, 'os:', os);
+    // Fallback to first available link
+    const fallbackLink = Object.values(affiliateLinks)[0];
+    if (fallbackLink) {
+      console.warn('Using fallback link:', fallbackLink);
+      const finalUrl = buildFinalAffiliateUrl(fallbackLink, { 
+        s1, 
+        s2, 
+        s3: ttclid
+      });
+      replaceAffiliateLinkPlaceholders(finalUrl);
     }
-    
-    // Fall back to any available link
-    const anyLink = Object.values(affiliateLinks).find(link => link && link.length > 0);
-    return anyLink || '#';
   }
   
-  // Replace all affiliate links on page load
-  document.addEventListener('DOMContentLoaded', function() {
-    const affiliateLink = getAffiliateLink();
-    console.log('Using affiliate link:', affiliateLink);
+  // Helper function to explain selection logic
+  function getSelectionLogic(links, geo, os) {
+    if (links[geo + '_' + os]) return 'Exact match: ' + geo + '_' + os;
+    if (links[geo]) return 'Country match: ' + geo;
+    if (links['US']) return 'Default US fallback';
+    return 'First available link';
+  }
+  
+  // Helper function to select the best matching affiliate link
+  function selectAffiliateLink(links, geo, os) {
+    return links[geo + '_' + os] || 
+           links[geo] || 
+           links['US'] ||
+           Object.values(links)[0];
+  }
+  
+  // Simplified: Only add s1, s2, and s3 parameters
+  function buildFinalAffiliateUrl(baseUrl, params) {
+    const url = new URL(baseUrl);
     
-    // Replace all links with class 'affiliate-link' or containing 'AFFILIATE_LINK'
-    document.querySelectorAll('a.affiliate-link, a[href*="AFFILIATE_LINK"]').forEach(function(link) {
-      link.href = affiliateLink;
-      link.setAttribute('target', '_blank');
-      link.setAttribute('rel', 'noopener noreferrer');
+    // Add only the essential tracking parameters
+    if (params.s1) url.searchParams.set('s1', params.s1); // Campaign ID
+    if (params.s2) url.searchParams.set('s2', params.s2); // Launch Number
+    if (params.s3) url.searchParams.set('s3', params.s3); // ttclid
+    
+    // Optionally add geo for affiliate's reference (not as s-parameter)
+    url.searchParams.set('geo', geo);
+    if (region) url.searchParams.set('region', region);
+
+    return url.href;
+  }
+  
+  // Helper function to replace all affiliate link placeholders
+  function replaceAffiliateLinkPlaceholders(finalUrl) {
+    // Replace in text content
+    document.body.innerHTML = document.body.innerHTML.replace(/{{AFFILIATE_LINK}}/g, finalUrl);
+    
+    // Update direct links
+    document.querySelectorAll('a.affiliate-link, a[href*="{{AFFILIATE_LINK}}"]').forEach(link => {
+      link.href = finalUrl;
     });
     
-    // Also replace any text instances of AFFILIATE_LINK in text nodes only
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    
-    const nodesToUpdate = [];
-    let node;
-    while (node = walker.nextNode()) {
-      if (node.nodeValue && node.nodeValue.includes('AFFILIATE_LINK')) {
-        nodesToUpdate.push(node);
-      }
-    }
-    
-    nodesToUpdate.forEach(function(node) {
-      node.nodeValue = node.nodeValue.replace(/AFFILIATE_LINK/g, affiliateLink);
+    // Update buttons with onclick events
+    document.querySelectorAll('button[onclick*="{{AFFILIATE_LINK}}"]').forEach(button => {
+      button.onclick = function() { 
+        window.location.href = finalUrl; 
+      };
     });
-  });
+    
+    // Update any data attributes
+    document.querySelectorAll('[data-href*="{{AFFILIATE_LINK}}"]').forEach(element => {
+      element.dataset.href = finalUrl;
+    });
+  }
+  
+  // Track redirect for analytics (internal use only)
+  function trackRedirect(geo, os, region, city) {
+    console.log('Redirect tracked:', {
+      timestamp: new Date().toISOString(),
+      geo: geo,
+      os: os,
+      region: region,
+      city: city,
+      campaign: s1,
+      launch: s2,
+      ttclid: ttclid
+    });
+  }
+  
+  // Make functions available globally for the nuclear option
+  window.selectAffiliateLink = selectAffiliateLink;
+  window.buildFinalAffiliateUrl = buildFinalAffiliateUrl;
+  window.replaceAffiliateLinkPlaceholders = replaceAffiliateLinkPlaceholders;
+  window.affiliateLinks = affiliateLinks;
 })();
-</script>
-`;
+</script>`;
 }
 
 /**
@@ -1212,31 +1293,9 @@ function generateHideShopifyElementsCSS() {
   html { visibility: hidden !important; }
 </style>
 
-<!-- Immediate page takeover -->
 <script>
-// IMMEDIATE EXECUTION - Replace page before Shopify can load
-document.open();
-document.write('<!DOCTYPE html><html><head></head><body></body></html>');
-document.close();
-
-// Now rebuild with our content
 (function() {
   'use strict';
-  
-  // Override everything Shopify immediately
-  Object.defineProperty(window, 'Shopify', { value: undefined, writable: false, configurable: false });
-  Object.defineProperty(window, 'ShopifyAnalytics', { value: undefined, writable: false, configurable: false });
-  Object.defineProperty(window, 'trekkie', { value: undefined, writable: false, configurable: false });
-  
-  // Block all network requests
-  const originalFetch = window.fetch;
-  window.fetch = function(url) {
-    const urlStr = url.toString();
-    if (urlStr.includes('shopify') || urlStr.includes('sf_private') || urlStr.includes('/admin/') || urlStr.includes('/cart/')) {
-      return Promise.reject(new Error('Blocked'));
-    }
-    return originalFetch.apply(this, arguments);
-  };
   
   // Function to completely replace page content
   function nukeAndRebuild() {
@@ -1347,7 +1406,7 @@ document.close();
           if (window.affiliateLinks) {
             const affiliateLink = window.selectAffiliateLink(window.affiliateLinks, geo, os);
             if (affiliateLink) {
-              const finalUrl = window.buildFinalAffiliateUrl(affiliateLink, { s1, s2, ttclid });
+              const finalUrl = window.buildFinalAffiliateUrl(affiliateLink, { s1, s2, s3: ttclid });
               window.replaceAffiliateLinkPlaceholders(finalUrl);
             }
           }
@@ -1413,50 +1472,41 @@ document.close();
     document.documentElement.style.visibility = 'visible';
   }
   
-  // Execute nuclear option immediately - don't wait
-  function executeNuclearOption() {
-    // First, try to stop all scripts immediately
-    const stopScripts = document.createElement('script');
-    stopScripts.textContent = `
-      // Override all Shopify objects immediately
-      Object.defineProperty(window, 'Shopify', { value: undefined, writable: false });
-      Object.defineProperty(window, 'ShopifyAnalytics', { value: undefined, writable: false });
-      Object.defineProperty(window, 'trekkie', { value: undefined, writable: false });
+  // Decide which approach to use based on the page structure
+  function initializeNuclearOption() {
+    // Wait a bit for the page to load
+    setTimeout(() => {
+      const offerContent = document.getElementById('offer-content');
       
-      // Block fetch and XHR
-      const originalFetch = window.fetch;
-      window.fetch = function(url) {
-        const urlStr = url.toString();
-        if (urlStr.includes('shopify') || urlStr.includes('sf_private_access_tokens')) {
-          return Promise.reject(new Error('Blocked'));
-        }
-        return originalFetch.apply(this, arguments);
-      };
-    `;
-    document.head.insertBefore(stopScripts, document.head.firstChild);
-    
-    // Now execute the nuclear option
-    const offerContent = document.getElementById('offer-content');
-    if (offerContent) {
-      nukeAndRebuild();
-    } else {
-      // If no offer content yet, wait for it
-      const observer = new MutationObserver((mutations) => {
-        const offerContent = document.getElementById('offer-content');
-        if (offerContent) {
-          observer.disconnect();
-          nukeAndRebuild();
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
+      if (!offerContent) {
+        console.error('Cannot find offer content - aborting nuclear option');
+        document.documentElement.style.visibility = 'visible';
+        return;
+      }
+      
+      // Check if there are many Shopify elements
+      const shopifyElements = document.querySelectorAll(
+        '.shopify-section, .header, .footer, .announcement-bar, [id*="shopify-section"]'
+      );
+      
+      if (shopifyElements.length > 5) {
+        // Too many Shopify elements - use nuclear option
+        nukeAndRebuild();
+      } else {
+        // Fewer elements - use aggressive hide
+        aggressiveHide();
+      }
+    }, 100);
   }
   
-  // Execute immediately - don't wait for DOM ready
-  executeNuclearOption();
+  // Start the process
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeNuclearOption);
+  } else {
+    initializeNuclearOption();
+  }
 })();
-</script>
-`;
+</script>`;
 }
 
 /**
@@ -1466,27 +1516,21 @@ function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumbe
   const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
-  // Ensure affiliateLinks is properly formatted
-  const affiliateLinksData = campaign.affiliateLinks || {};
-  
-  // Put the nuclear CSS at the very beginning to execute first
-  return `${hideShopifyElementsCSS}
+  return `
+${hideShopifyElementsCSS}
+
 <!-- Offer Content Container -->
 <div id="offer-content">
-${templateHTML || '<h1>Loading...</h1>'}
+${templateHTML}
 </div>
 
 <!-- Affiliate Link Replacement Script -->
 <script>
 // Store affiliate links globally for the nuclear option
-try {
-  window.affiliateLinks = ${JSON.stringify(affiliateLinksData)};
-} catch (e) {
-  console.error('Error setting affiliate links:', e);
-  window.affiliateLinks = {};
-}
+window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
 </script>
-${affiliateLinksScript}`;
+${affiliateLinksScript}
+`;
 }
 
 /**
