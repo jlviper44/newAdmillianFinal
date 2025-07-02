@@ -1137,7 +1137,6 @@ async function getTemplateHTML(db, templateId) {
  * Generate affiliate links replacement script
  */
 function generateAffiliateLinksScript(affiliateLinks) {
-  console.log('[generateAffiliateLinksScript] Input affiliateLinks:', affiliateLinks);
   return `
 <script>
 (function() {
@@ -1165,7 +1164,6 @@ function generateAffiliateLinksScript(affiliateLinks) {
   
   // Affiliate links data
   const affiliateLinks = ${JSON.stringify(affiliateLinks)};
-  console.log('Affiliate links loaded:', affiliateLinks);
   
   // Select the best matching affiliate link
   let affiliateLink = selectAffiliateLink(affiliateLinks, geo, os);
@@ -1515,9 +1513,6 @@ function generateHideShopifyElementsCSS() {
  * Build offer page content with template and scripts
  */
 function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumber }) {
-  console.log('[buildOfferPageContent] Campaign object:', campaign);
-  console.log('[buildOfferPageContent] Campaign.affiliateLinks:', campaign.affiliateLinks);
-  
   const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
@@ -1533,7 +1528,6 @@ ${templateHTML}
 <script>
 // Store affiliate links globally for the nuclear option
 window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
-console.log('[buildOfferPageContent] window.affiliateLinks set to:', window.affiliateLinks);
 </script>
 ${affiliateLinksScript}
 `;
@@ -1648,10 +1642,6 @@ async function createRedirectStoreOfferPage(db, campaign, campaignId, launchNumb
     }
     
     console.log(`Creating offer page on redirect store: ${redirectStore.store_name || redirectStore.store_url}`);
-    
-    // Debug: Log affiliate links
-    console.log('Campaign affiliate links:', campaign.affiliateLinks);
-    console.log('Campaign affiliate_links (raw):', campaign.affiliate_links);
     
     // Get the template HTML
     const templateHTML = await getTemplateHTML(db, campaign.template_id);
@@ -1870,7 +1860,7 @@ async function generateCampaignLink(db, request, env) {
       const campaignData = {
         ...campaign,
         regions: JSON.parse(campaign.regions || '[]'),
-        affiliateLinks: JSON.parse(campaign.affiliate_links || '{}'),
+        affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
         redirectType: campaign.redirect_type,
         customRedirectUrl: campaign.custom_redirect_link
       };
@@ -1990,7 +1980,7 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
     
     // Parse regions and affiliate links
     const regions = JSON.parse(campaign.regions || '[]');
-    const affiliateLinks = JSON.parse(campaign.affiliate_links || '{}');
+    const affiliateLinks = JSON.parse(campaign.affiliate_link || '{}');
     
     // Return campaign data for client
     return new Response(JSON.stringify({
