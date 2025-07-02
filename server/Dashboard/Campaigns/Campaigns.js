@@ -525,6 +525,9 @@ async function updateCampaign(db, campaignId, request, env) {
         affiliate_link = ?,
         status = ?,
         is_active = ?,
+        launches = ?,
+        max_launch_number = ?,
+        total_launches = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
@@ -539,6 +542,9 @@ async function updateCampaign(db, campaignId, request, env) {
       campaignData.affiliateLink || null,
       campaignData.status || existingCampaign.status,
       campaignData.isActive !== false ? 1 : 0,
+      campaignData.launches ? JSON.stringify(campaignData.launches) : existingCampaign.launches,
+      campaignData.maxLaunchNumber !== undefined ? campaignData.maxLaunchNumber : existingCampaign.max_launch_number,
+      campaignData.totalLaunches !== undefined ? campaignData.totalLaunches : existingCampaign.total_launches,
       campaignId,
       userId
     ).run();

@@ -1355,49 +1355,27 @@ const addNewLaunches = async () => {
   
   addingLaunches.value = true;
   try {
-    // Get current campaign with fresh data
-    const campaignData = await campaignsApi.getCampaign(currentCampaign.value.id);
-    
-    // Initialize launches if not present
-    if (!campaignData.launches) {
-      campaignData.launches = {
-        "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null }
-      };
-      campaignData.maxLaunchNumber = 0;
-      campaignData.totalLaunches = 1;
-    }
-    
-    // Find the actual max launch number
-    const existingNumbers = Object.keys(campaignData.launches).map(k => parseInt(k));
-    const currentMax = existingNumbers.length > 0 ? Math.max(...existingNumbers) : -1;
-    
-    // Add new launches
     const newLaunches = [];
-    for (let i = 1; i <= newLaunchCount.value; i++) {
-      const newNumber = currentMax + i;
-      campaignData.launches[newNumber.toString()] = {
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        generatedAt: null
-      };
-      newLaunches.push(newNumber);
+    
+    // Add launches one by one using the manageLaunches API
+    for (let i = 0; i < newLaunchCount.value; i++) {
+      const result = await campaignsApi.manageLaunches(currentCampaign.value.id, 'add', {});
+      if (result.success && result.result?.launchNumber !== undefined) {
+        newLaunches.push(result.result.launchNumber);
+      }
     }
     
-    // Update campaign metadata
-    campaignData.maxLaunchNumber = currentMax + newLaunchCount.value;
-    campaignData.totalLaunches = Object.keys(campaignData.launches).length;
-    campaignData.updatedAt = new Date().toISOString();
-    
-    // Update the campaign
-    await campaignsApi.updateCampaign(campaignData.id, campaignData);
-    
-    showSuccess(`Successfully added ${newLaunchCount.value} new launch(es): ${newLaunches.join(', ')}`);
-    
-    // Refresh the modal
-    await openLaunchesModal(currentCampaign.value);
-    
-    // Refresh main campaigns list
-    fetchCampaigns();
+    if (newLaunches.length > 0) {
+      showSuccess(`Successfully added ${newLaunches.length} new launch(es): ${newLaunches.join(', ')}`);
+      
+      // Refresh the modal
+      await openLaunchesModal(currentCampaign.value);
+      
+      // Refresh main campaigns list
+      fetchCampaigns();
+    } else {
+      showError('Failed to add launches');
+    }
   } catch (error) {
     showError('Failed to add launches: ' + error.message);
   } finally {
@@ -1408,21 +1386,16 @@ const addNewLaunches = async () => {
 const toggleLaunch = async (launchNumber) => {
   togglingLaunch.value = launchNumber;
   try {
-    // Get current campaign
-    const campaignData = await campaignsApi.getCampaign(currentCampaign.value.id);
+    // Use manageLaunches API to toggle launch status
+    const result = await campaignsApi.manageLaunches(currentCampaign.value.id, 'toggle', {
+      launchNumber: launchNumber
+    });
     
-    // Toggle the launch state
-    if (campaignData.launches && campaignData.launches[launchNumber.toString()]) {
-      campaignData.launches[launchNumber.toString()].isActive = !campaignData.launches[launchNumber.toString()].isActive;
-      campaignData.updatedAt = new Date().toISOString();
-      
-      // Update the campaign
-      await campaignsApi.updateCampaign(campaignData.id, campaignData);
-      
+    if (result.success) {
       // Update local state
       const launchIndex = currentLaunches.value.findIndex(l => l.number === launchNumber);
       if (launchIndex !== -1) {
-        currentLaunches.value[launchIndex].isActive = !currentLaunches.value[launchIndex].isActive;
+        currentLaunches.value[launchIndex].isActive = result.result?.isActive || !currentLaunches.value[launchIndex].isActive;
       }
       
       showSuccess('Launch status updated');
