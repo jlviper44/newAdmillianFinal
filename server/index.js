@@ -81,8 +81,13 @@ export default {
         });
       }
       
-      // Route Campaigns API requests (protected)
+      // Route Campaigns API requests
       if (path.startsWith('/api/campaigns')) {
+        // Client endpoints are public (no auth required)
+        if (path.includes('/api/campaigns/client/')) {
+          return handleCampaignsAPI(request, env, path);
+        }
+        // All other campaign endpoints require auth
         return requireAuth(request, env, async (req, env) => {
           return handleCampaignsAPI(req, env, path);
         });
