@@ -68,10 +68,22 @@ const visibleRoutes = computed(() => {
   });
 });
 
+// Function to update favicon based on theme
+const updateFavicon = (isDark) => {
+  const link = document.querySelector("link[rel~='icon']");
+  if (link) {
+    // Use white.ico for dark mode, black.ico for light mode
+    link.href = isDark ? '/src/assets/white.ico' : '/src/assets/black.ico';
+  }
+};
+
 // Function to toggle dark mode
 const toggleDarkMode = () => {
   isDarkMode.value = !isDarkMode.value;
   theme.global.name.value = isDarkMode.value ? 'dark' : 'light';
+  
+  // Update favicon
+  updateFavicon(isDarkMode.value);
   
   // Dispatch theme change event for the rest of the app
   window.dispatchEvent(new CustomEvent('themeChange', {
@@ -121,6 +133,9 @@ onMounted(async () => {
   
   // Apply initial theme
   theme.global.name.value = isDarkMode.value ? 'dark' : 'light';
+  
+  // Update favicon based on initial theme
+  updateFavicon(isDarkMode.value);
   
   // Add scroll listener for parallax effect
   window.addEventListener('scroll', handleScroll);
