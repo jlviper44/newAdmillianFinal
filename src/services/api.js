@@ -93,7 +93,8 @@ export const usersApi = {
   // Credits and checkout
   createCheckout: (data) => api.post('/auth/create-checkout', data),
   useCredits: (data) => api.post('/auth/use-credits', data),
-  getCheckoutLink: () => api.get('/auth/checkout-link')
+  getCheckoutLink: () => api.get('/auth/checkout-link'),
+  getPricing: () => api.get('/auth/pricing')
 }
 
 // CommentBot specific API methods

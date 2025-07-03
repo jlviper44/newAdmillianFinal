@@ -11,7 +11,7 @@ const isDarkMode = ref(false);
 const scrollY = ref(0);
 
 // Authentication
-const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess } = useAuth();
+const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user } = useAuth();
 
 // All routes
 const allRoutes = [
@@ -43,7 +43,8 @@ const allRoutes = [
     title: 'Settings', 
     icon: 'mdi-cog', 
     path: '/settings',
-    requiresSubscription: null
+    requiresSubscription: null,
+    requiresAdmin: true
   },
 ];
 
@@ -52,7 +53,10 @@ const visibleRoutes = computed(() => {
   if (!isAuthenticated.value) return [];
   
   return allRoutes.filter(route => {
-    // Always show routes without subscription requirements
+    // Check if route requires admin access
+    if (route.requiresAdmin && !user.value?.isAdmin) return false;
+    
+    // Always show routes without subscription requirements (unless they require admin)
     if (!route.requiresSubscription) return true;
     
     // Check specific subscription requirements
@@ -234,18 +238,9 @@ onUnmounted(() => {
               v-bind="props"
               prepend-icon="mdi-view-dashboard"
               title="Dashboard"
-              :to="'/dashboard?tab=overview'"
+              :to="'/dashboard?tab=metrics'"
             ></v-list-item>
           </template>
-          
-          <v-list-item
-            to="/dashboard?tab=overview"
-            title="Overview"
-            prepend-icon="mdi-chart-line"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'overview') }"
-:style="isTabActive('/dashboard', 'overview') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
           <v-list-item
             to="/dashboard?tab=metrics"
             title="Metrics"
@@ -393,7 +388,7 @@ onUnmounted(() => {
     
     <!-- Main Content - Router View with improved padding -->
     <v-main class="main-content">
-      <v-container fluid class="pa-6">
+      <v-container fluid :class="isAuthenticated ? 'pa-6' : 'pa-0'">
         <router-view />
       </v-container>
     </v-main>
@@ -416,6 +411,12 @@ onUnmounted(() => {
 
 .main-content {
   background-color: var(--v-theme-background);
+}
+
+/* Prevent scrolling on welcome page */
+.v-main .v-container.pa-0 {
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 .border-b {

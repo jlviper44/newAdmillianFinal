@@ -4,48 +4,70 @@
   </div>
   
   <div v-else-if="!isAuthenticated" class="landing-page">
+    <!-- Background Pattern -->
+    <div class="app-bar-pattern"></div>
+    
+    <!-- Floating Particles Animation -->
+    <div class="particles-container">
+      <div v-for="i in 15" :key="`particle-${i}`" :class="`particle particle-${i}`"></div>
+    </div>
+    
+    
+    <!-- Glowing Orbs Background -->
+    <div class="orb-container">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    
     <v-container class="fill-height">
       <v-row align="center" justify="center">
         <v-col cols="12" sm="10" md="8" lg="6" xl="5">
-          <div class="text-center">
+          <div class="text-center content-entrance">
             <!-- Logo/Icon -->
-            <v-icon size="100" color="primary" class="mb-6">mdi-robot-happy</v-icon>
+            <v-icon size="80" color="primary" class="mb-4 robot-icon">mdi-robot-happy</v-icon>
             
             <!-- Welcome Message -->
-            <h1 class="text-h2 text-md-h1 font-weight-bold mb-4">
-              Welcome to MillianAI
+            <h1 class="text-h3 text-md-h2 font-weight-bold mb-3 welcome-title">
+              <span class="gradient-text">Welcome to MillianAI</span>
             </h1>
             
             <!-- Subtitle -->
-            <p class="text-h6 text-md-h5 text-grey mb-8">
+            <p class="text-body-1 text-md-h6 text-grey mb-6">
               Automate your social media engagement with intelligent comment bots
             </p>
             
             <!-- Features -->
-            <v-row class="mb-8">
-              <v-col cols="12" md="4" class="mb-4">
-                <v-icon size="48" color="primary" class="mb-3">mdi-flash</v-icon>
-                <h3 class="text-h6 mb-2">Fast & Efficient</h3>
-                <p class="text-body-2 text-grey">Automate comments at scale with lightning speed</p>
+            <v-row class="mb-4 features-row">
+              <v-col cols="12" md="4" class="mb-2 mb-md-4">
+                <div class="feature-card">
+                  <v-icon size="40" color="primary" class="mb-2">mdi-flash</v-icon>
+                  <h3 class="text-subtitle-1 mb-1">Fast & Efficient</h3>
+                  <p class="text-caption text-grey">Automate comments at scale with lightning speed</p>
+                </div>
               </v-col>
-              <v-col cols="12" md="4" class="mb-4">
-                <v-icon size="48" color="primary" class="mb-3">mdi-brain</v-icon>
-                <h3 class="text-h6 mb-2">AI-Powered</h3>
-                <p class="text-body-2 text-grey">Intelligent comments that feel natural and engaging</p>
+              <v-col cols="12" md="4" class="mb-2 mb-md-4">
+                <div class="feature-card">
+                  <v-icon size="40" color="primary" class="mb-2">mdi-brain</v-icon>
+                  <h3 class="text-subtitle-1 mb-1">AI-Powered</h3>
+                  <p class="text-caption text-grey">Intelligent comments that feel natural and engaging</p>
+                </div>
               </v-col>
-              <v-col cols="12" md="4" class="mb-4">
-                <v-icon size="48" color="primary" class="mb-3">mdi-shield-check</v-icon>
-                <h3 class="text-h6 mb-2">Secure & Reliable</h3>
-                <p class="text-body-2 text-grey">Your accounts are safe with our advanced security</p>
+              <v-col cols="12" md="4" class="mb-2 mb-md-4">
+                <div class="feature-card">
+                  <v-icon size="40" color="primary" class="mb-2">mdi-shield-check</v-icon>
+                  <h3 class="text-subtitle-1 mb-1">Secure & Reliable</h3>
+                  <p class="text-caption text-grey">Your accounts are safe with our advanced security</p>
+                </div>
               </v-col>
             </v-row>
             
             <!-- CTA Button -->
             <v-btn 
               color="primary" 
-              size="x-large" 
+              size="large" 
               @click="signIn"
-              class="px-8"
+              class="px-6 cta-button"
               elevation="2"
             >
               <v-icon start>mdi-login</v-icon>
@@ -53,7 +75,7 @@
             </v-btn>
             
             <!-- Additional Info -->
-            <p class="text-body-2 text-grey mt-6">
+            <p class="text-caption text-grey mt-4">
               Sign in to access powerful automation tools
             </p>
           </div>
@@ -197,32 +219,407 @@ onUnmounted(() => {
 
 <style scoped>
 .landing-page {
-  min-height: 100vh;
+  height: 100vh;
   position: relative;
   overflow: hidden;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f64f59 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.v-theme--dark .landing-page {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 33%, #0f3460 66%, #533483 100%);
 }
 
 .landing-page .v-container {
   position: relative;
-  z-index: 1;
+  z-index: 10;
+  height: 100%;
+  max-height: 100vh;
+  padding-top: 2rem !important;
+  padding-bottom: 2rem !important;
 }
 
+/* Background Pattern */
+.app-bar-pattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 40px,
+    rgba(255, 255, 255, 0.03) 40px,
+    rgba(255, 255, 255, 0.03) 80px
+  );
+  pointer-events: none;
+  animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-40px);
+  }
+  100% {
+    transform: translateX(40px);
+  }
+}
+
+/* Floating Particles Animation */
+.particles-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: float-up 15s infinite;
+}
+
+.particle-1 { left: 5%; animation-delay: 0s; animation-duration: 12s; }
+.particle-2 { left: 10%; animation-delay: 1s; animation-duration: 15s; }
+.particle-3 { left: 15%; animation-delay: 2s; animation-duration: 10s; }
+.particle-4 { left: 20%; animation-delay: 0.5s; animation-duration: 13s; }
+.particle-5 { left: 25%; animation-delay: 3s; animation-duration: 11s; }
+.particle-6 { left: 30%; animation-delay: 1.5s; animation-duration: 14s; }
+.particle-7 { left: 35%; animation-delay: 2.5s; animation-duration: 12s; }
+.particle-8 { left: 40%; animation-delay: 0.3s; animation-duration: 16s; }
+.particle-9 { left: 45%; animation-delay: 1.8s; animation-duration: 10s; }
+.particle-10 { left: 50%; animation-delay: 2.3s; animation-duration: 13s; }
+.particle-11 { left: 55%; animation-delay: 0.8s; animation-duration: 11s; }
+.particle-12 { left: 60%; animation-delay: 3.5s; animation-duration: 15s; }
+.particle-13 { left: 65%; animation-delay: 1.3s; animation-duration: 12s; }
+.particle-14 { left: 70%; animation-delay: 2.8s; animation-duration: 14s; }
+.particle-15 { left: 75%; animation-delay: 0.2s; animation-duration: 10s; }
+
+@keyframes float-up {
+  0% {
+    transform: translateY(100vh) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px) translateX(50px);
+    opacity: 0;
+  }
+}
+
+/* Animated Border Gradient */
+.animated-border-top,
+.animated-border-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    transparent,
+    #667eea,
+    #764ba2,
+    #f64f59,
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: border-slide 3s linear infinite;
+}
+
+.animated-border-top {
+  top: 0;
+}
+
+.animated-border-bottom {
+  bottom: 0;
+}
+
+@keyframes border-slide {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Glowing Orbs */
+.orb-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.4;
+  animation: orb-float 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, #667eea, transparent);
+  top: -150px;
+  left: -150px;
+  animation-duration: 15s;
+}
+
+.orb-2 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, #764ba2, transparent);
+  bottom: -200px;
+  right: -200px;
+  animation-duration: 20s;
+  animation-delay: 5s;
+}
+
+.orb-3 {
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, #f64f59, transparent);
+  top: 50%;
+  left: 50%;
+  animation-duration: 18s;
+  animation-delay: 10s;
+}
+
+@keyframes orb-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(30px, -30px) scale(1.1);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  75% {
+    transform: translate(40px, 10px) scale(1.05);
+  }
+}
+
+/* Content Styling */
 .landing-page h1,
 .landing-page h3,
 .landing-page p {
+  color: white !important;
+}
+
+.v-theme--dark .landing-page h1,
+.v-theme--dark .landing-page h3,
+.v-theme--dark .landing-page p {
   color: var(--v-theme-on-surface) !important;
 }
 
 .landing-page .text-grey {
+  opacity: 0.9;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.v-theme--dark .landing-page .text-grey {
   opacity: 0.7;
+  color: inherit !important;
 }
 
 .landing-page .v-icon {
+  color: white !important;
+}
+
+.v-theme--dark .landing-page .v-icon {
   color: var(--v-theme-primary) !important;
 }
 
-.landing-page .v-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+/* Gradient Text Animation */
+.gradient-text {
+  background: linear-gradient(45deg, #fff, #e0e0e0, #fff);
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 3s ease infinite;
+}
+
+.v-theme--dark .gradient-text {
+  background: linear-gradient(45deg, #667eea, #764ba2, #f64f59);
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Robot Icon Animation */
+.robot-icon {
+  animation: robot-entrance 1s ease-out;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.robot-icon:hover {
+  animation: robot-dance 0.5s ease-in-out;
+  transform: scale(1.1);
+}
+
+@keyframes robot-entrance {
+  0% {
+    transform: scale(0) rotate(180deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(90deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes robot-dance {
+  0%, 100% { transform: rotate(0deg) scale(1.1); }
+  25% { transform: rotate(-10deg) scale(1.1); }
+  75% { transform: rotate(10deg) scale(1.1); }
+}
+
+/* Feature Cards */
+.feature-card {
+  padding: 15px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  height: 100%;
+}
+
+.v-theme--dark .feature-card {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+/* CTA Button */
+.cta-button {
+  position: relative;
+  overflow: hidden;
+  background: white !important;
+  color: #667eea !important;
+  transition: all 0.3s ease;
+}
+
+.cta-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.cta-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(102, 126, 234, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.cta-button:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* Entrance Animations */
+.content-entrance {
+  animation: content-fade-in 1s ease-out;
+}
+
+@keyframes content-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.welcome-title {
+  animation: title-slide-in 1s ease-out 0.3s both;
+}
+
+@keyframes title-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.features-row .v-col:nth-child(1) .feature-card {
+  animation: feature-pop-in 0.6s ease-out 0.6s both;
+}
+
+.features-row .v-col:nth-child(2) .feature-card {
+  animation: feature-pop-in 0.6s ease-out 0.8s both;
+}
+
+.features-row .v-col:nth-child(3) .feature-card {
+  animation: feature-pop-in 0.6s ease-out 1s both;
+}
+
+@keyframes feature-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.cta-button {
+  animation: button-slide-up 0.8s ease-out 1.2s both;
+}
+
+@keyframes button-slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

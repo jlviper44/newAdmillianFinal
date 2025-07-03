@@ -18,13 +18,6 @@
       <v-row>
         <!-- Content Area -->
         <v-col cols="12">
-          <v-card v-if="selectedTab === 'overview'">
-            <v-card-title>Overview</v-card-title>
-            <v-card-text>
-              <!-- Overview content goes here -->
-            </v-card-text>
-          </v-card>
-          
           <!-- Metrics Tab -->
           <div v-if="selectedTab === 'metrics'">
             <MetricsView />
@@ -72,7 +65,7 @@ import CampaignsView from './components/Campaigns/CampaignsView.vue';
 import LogsView from './components/Logs/LogsView.vue';
 
 const route = useRoute();
-const selectedTab = ref('overview');
+const selectedTab = ref('metrics');
 
 // Watch for route query changes
 watch(() => route.query.tab, (newTab) => {

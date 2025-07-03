@@ -26,6 +26,9 @@ const purchaseQuantity = ref(50);
 const showPaymentDialog = ref(false);
 const paymentCheckInterval = ref(null);
 
+// Pricing data
+const creditPrice = ref(2.00);
+
 // Format unix timestamp to readable date
 const formatDate = (timestamp) => {
   const date = new Date(timestamp * 1000);
@@ -36,6 +39,16 @@ const formatDate = (timestamp) => {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const seconds = String(date.getSeconds()).padStart(2, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+// Fetch pricing from backend
+const fetchPricing = async () => {
+  try {
+    const data = await usersApi.getPricing();
+    creditPrice.value = data.bcGenCreditPrice;
+  } catch (err) {
+    console.error('Failed to fetch pricing:', err);
+  }
 };
 
 // Check user's access and credit balance
@@ -128,6 +141,7 @@ const createCheckout = async () => {
 // Initialize on mount
 onMounted(() => {
   checkAccess();
+  fetchPricing();
 });
 
 // Clean up on unmount
@@ -215,10 +229,10 @@ onUnmounted(() => {
                     </div>
                     <div class="mb-3">
                       <div class="text-h5 font-weight-bold text-primary text-center mb-1">
-                        ${{ (purchaseQuantity * 2).toFixed(2) }}
+                        ${{ (purchaseQuantity * creditPrice).toFixed(2) }}
                       </div>
                       <div class="text-caption text-grey text-center">
-                        $2.00 per credit
+                        ${{ creditPrice.toFixed(2) }} per credit
                       </div>
                     </div>
                     <v-btn 

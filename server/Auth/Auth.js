@@ -4,6 +4,10 @@ import { executeQuery } from '../SQL/SQL.js';
 // Hard-coded admin users who bypass payment requirements
 const ADMIN_USERS = ['user_uZ1HxkxpdULMs', 'user_7vMF2GI5Dz3YT'];
 
+// Pricing constants (price per credit)
+const COMMENT_BOT_CREDIT_PRICE = 3.00; // $2 per credit
+const BC_GEN_CREDIT_PRICE = 2.00; // $2 per credit
+
 // Helper function to check if a user is an admin
 function isAdminUser(userId) {
   return ADMIN_USERS.includes(userId);
@@ -708,7 +712,7 @@ async function handleCreateCheckout(request, env) {
         stock: 1,
         visibility: "hidden",
         payment_link_description: `Purchasing ${quantity} credits for ${productName}`,
-        initial_price: quantity * 2,
+        initial_price: quantity * (productType === 'comment_bot' ? COMMENT_BOT_CREDIT_PRICE : BC_GEN_CREDIT_PRICE),
         product_id: productId,
         metadata: {
           Quantity: quantity,
@@ -955,6 +959,14 @@ async function handleAuth(request, env) {
     return handleUseCredits(request, env);
   } else if (pathname === '/api/auth/checkout-link') {
     return new Response(JSON.stringify({ checkoutLink: env.WHOP_COMMENT_BOT_CHECKOUT_LINK }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } else if (pathname === '/api/auth/pricing') {
+    return new Response(JSON.stringify({ 
+      commentBotCreditPrice: COMMENT_BOT_CREDIT_PRICE,
+      bcGenCreditPrice: BC_GEN_CREDIT_PRICE
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
