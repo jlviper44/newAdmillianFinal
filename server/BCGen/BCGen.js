@@ -1,10 +1,4 @@
-// Hard-coded admin users who bypass payment requirements
-const ADMIN_USERS = ['user_uZ1HxkxpdULMs', 'user_7vMF2GI5Dz3YT'];
-
-// Helper function to check if a user is an admin
-function isAdminUser(userId) {
-  return ADMIN_USERS.includes(userId);
-}
+import { isAdminUser } from '../Auth/Auth.js';
 
 export default class BCGen {
   constructor(env) {
@@ -415,8 +409,8 @@ export default class BCGen {
       }
 
       // Check if user is an admin - admins don't need to deduct credits
-      if (session.user && isAdminUser(session.user.id)) {
-        console.log(`Admin user ${session.user.id} - skipping credit deduction`);
+      if (session.user && session.user.email && isAdminUser(session.user.email)) {
+        console.log(`Admin user ${session.user.email} - skipping credit deduction`);
         return { success: true };
       }
 
@@ -901,6 +895,7 @@ export default class BCGen {
     }
 
     const userId = session.user.id;
+    const userEmail = session.user.email;
 
     // Handle routes
     if (path === '/api/bcgen/availability' && request.method === 'GET') {
@@ -943,7 +938,7 @@ export default class BCGen {
 
     if (path === '/api/bcgen/refund-requests' && request.method === 'GET') {
       // Check if user is admin
-      if (!isAdminUser(userId)) {
+      if (!userEmail || !isAdminUser(userEmail)) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' }
@@ -966,7 +961,7 @@ export default class BCGen {
 
     if (path === '/api/bcgen/process-refund' && request.method === 'POST') {
       // Check if user is admin
-      if (!isAdminUser(userId)) {
+      if (!userEmail || !isAdminUser(userEmail)) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' }

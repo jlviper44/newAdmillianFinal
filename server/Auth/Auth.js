@@ -1,16 +1,21 @@
 // Auth.js - OAuth authentication system for Cloudflare Workers
 import { executeQuery } from '../SQL/SQL.js';
 
-// Hard-coded admin users who bypass payment requirements
-const ADMIN_USERS = ['user_uZ1HxkxpdULMs', 'user_7vMF2GI5Dz3YT'];
+// Hard-coded admin users who bypass payment requirements (using emails)
+const ADMIN_EMAILS = [
+  'justin.m.lee.dev@gmail.com', 
+  'cranapplellc@gmail.com',
+  'vl@black.com',
+  // 'jlrockfish13@gmail.com'
+]; // Update these with actual admin emails
 
 // Pricing constants (price per credit)
 const COMMENT_BOT_CREDIT_PRICE = 3.00; // $2 per credit
 const BC_GEN_CREDIT_PRICE = 2.00; // $2 per credit
 
-// Helper function to check if a user is an admin
-function isAdminUser(userId) {
-  return ADMIN_USERS.includes(userId);
+// Helper function to check if a user is an admin by email
+function isAdminUser(userEmail) {
+  return ADMIN_EMAILS.includes(userEmail);
 }
 
 /**
@@ -467,7 +472,7 @@ async function handleCheckAccess(request, env) {
   }
   
   // Check if user is an admin - admins get unlimited access
-  if (session.user && isAdminUser(session.user.id)) {
+  if (session.user && session.user.email && isAdminUser(session.user.email)) {
     return new Response(JSON.stringify({ 
       user: { ...session.user, isAdmin: true },
       memberships: [],
@@ -620,7 +625,7 @@ async function handleCheckAccess(request, env) {
   } catch (error) {
     console.error('Check access error:', error);
     return new Response(JSON.stringify({ 
-      user: session?.user ? { ...session.user, isAdmin: isAdminUser(session.user.id) } : null,
+      user: session?.user ? { ...session.user, isAdmin: session.user.email ? isAdminUser(session.user.email) : false } : null,
       memberships: [],
       subscriptions: {
         comment_bot: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_COMMENT_BOT_CHECKOUT_LINK || null },
@@ -650,7 +655,7 @@ async function handleGetUser(request, env) {
   // Ensure we have a valid user with required fields
   let validUser = null;
   if (session?.user && session.user.id) {
-    validUser = { ...session.user, isAdmin: isAdminUser(session.user.id) };
+    validUser = { ...session.user, isAdmin: session.user.email ? isAdminUser(session.user.email) : false };
   }
   
   return new Response(JSON.stringify({ 
@@ -773,7 +778,7 @@ async function handleUseCredits(request, env) {
   const { credits, productType = 'comment_bot' } = await request.json();
   
   // Check if user is an admin - admins don't need to use credits
-  if (session.user && isAdminUser(session.user.id)) {
+  if (session.user && session.user.email && isAdminUser(session.user.email)) {
     return new Response(JSON.stringify({ 
       success: true,
       creditsUsed: 0,
@@ -1002,5 +1007,6 @@ export {
   handleAuth,
   requireAuth,
   getSession,
-  cleanExpiredSessions
+  cleanExpiredSessions,
+  isAdminUser
 };
