@@ -39,10 +39,19 @@ const loadingConversions = ref(false)
 const clicksError = ref(null)
 const conversionsError = ref(null)
 
+// Progress tracking
+const processedDataTypes = ref(0)
+const totalDataTypes = ref(2) // clicks and conversions
+
+// Computed property for overall loading state
+const isLoadingData = computed(() => {
+  return loadingClicks.value || loadingConversions.value
+})
+
 // Date states
 const startDate = ref(null)
 const endDate = ref(null)
-const selectedDate = ref(new Date())
+const dateRange = ref([new Date(), new Date()])
 
 // Filter state
 const filters = ref({
@@ -60,30 +69,107 @@ startDate.value.setHours(0, 0, 0, 0)
 endDate.value = new Date(today)
 endDate.value.setHours(23, 59, 59, 999)
 
-// Handle date change
-const onSelectedDateChange = (date) => {
-  if (date) {
-    // Create new Date objects for start and end
-    const selectedDateObj = new Date(date)
-    
-    // Set start time to 00:00:00
-    const startDateObj = new Date(selectedDateObj)
+// Initialize date range
+dateRange.value = [startDate.value, endDate.value]
+
+// Handle date range change
+const onDateRangeChange = (range) => {
+  if (range && range.length === 2) {
+    // Set start date
+    const startDateObj = new Date(range[0])
     startDateObj.setHours(0, 0, 0, 0)
-    
-    // Set end time to 23:59:59
-    const endDateObj = new Date(selectedDateObj)
-    endDateObj.setHours(23, 59, 59, 999)
-    
-    // Update local date state
     startDate.value = startDateObj
+    
+    // Set end date
+    const endDateObj = new Date(range[1])
+    endDateObj.setHours(23, 59, 59, 999)
     endDate.value = endDateObj
   }
+}
+
+// Preset date ranges
+const setToday = () => {
+  const today = new Date()
+  const start = new Date(today)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(today)
+  end.setHours(23, 59, 59, 999)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
+}
+
+const setYesterday = () => {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const start = new Date(yesterday)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(yesterday)
+  end.setHours(23, 59, 59, 999)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
+}
+
+const setLast7Days = () => {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - 6)
+  start.setHours(0, 0, 0, 0)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
+}
+
+const setLast30Days = () => {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - 29)
+  start.setHours(0, 0, 0, 0)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
+}
+
+const setThisMonth = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  end.setHours(23, 59, 59, 999)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
+}
+
+const setLastMonth = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(now.getFullYear(), now.getMonth(), 0)
+  end.setHours(23, 59, 59, 999)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
 }
 
 // Date formatters
 const formatDateForDisplay = (date) => {
   if (!date) return ''
   return date.toLocaleDateString()
+}
+
+const formatDateRangeForDisplay = (dates) => {
+  if (!dates || dates.length !== 2) return ''
+  return `${dates[0].toLocaleDateString()} - ${dates[1].toLocaleDateString()}`
 }
 
 // New formatter to include both date and time
@@ -150,7 +236,7 @@ const getRequestParams = (fields = []) => {
 // Function to fetch clicks data
 const fetchClicksData = async () => {
   if (!startDate.value || !endDate.value || !props.apiKey || !props.affiliateId) {
-    return
+    return Promise.resolve()
   }
   
   try {
@@ -167,7 +253,7 @@ const fetchClicksData = async () => {
     } else if (response.data?.data?.data?.data && Array.isArray(response.data.data.data.data)) {
       // Affluent API returns nested structure: { data: { success: true, data: { row_count: X, data: [...] } } }
       clicksData.value = response.data.data.data.data
-      const rowCount = response.data.data.data.row_count || clicksData.value.length
+      // const rowCount = response.data.data.data.row_count || clicksData.value.length
     } else if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
       // Alternative structure: { data: { success: true, data: [...] } }
       clicksData.value = response.data.data.data
@@ -182,13 +268,14 @@ const fetchClicksData = async () => {
     clicksError.value = err.response?.data?.error || err.message || `Failed to fetch clicks data`
   } finally {
     loadingClicks.value = false
+    processedDataTypes.value++
   }
 }
 
 // Function to fetch conversions data
 const fetchConversionsData = async () => {
   if (!startDate.value || !endDate.value || !props.apiKey || !props.affiliateId) {
-    return
+    return Promise.resolve()
   }
   
   try {
@@ -205,7 +292,7 @@ const fetchConversionsData = async () => {
     } else if (response.data?.data?.data?.data && Array.isArray(response.data.data.data.data)) {
       // Affluent API returns nested structure: { data: { success: true, data: { row_count: X, data: [...] } } }
       conversionsData.value = response.data.data.data.data
-      const rowCount = response.data.data.data.row_count || conversionsData.value.length
+      // const rowCount = response.data.data.data.row_count || conversionsData.value.length
     } else if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
       // Alternative structure: { data: { success: true, data: [...] } }
       conversionsData.value = response.data.data.data
@@ -219,11 +306,12 @@ const fetchConversionsData = async () => {
     conversionsError.value = err.response?.data?.error || err.message || `Failed to fetch conversions data`
   } finally {
     loadingConversions.value = false
+    processedDataTypes.value++
   }
 }
 
 // Function to fetch all performance data
-const fetchAllData = () => {
+const fetchAllData = async () => {
   if (!startDate.value || !endDate.value) {
     // Set performance error states to show the same message
     clicksError.value = "Please select both start and end dates"
@@ -238,6 +326,9 @@ const fetchAllData = () => {
     return
   }
   
+  // Reset progress counter
+  processedDataTypes.value = 0
+  
   // Clear previous data
   clicksData.value = []
   conversionsData.value = []
@@ -246,9 +337,11 @@ const fetchAllData = () => {
   clicksError.value = null
   conversionsError.value = null
   
-  // Fetch performance data types concurrently and independently
-  fetchClicksData()
-  fetchConversionsData()
+  // Fetch performance data types concurrently
+  await Promise.all([
+    fetchClicksData(),
+    fetchConversionsData()
+  ])
 }
 
 // Computed properties for filter options
@@ -334,36 +427,116 @@ onMounted(() => {
       <v-divider></v-divider>
       
       <v-card-text class="pa-4">
-        <div class="d-flex flex-wrap align-center">
-          <div class="me-4 mb-2 date-picker-container">
-            <label class="text-body-1 mb-1 d-block font-weight-medium">Date</label>
-            <Datepicker 
-              v-model="selectedDate" 
-              :max-date="new Date()"
-              auto-apply
-              :enable-time-picker="false"
-              text-input
-              placeholder="Select date"
-              :format="formatDateForDisplay"
-              position="bottom"
-              @update:model-value="onSelectedDateChange"
-              :dark="isDarkMode"
-              class="performance-date-picker"
-            />
+        <div class="d-flex flex-column">
+          <!-- Date range picker and apply button -->
+          <div class="d-flex flex-wrap align-center mb-3">
+            <div class="me-4 mb-2 date-picker-container">
+              <label class="text-body-1 mb-1 d-block font-weight-medium">Date Range</label>
+              <Datepicker 
+                v-model="dateRange" 
+                :max-date="new Date()"
+                range
+                multi-calendars
+                auto-apply
+                :enable-time-picker="false"
+                text-input
+                placeholder="Select date range"
+                :format="formatDateRangeForDisplay"
+                position="bottom"
+                @update:model-value="onDateRangeChange"
+                :dark="isDarkMode"
+                class="performance-date-picker"
+              />
+            </div>
+            
+            <div class="mb-2 mt-4">
+              <v-btn 
+                color="primary" 
+                :loading="loadingClicks || loadingConversions"
+                :disabled="!startDate || !endDate || !apiKey || !affiliateId"
+                @click="fetchAllData"
+                variant="elevated"
+                prepend-icon="mdi-refresh"
+                class="apply-btn"
+              >
+                Apply Filters
+              </v-btn>
+            </div>
           </div>
           
-          <div class="mb-2 mt-4">
+          <!-- Preset date range buttons -->
+          <div class="d-flex flex-wrap gap-2">
             <v-btn 
-              color="primary" 
-              :loading="loadingClicks || loadingConversions"
-              :disabled="!startDate || !endDate || !apiKey || !affiliateId"
-              @click="fetchAllData"
-              variant="elevated"
-              prepend-icon="mdi-refresh"
-              class="apply-btn"
+              variant="tonal" 
+              size="small" 
+              @click="setToday"
+              color="primary"
             >
-              Apply Filters
+              Today
             </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setYesterday"
+              color="primary"
+            >
+              Yesterday
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setLast7Days"
+              color="primary"
+            >
+              Last 7 Days
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setLast30Days"
+              color="primary"
+            >
+              Last 30 Days
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setThisMonth"
+              color="primary"
+            >
+              This Month
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setLastMonth"
+              color="primary"
+            >
+              Last Month
+            </v-btn>
+          </div>
+        </div>
+      </v-card-text>
+    </v-card>
+
+    <!-- Progress Indicator Card -->
+    <v-card v-if="isLoadingData" class="mb-4 progress-card elevation-2 rounded-lg" variant="elevated">
+      <v-card-text class="pa-4">
+        <div class="d-flex flex-column justify-center align-center py-4">
+          <v-progress-circular indeterminate color="primary" size="56"></v-progress-circular>
+          <span class="mt-4 text-body-1">Loading performance data...</span>
+          <div v-if="totalDataTypes > 0" class="mt-3 text-body-2 progress-text">
+            <v-progress-linear
+              :model-value="(processedDataTypes / totalDataTypes) * 100"
+              color="primary"
+              height="10"
+              rounded
+              class="mb-2"
+              style="min-width: 200px;"
+            ></v-progress-linear>
+            <div class="text-center">
+              Processed {{ processedDataTypes }} of {{ totalDataTypes }} data types ({{ Math.round((processedDataTypes / totalDataTypes) * 100) }}%)
+            </div>
           </div>
         </div>
       </v-card-text>
@@ -462,6 +635,8 @@ onMounted(() => {
   --datepicker-bg: #ffffff;
   --datepicker-text: #333333;
   --filter-card-bg: #ffffff;
+  --progress-card-bg: #ffffff;
+  --progress-text-color: #757575;
   --transition-speed: 0.3s;
 }
 
@@ -469,6 +644,8 @@ onMounted(() => {
   --datepicker-bg: #1e1e1e;
   --datepicker-text: #ffffff;
   --filter-card-bg: #1e1e1e;
+  --progress-card-bg: #1e1e1e;
+  --progress-text-color: #b0bec5;
 }
 </style>
 
@@ -482,10 +659,20 @@ onMounted(() => {
   z-index: 1;
 }
 
+.progress-card {
+  background-color: var(--progress-card-bg) !important;
+  transition: background-color var(--transition-speed) ease;
+}
+
+.progress-text {
+  color: var(--progress-text-color);
+  transition: color var(--transition-speed) ease;
+}
+
 .date-picker-container {
   position: relative;
   z-index: 2;
-  width: 250px;
+  width: 350px;
 }
 
 .apply-btn, .clear-btn {

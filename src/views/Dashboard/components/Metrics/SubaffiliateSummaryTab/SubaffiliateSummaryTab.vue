@@ -158,6 +158,74 @@ const onEndDateChange = (date) => {
   }
 }
 
+// Preset date ranges
+const setToday = () => {
+  const today = new Date()
+  const start = new Date(today)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(today)
+  end.setHours(23, 59, 59, 999)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
+const setYesterday = () => {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const start = new Date(yesterday)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(yesterday)
+  end.setHours(23, 59, 59, 999)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
+const setLast7Days = () => {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - 6)
+  start.setHours(0, 0, 0, 0)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
+const setLast30Days = () => {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - 29)
+  start.setHours(0, 0, 0, 0)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
+const setThisMonth = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  end.setHours(23, 59, 59, 999)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
+const setLastMonth = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(now.getFullYear(), now.getMonth(), 0)
+  end.setHours(23, 59, 59, 999)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
 // Function to format date for API (YYYY-MM-DD HH:MM:SS)
 const formatDateForApi = (date, isEndDate = false) => {
   if (!date) return ''
@@ -341,53 +409,108 @@ const applyDateFilter = async () => {
       <v-divider></v-divider>
       
       <v-card-text class="pa-4">
-        <div class="d-flex flex-wrap align-center justify-space-between">
-          <div class="date-range-container d-flex flex-wrap align-center">
-            <div class="me-4 mb-2 date-picker-container">
-              <label class="text-body-1 mb-1 d-block font-weight-medium">Start Date</label>
-              <Datepicker 
-                v-model="startDateLocal" 
-                :max-date="endDateLocal || new Date()"
-                auto-apply
-                :enable-time-picker="false"
-                text-input
-                placeholder="Select start date"
-                position="bottom"
-                @update:model-value="onStartDateChange"
-                :dark="isDarkMode"
-                class="date-picker"
-              />
+        <div class="d-flex flex-column">
+          <!-- Date pickers and fetch button -->
+          <div class="d-flex flex-wrap align-center justify-space-between mb-3">
+            <div class="date-range-container d-flex flex-wrap align-center">
+              <div class="me-4 mb-2 date-picker-container">
+                <label class="text-body-1 mb-1 d-block font-weight-medium">Start Date</label>
+                <Datepicker 
+                  v-model="startDateLocal" 
+                  :max-date="endDateLocal || new Date()"
+                  auto-apply
+                  :enable-time-picker="false"
+                  text-input
+                  placeholder="Select start date"
+                  position="bottom"
+                  @update:model-value="onStartDateChange"
+                  :dark="isDarkMode"
+                  class="date-picker"
+                />
+              </div>
+              
+              <div class="me-4 mb-2 date-picker-container">
+                <label class="text-body-1 mb-1 d-block font-weight-medium">End Date</label>
+                <Datepicker 
+                  v-model="endDateLocal" 
+                  :min-date="startDateLocal"
+                  :max-date="new Date()"
+                  auto-apply
+                  :enable-time-picker="false"
+                  text-input
+                  placeholder="Select end date"
+                  position="bottom"
+                  @update:model-value="onEndDateChange"
+                  :dark="isDarkMode"
+                  class="date-picker"
+                />
+              </div>
             </div>
             
-            <div class="me-4 mb-2 date-picker-container">
-              <label class="text-body-1 mb-1 d-block font-weight-medium">End Date</label>
-              <Datepicker 
-                v-model="endDateLocal" 
-                :min-date="startDateLocal"
-                :max-date="new Date()"
-                auto-apply
-                :enable-time-picker="false"
-                text-input
-                placeholder="Select end date"
-                position="bottom"
-                @update:model-value="onEndDateChange"
-                :dark="isDarkMode"
-                class="date-picker"
-              />
+            <div class="mb-2">
+              <v-btn 
+                color="primary" 
+                :loading="loadingSubaffiliateSummary"
+                :disabled="!startDateLocal || !endDateLocal || !apiKey || !affiliateId"
+                @click="applyDateFilter"
+                variant="elevated"
+                prepend-icon="mdi-refresh"
+                class="fetch-btn"
+              >
+                Fetch Daily Data
+              </v-btn>
             </div>
           </div>
           
-          <div class="mb-2">
+          <!-- Preset date range buttons -->
+          <div class="d-flex flex-wrap gap-2 mb-4">
             <v-btn 
-              color="primary" 
-              :loading="loadingSubaffiliateSummary"
-              :disabled="!startDateLocal || !endDateLocal || !apiKey || !affiliateId"
-              @click="applyDateFilter"
-              variant="elevated"
-              prepend-icon="mdi-refresh"
-              class="fetch-btn"
+              variant="tonal" 
+              size="small" 
+              @click="setToday"
+              color="primary"
             >
-              Fetch Daily Data
+              Today
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setYesterday"
+              color="primary"
+            >
+              Yesterday
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setLast7Days"
+              color="primary"
+            >
+              Last 7 Days
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setLast30Days"
+              color="primary"
+            >
+              Last 30 Days
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setThisMonth"
+              color="primary"
+            >
+              This Month
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setLastMonth"
+              color="primary"
+            >
+              Last Month
             </v-btn>
           </div>
         </div>
