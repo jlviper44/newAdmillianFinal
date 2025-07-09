@@ -17,6 +17,10 @@
             <v-icon start size="x-small">mdi-crown</v-icon>
             Admin
           </v-chip>
+          <v-chip v-if="user?.team" color="primary" size="x-small" variant="flat" class="ml-1">
+            <v-icon start size="x-small">mdi-account-group</v-icon>
+            {{ user.team.name }}
+          </v-chip>
           <v-icon end>mdi-menu-down</v-icon>
         </v-btn>
       </template>
@@ -30,8 +34,15 @@
               Admin
             </v-chip>
           </v-list-item-title>
-          <v-list-item-subtitle v-if="user.email">
-            {{ user.email }}
+          <v-list-item-subtitle>
+            <div v-if="user.email">{{ user.email }}</div>
+            <div v-if="user?.team" class="d-flex align-center mt-1">
+              <span class="text-caption mr-2">Team:</span>
+              <v-chip color="primary" size="x-small" variant="flat">
+                <v-icon start size="x-small">mdi-account-group</v-icon>
+                {{ user.team.name }}
+              </v-chip>
+            </div>
           </v-list-item-subtitle>
         </v-list-item>
         

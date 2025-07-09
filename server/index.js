@@ -8,6 +8,7 @@ import { handleTemplateData } from './Dashboard/Templates/Templates';
 import { handleShopifyStoresData } from './Dashboard/ShopifyStores/ShopifyStores';
 import handleCampaignsAPI from './Dashboard/Campaigns/Campaigns';
 import { handleLogsData } from './Dashboard/Logs/Logs';
+import { handleTeams } from './Teams/Teams';
 
 export default {
   async fetch(request, env) {
@@ -35,6 +36,13 @@ export default {
       // Route SQL API requests
       if (path.startsWith('/api/sql')) {
         return handleSQLData(request, env);
+      }
+      
+      // Route Teams API requests (protected)
+      if (path.startsWith('/api/teams')) {
+        return requireAuth(request, env, async (req, env) => {
+          return handleTeams(req, env);
+        });
       }
       
       // Route Comment Bot API requests (protected)

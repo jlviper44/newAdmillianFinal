@@ -1,5 +1,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useAuth } from '@/composables/useAuth';
+
+const { user } = useAuth();
 
 const props = defineProps({
   orders: {
@@ -17,6 +20,11 @@ const emit = defineEmits(['poll-status']);
 // Pagination state
 const page = ref(1);
 const itemsPerPage = ref(10);
+
+// Show creator column if user is part of a team
+const showCreator = computed(() => {
+  return user.value?.team != null;
+});
 
 // Computed properties
 const hasActiveOrders = computed(() => {
@@ -79,6 +87,7 @@ const formatDate = (dateString) => {
           <tr>
             <th>Order ID</th>
             <th>Post ID</th>
+            <th v-if="showCreator">Created By</th>
             <th>Status</th>
             <th>Progress</th>
             <th>Created</th>
@@ -88,6 +97,13 @@ const formatDate = (dateString) => {
           <tr v-for="order in paginatedOrders" :key="order.order_id">
             <td class="text-caption">{{ order.order_id }}</td>
             <td class="text-caption">{{ order.post_id }}</td>
+            <td v-if="showCreator">
+              <div v-if="order.creator" class="d-flex align-center">
+                <v-icon size="small" class="mr-1">mdi-account</v-icon>
+                <span class="text-caption">{{ order.creator.name }}</span>
+              </div>
+              <span v-else class="text-caption text-disabled">Unknown</span>
+            </td>
             <td>
               <v-chip
                 size="small"

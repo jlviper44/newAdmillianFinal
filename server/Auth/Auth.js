@@ -404,6 +404,24 @@ async function handleLogout(request, env) {
   });
 }
 
+// Helper function to get user's team
+async function getUserTeam(env, userId) {
+  try {
+    const query = `
+      SELECT t.id, t.name, t.description
+      FROM team_members tm
+      JOIN teams t ON tm.team_id = t.id
+      WHERE tm.user_id = ?
+    `;
+    
+    const result = await env.USERS_DB.prepare(query).bind(userId).first();
+    return result || null;
+  } catch (error) {
+    console.error('Error fetching user team:', error);
+    return null;
+  }
+}
+
 // Check access handler
 async function handleCheckAccess(request, env) {
   const sessionId = getSessionIdFromCookie(request);
@@ -471,10 +489,13 @@ async function handleCheckAccess(request, env) {
     });
   }
   
+  // Fetch user's team information
+  const userTeam = session.user?.id ? await getUserTeam(env, session.user.id) : null;
+  
   // Check if user is an admin - admins get unlimited access
   if (session.user && session.user.email && isAdminUser(session.user.email)) {
     return new Response(JSON.stringify({ 
-      user: { ...session.user, isAdmin: true },
+      user: { ...session.user, isAdmin: true, team: userTeam },
       memberships: [],
       subscriptions: {
         comment_bot: { 
@@ -615,7 +636,7 @@ async function handleCheckAccess(request, env) {
     };
     
     return new Response(JSON.stringify({ 
-      user: { ...session.user, isAdmin: false },
+      user: { ...session.user, isAdmin: false, team: userTeam },
       memberships: memberships.data,
       subscriptions
     }), {
@@ -625,7 +646,7 @@ async function handleCheckAccess(request, env) {
   } catch (error) {
     console.error('Check access error:', error);
     return new Response(JSON.stringify({ 
-      user: session?.user ? { ...session.user, isAdmin: session.user.email ? isAdminUser(session.user.email) : false } : null,
+      user: session?.user ? { ...session.user, isAdmin: session.user.email ? isAdminUser(session.user.email) : false, team: userTeam } : null,
       memberships: [],
       subscriptions: {
         comment_bot: { isActive: false, expiresIn: 0, checkoutLink: env.WHOP_COMMENT_BOT_CHECKOUT_LINK || null },
@@ -655,7 +676,8 @@ async function handleGetUser(request, env) {
   // Ensure we have a valid user with required fields
   let validUser = null;
   if (session?.user && session.user.id) {
-    validUser = { ...session.user, isAdmin: session.user.email ? isAdminUser(session.user.email) : false };
+    const userTeam = await getUserTeam(env, session.user.id);
+    validUser = { ...session.user, isAdmin: session.user.email ? isAdminUser(session.user.email) : false, team: userTeam };
   }
   
   return new Response(JSON.stringify({ 

@@ -1,6 +1,9 @@
 <script setup>
 import { ref, computed } from 'vue';
 import axios from 'axios';
+import { useAuth } from '@/composables/useAuth';
+
+const { user } = useAuth();
 
 const props = defineProps({
   commentGroups: {
@@ -22,6 +25,11 @@ const emit = defineEmits(['refresh', 'create-group', 'view-details', 'edit-group
 // Computed properties
 const hasCommentGroups = computed(() => {
   return props.commentGroups && props.commentGroups.length > 0;
+});
+
+// Show creator column if user is part of a team
+const showCreator = computed(() => {
+  return user.value?.team != null;
 });
 
 const refreshCommentGroups = () => {
@@ -80,6 +88,7 @@ const createGroup = () => {
         <thead>
           <tr>
             <th>Name</th>
+            <th v-if="showCreator">Created By</th>
             <th>Description</th>
             <th>Legends</th>
             <th>Created</th>
@@ -90,6 +99,13 @@ const createGroup = () => {
         <tbody>
           <tr v-for="group in commentGroups" :key="group.id">
             <td>{{ group.name }}</td>
+            <td v-if="showCreator">
+              <div v-if="group.creator" class="d-flex align-center">
+                <v-icon size="small" class="mr-1">mdi-account</v-icon>
+                <span class="text-caption">{{ group.creator.name }}</span>
+              </div>
+              <span v-else class="text-caption text-disabled">Unknown</span>
+            </td>
             <td>{{ group.description || 'N/A' }}</td>
             <td>{{ group.legend_count || 0 }}</td>
             <td>{{ new Date(group.created_at).toLocaleString() }}</td>

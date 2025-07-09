@@ -37,6 +37,10 @@
                         <v-icon start size="small">mdi-crown</v-icon>
                         Admin
                       </v-chip>
+                      <v-chip v-if="user?.team" color="primary" size="small" variant="flat" class="ml-2">
+                        <v-icon start size="small">mdi-account-group</v-icon>
+                        {{ user.team.name }}
+                      </v-chip>
                     </div>
                     <div class="text-body-2 text-grey">{{ user.email || 'Not set' }}</div>
                     <div class="text-caption text-grey">ID: {{ user.id }}</div>

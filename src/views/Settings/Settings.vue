@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useAuth } from '@/composables/useAuth';
 import BCGenRefunds from './components/BCGenRefunds.vue';
+import Teams from './components/Teams.vue';
 
 const { user } = useAuth();
 const selectedTab = ref('general');
@@ -37,6 +38,15 @@ const selectedTab = ref('general');
             ></v-list-item>
             
             <v-list-item
+              value="teams"
+              :active="selectedTab === 'teams'"
+              @click="selectedTab = 'teams'"
+              prepend-icon="mdi-account-group"
+              title="Teams"
+              rounded="lg"
+            ></v-list-item>
+            
+            <v-list-item
               v-if="user?.isAdmin"
               value="bcgen-refunds"
               :active="selectedTab === 'bcgen-refunds'"
@@ -63,6 +73,8 @@ const selectedTab = ref('general');
             <!-- General settings content goes here -->
           </v-card-text>
         </v-card>
+        
+        <Teams v-if="selectedTab === 'teams'" />
         
         <BCGenRefunds v-if="selectedTab === 'bcgen-refunds' && user?.isAdmin" />
       </v-col>

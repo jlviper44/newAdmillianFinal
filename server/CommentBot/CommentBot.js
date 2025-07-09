@@ -62,6 +62,7 @@ async function initializeCommentGroupTables(env) {
       CREATE TABLE IF NOT EXISTS comment_groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id VARCHAR(255),
+        team_id VARCHAR(255),
         name TEXT NOT NULL,
         description TEXT,
         legends TEXT DEFAULT '[]',
@@ -86,6 +87,7 @@ async function initializeCommentGroupTables(env) {
       CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id VARCHAR(255),
+        team_id VARCHAR(255),
         order_id TEXT UNIQUE NOT NULL,
         post_id TEXT NOT NULL,
         status TEXT NOT NULL,
@@ -121,11 +123,56 @@ async function initializeCommentGroupTables(env) {
       CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)
     `).run();
     
+    // Add team_id column to existing tables if it doesn't exist
+    try {
+      await env.COMMENT_BOT_DB.prepare(`
+        ALTER TABLE comment_groups ADD COLUMN team_id VARCHAR(255)
+      `).run();
+    } catch (e) {
+      // Column might already exist
+    }
+    
+    try {
+      await env.COMMENT_BOT_DB.prepare(`
+        ALTER TABLE orders ADD COLUMN team_id VARCHAR(255)
+      `).run();
+    } catch (e) {
+      // Column might already exist
+    }
+    
+    // Create indices for team_id
+    await env.COMMENT_BOT_DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_comment_groups_team_id ON comment_groups(team_id)
+    `).run();
+    
+    await env.COMMENT_BOT_DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_orders_team_id ON orders(team_id)
+    `).run();
+    
     // // console.log('Comment group and orders tables initialized successfully');
     return true;
   } catch (error) {
     console.error('Error initializing comment group tables:', error);
     return false;
+  }
+}
+
+/**
+ * Get user's team ID from the database
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user's ID
+ * @returns {Promise<string|null>} - The team ID or null if not in a team
+ */
+async function getUserTeamId(env, userId) {
+  try {
+    const result = await env.USERS_DB.prepare(
+      'SELECT team_id FROM team_members WHERE user_id = ?'
+    ).bind(userId).first();
+    
+    return result?.team_id || null;
+  } catch (error) {
+    console.error('Error getting user team ID:', error);
+    return null;
   }
 }
 
@@ -151,6 +198,9 @@ export async function handleCommentBotData(request, env, session) {
   // Initialize tables if needed (this will only create them if they don't exist)
   await initializeCommentGroupTables(env);
   
+  // Get user's team ID
+  const teamId = await getUserTeamId(env, userId);
+  
   // Get the query parameters
   const url = new URL(request.url);
   const type = url.searchParams.get('type');
@@ -159,13 +209,13 @@ export async function handleCommentBotData(request, env, session) {
     // Based on the type parameter, return different data
     switch(type) {
       case 'comment-groups':
-        return await getCommentGroups(request, env, userId);
+        return await getCommentGroups(request, env, userId, teamId);
       case 'comment-group-detail':
         const groupId = url.searchParams.get('id');
         if (!groupId) {
           return jsonResponse({ error: 'Comment Group ID is required' }, 400);
         }
-        return await getCommentGroupDetail(groupId, env, userId);
+        return await getCommentGroupDetail(groupId, env, userId, teamId);
       case 'account-pools':
         return await getAccountPools();
       case 'order-status':
@@ -173,20 +223,20 @@ export async function handleCommentBotData(request, env, session) {
         if (!orderId) {
           return jsonResponse({ error: 'Order ID is required' }, 400);
         }
-        return await getOrderStatus(orderId, env, userId);
+        return await getOrderStatus(orderId, env, userId, teamId);
       case 'orders':
-        return await getOrders(request, env, userId);
+        return await getOrders(request, env, userId, teamId);
       default:
         // Handle POST, PUT, DELETE requests based on path
         if (request.method === 'POST') {
           const path = url.pathname;
           
           if (path === '/api/commentbot/comment-groups') {
-            return await createCommentGroup(request, env, userId);
+            return await createCommentGroup(request, env, userId, teamId);
           }
           
           if (path === '/api/commentbot/create-order') {
-            return await createOrder(request, env, userId);
+            return await createOrder(request, env, userId, teamId);
           }
           
           if (path === '/api/commentbot/check-accounts') {
@@ -200,12 +250,12 @@ export async function handleCommentBotData(request, env, session) {
         
         // Handle PUT requests for updating comment groups
         if (request.method === 'PUT' && url.pathname.match(/^\/api\/commentbot\/comment-groups\/\d+$/)) {
-          return await updateCommentGroup(request, env, userId);
+          return await updateCommentGroup(request, env, userId, teamId);
         }
         
         // Handle DELETE requests for deleting comment groups
         if (request.method === 'DELETE' && url.pathname.match(/^\/api\/commentbot\/comment-groups\/\d+$/)) {
-          return await deleteCommentGroup(request, env, userId);
+          return await deleteCommentGroup(request, env, userId, teamId);
         }
         
         // Handle GET requests for checking account status
@@ -311,30 +361,87 @@ async function fetchAPI(path, options = {}) {
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to filter by
+ * @param {string|null} teamId - The team ID to filter by (if user is in a team)
  */
-async function getCommentGroups(request, env, userId) {
+async function getCommentGroups(request, env, userId, teamId) {
   try {
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get('limit') || '20');
     const offset = parseInt(url.searchParams.get('offset') || '0');
     
     // Query comment groups from local database
-    const query = `
-      SELECT 
-        cg.id,
-        cg.name,
-        cg.description,
-        cg.created_at,
-        cg.updated_at,
-        cg.legends,
-        json_array_length(cg.legends) as legend_count
-      FROM comment_groups cg
-      WHERE cg.user_id = ?
-      ORDER BY cg.created_at DESC
-      LIMIT ? OFFSET ?
-    `;
+    // If user is in a team, show:
+    // 1. All comment groups created by team members (including pre-existing ones)
+    // 2. All comment groups explicitly marked with the team_id
+    // Otherwise, only show user's own comment groups
+    let query, params;
     
-    const result = await executeQuery(env.COMMENT_BOT_DB, query, [userId, limit, offset]);
+    if (teamId) {
+      // First get all team member IDs
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+      
+      if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+        const memberIds = teamMembersResult.data.map(m => m.user_id);
+        
+        query = `
+          SELECT 
+            cg.id,
+            cg.name,
+            cg.description,
+            cg.created_at,
+            cg.updated_at,
+            cg.legends,
+            cg.user_id,
+            cg.team_id,
+            json_array_length(cg.legends) as legend_count
+          FROM comment_groups cg
+          WHERE cg.user_id IN (${memberIds.map(() => '?').join(',')})
+             OR cg.team_id = ?
+          ORDER BY cg.created_at DESC
+          LIMIT ? OFFSET ?
+        `;
+        params = [...memberIds, teamId, limit, offset];
+      } else {
+        // Fallback if no members found
+        query = `
+          SELECT 
+            cg.id,
+            cg.name,
+            cg.description,
+            cg.created_at,
+            cg.updated_at,
+            cg.legends,
+            cg.user_id,
+            cg.team_id,
+            json_array_length(cg.legends) as legend_count
+          FROM comment_groups cg
+          WHERE cg.team_id = ?
+          ORDER BY cg.created_at DESC
+          LIMIT ? OFFSET ?
+        `;
+        params = [teamId, limit, offset];
+      }
+    } else {
+      query = `
+        SELECT 
+          cg.id,
+          cg.name,
+          cg.description,
+          cg.created_at,
+          cg.updated_at,
+          cg.legends,
+          cg.user_id,
+          json_array_length(cg.legends) as legend_count
+        FROM comment_groups cg
+        WHERE cg.user_id = ?
+        ORDER BY cg.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      params = [userId, limit, offset];
+    }
+    
+    const result = await executeQuery(env.COMMENT_BOT_DB, query, params);
     
     if (!result.success) {
       throw new Error(result.error);
@@ -356,6 +463,55 @@ async function getCommentGroups(request, env, userId) {
       }
     });
     
+    // If this is a team query, fetch creator information from USERS_DB
+    if (teamId && commentGroups.length > 0) {
+      // Get unique user IDs
+      const userIds = [...new Set(commentGroups.map(g => g.user_id).filter(id => id))];
+      
+      if (userIds.length > 0) {
+        try {
+          // Fetch user data from sessions in USERS_DB
+          // We look for any session (even expired) to get user info
+          const userQuery = `
+            SELECT 
+              user_id,
+              user_data,
+              MAX(created_at) as latest_session
+            FROM sessions 
+            WHERE user_id IN (${userIds.map(() => '?').join(',')})
+            GROUP BY user_id
+          `;
+          
+          const userResult = await executeQuery(env.USERS_DB, userQuery, userIds);
+          
+          if (userResult.success) {
+            // Create a map of user data
+            const userMap = {};
+            userResult.data.forEach(row => {
+              try {
+                const userData = JSON.parse(row.user_data);
+                userMap[row.user_id] = {
+                  id: row.user_id,
+                  name: userData.name || userData.email,
+                  email: userData.email
+                };
+              } catch (e) {
+                console.error('Error parsing user data:', e);
+              }
+            });
+            
+            // Add creator info to comment groups
+            commentGroups.forEach(group => {
+              group.creator = userMap[group.user_id] || null;
+            });
+          }
+        } catch (e) {
+          console.error('Error fetching creator data:', e);
+          // Continue without creator data
+        }
+      }
+    }
+    
     return jsonResponse({
       success: true,
       commentGroups: commentGroups
@@ -374,12 +530,41 @@ async function getCommentGroups(request, env, userId) {
  * @param {string} groupId - The ID of the comment group to fetch
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to verify ownership
+ * @param {string|null} teamId - The team ID to filter by (if user is in a team)
  */
-async function getCommentGroupDetail(groupId, env, userId) {
+async function getCommentGroupDetail(groupId, env, userId, teamId) {
   try {
     // Get comment group details
-    const groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
-    const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, [groupId, userId]);
+    let groupQuery;
+    let params;
+    
+    if (teamId) {
+      // If user is in a team, first get all team member IDs
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+      
+      if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+        const memberIds = teamMembersResult.data.map(m => m.user_id);
+        
+        // Allow access if comment group is created by any team member OR has the team_id
+        groupQuery = `
+          SELECT * FROM comment_groups 
+          WHERE id = ? 
+          AND (user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)
+        `;
+        params = [groupId, ...memberIds, teamId];
+      } else {
+        // Fallback if no members found
+        groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND team_id = ?`;
+        params = [groupId, teamId];
+      }
+    } else {
+      // Only allow access to user's own comment groups
+      groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
+      params = [groupId, userId];
+    }
+    
+    const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, params);
     
     if (!groupResult.success || groupResult.data.length === 0) {
       return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -402,11 +587,46 @@ async function getCommentGroupDetail(groupId, env, userId) {
       conversations: legend.conversations ? legend.conversations.map(conv => conv.comment_text) : []
     }));
     
+    // If user is in a team, fetch creator information
+    let creatorInfo = null;
+    if (teamId && commentGroup.user_id) {
+      try {
+        // Fetch user data from sessions in USERS_DB
+        const userQuery = `
+          SELECT 
+            user_id,
+            user_data,
+            MAX(created_at) as latest_session
+          FROM sessions 
+          WHERE user_id = ?
+          GROUP BY user_id
+        `;
+        
+        const userResult = await executeQuery(env.USERS_DB, userQuery, [commentGroup.user_id]);
+        
+        if (userResult.success && userResult.data.length > 0) {
+          try {
+            const userData = JSON.parse(userResult.data[0].user_data);
+            creatorInfo = {
+              id: userResult.data[0].user_id,
+              name: userData.name || userData.email,
+              email: userData.email
+            };
+          } catch (e) {
+            console.error('Error parsing user data:', e);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching creator info:', error);
+      }
+    }
+    
     return jsonResponse({
       success: true,
       commentGroup: {
         ...commentGroup,
-        legends: transformedLegends
+        legends: transformedLegends,
+        creator: creatorInfo
       }
     });
   } catch (error) {
@@ -423,8 +643,9 @@ async function getCommentGroupDetail(groupId, env, userId) {
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to associate with the comment group
+ * @param {string|null} teamId - The team ID to associate with the comment group (if user is in a team)
  */
-async function createCommentGroup(request, env, userId) {
+async function createCommentGroup(request, env, userId, teamId) {
   try {
     // Store origin for later use in jsonResponse
     if (request.headers.get('Origin')) {
@@ -467,18 +688,18 @@ async function createCommentGroup(request, env, userId) {
     try {
       // Insert comment group with legends as JSON
       const insertGroupQuery = `
-        INSERT INTO comment_groups (user_id, name, description, legends)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO comment_groups (user_id, team_id, name, description, legends)
+        VALUES (?, ?, ?, ?, ?)
       `;
       
       const groupResult = await env.COMMENT_BOT_DB.prepare(insertGroupQuery)
-        .bind(userId, groupData.name, groupData.description || null, JSON.stringify(legendsData))
+        .bind(userId, teamId, groupData.name, groupData.description || null, JSON.stringify(legendsData))
         .run();
       
       const groupId = groupResult.meta.last_row_id;
       
       // Return the created group with its details
-      return await getCommentGroupDetail(groupId, env, userId);
+      return await getCommentGroupDetail(groupId, env, userId, teamId);
       
     } catch (dbError) {
       console.error('Database error:', dbError);
@@ -498,8 +719,9 @@ async function createCommentGroup(request, env, userId) {
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to verify ownership
+ * @param {string|null} teamId - The team ID to verify ownership (if user is in a team)
  */
-async function updateCommentGroup(request, env, userId) {
+async function updateCommentGroup(request, env, userId, teamId) {
   try {
     // Store origin for later use in jsonResponse
     if (request.headers.get('Origin')) {
@@ -549,9 +771,37 @@ async function updateCommentGroup(request, env, userId) {
     });
     
     try {
-      // Check if comment group exists and belongs to user
-      const checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND user_id = ?`;
-      const checkResult = await executeQuery(env.COMMENT_BOT_DB, checkQuery, [groupId, userId]);
+      // Check if comment group exists and user has permission
+      let checkQuery;
+      let checkParams;
+      
+      if (teamId) {
+        // If user is in a team, first get all team member IDs
+        const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+        const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+        
+        if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+          const memberIds = teamMembersResult.data.map(m => m.user_id);
+          
+          // Allow update if comment group is created by any team member OR has the team_id
+          checkQuery = `
+            SELECT id FROM comment_groups 
+            WHERE id = ? 
+            AND (user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)
+          `;
+          checkParams = [groupId, ...memberIds, teamId];
+        } else {
+          // Fallback if no members found
+          checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND team_id = ?`;
+          checkParams = [groupId, teamId];
+        }
+      } else {
+        // Only allow update to user's own comment groups
+        checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND user_id = ?`;
+        checkParams = [groupId, userId];
+      }
+      
+      const checkResult = await executeQuery(env.COMMENT_BOT_DB, checkQuery, checkParams);
       
       if (!checkResult.success || checkResult.data.length === 0) {
         return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -569,7 +819,7 @@ async function updateCommentGroup(request, env, userId) {
         .run();
       
       // Return the updated group with its details
-      return await getCommentGroupDetail(groupId, env, userId);
+      return await getCommentGroupDetail(groupId, env, userId, teamId);
       
     } catch (dbError) {
       console.error('Database error:', dbError);
@@ -589,8 +839,9 @@ async function updateCommentGroup(request, env, userId) {
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to verify ownership
+ * @param {string|null} teamId - The team ID to verify ownership (if user is in a team)
  */
-async function deleteCommentGroup(request, env, userId) {
+async function deleteCommentGroup(request, env, userId, teamId) {
   try {
     // Get group ID from URL
     const url = new URL(request.url);
@@ -601,17 +852,50 @@ async function deleteCommentGroup(request, env, userId) {
       return jsonResponse({ error: 'Invalid comment group ID' }, 400);
     }
     
-    // Check if comment group exists and belongs to user
-    const checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND user_id = ?`;
-    const checkResult = await executeQuery(env.COMMENT_BOT_DB, checkQuery, [groupId, userId]);
+    // Check if comment group exists and user has permission
+    let checkQuery;
+    let checkParams;
+    
+    if (teamId) {
+      // If user is in a team, first get all team member IDs
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+      
+      if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+        const memberIds = teamMembersResult.data.map(m => m.user_id);
+        
+        // Allow delete if comment group is created by any team member OR has the team_id
+        checkQuery = `
+          SELECT id FROM comment_groups 
+          WHERE id = ? 
+          AND (user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)
+        `;
+        checkParams = [groupId, ...memberIds, teamId];
+      } else {
+        // Fallback if no members found
+        checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND team_id = ?`;
+        checkParams = [groupId, teamId];
+      }
+    } else {
+      // Only allow delete of user's own comment groups
+      checkQuery = `SELECT id FROM comment_groups WHERE id = ? AND user_id = ?`;
+      checkParams = [groupId, userId];
+    }
+    
+    const checkResult = await executeQuery(env.COMMENT_BOT_DB, checkQuery, checkParams);
     
     if (!checkResult.success || checkResult.data.length === 0) {
       return jsonResponse({ error: 'Comment group not found' }, 404);
     }
     
-    // Delete comment group (legends are stored as JSON within the table)
-    const deleteQuery = `DELETE FROM comment_groups WHERE id = ? AND user_id = ?`;
-    await env.COMMENT_BOT_DB.prepare(deleteQuery).bind(groupId, userId).run();
+    // First, update any orders that reference this comment group
+    // Set their comment_group_id to NULL to avoid foreign key constraint errors
+    const updateOrdersQuery = `UPDATE orders SET comment_group_id = NULL WHERE comment_group_id = ?`;
+    await env.COMMENT_BOT_DB.prepare(updateOrdersQuery).bind(groupId).run();
+    
+    // Now delete the comment group (legends are stored as JSON within the table)
+    const deleteQuery = `DELETE FROM comment_groups WHERE id = ?`;
+    await env.COMMENT_BOT_DB.prepare(deleteQuery).bind(groupId).run();
     
     return jsonResponse({
       success: true,
@@ -719,8 +1003,9 @@ async function getAccountCheckStatus(accountType) {
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to associate with the order
+ * @param {string|null} teamId - The team ID to associate with the order (if user is in a team)
  */
-async function createOrder(request, env, userId) {
+async function createOrder(request, env, userId, teamId) {
   try {
     // Store origin for later use in jsonResponse
     if (request.headers.get('Origin')) {
@@ -755,9 +1040,37 @@ async function createOrder(request, env, userId) {
     
     // If comment_group_id is provided, fetch comment group details and format them
     if (orderData.comment_group_id) {
-      // Get comment group details and verify it belongs to the user
-      const groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
-      const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, [orderData.comment_group_id, userId]);
+      // Get comment group details and verify user has access
+      let groupQuery;
+      let groupParams;
+      
+      if (teamId) {
+        // If user is in a team, first get all team member IDs
+        const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+        const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+        
+        if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+          const memberIds = teamMembersResult.data.map(m => m.user_id);
+          
+          // Allow using comment groups created by any team member OR with the team_id
+          groupQuery = `
+            SELECT * FROM comment_groups 
+            WHERE id = ? 
+            AND (user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)
+          `;
+          groupParams = [orderData.comment_group_id, ...memberIds, teamId];
+        } else {
+          // Fallback if no members found
+          groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND team_id = ?`;
+          groupParams = [orderData.comment_group_id, teamId];
+        }
+      } else {
+        // Only allow using user's own comment groups
+        groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
+        groupParams = [orderData.comment_group_id, userId];
+      }
+      
+      const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, groupParams);
       
       if (!groupResult.success || groupResult.data.length === 0) {
         return jsonResponse({ error: 'Comment group not found' }, 404);
@@ -810,6 +1123,7 @@ async function createOrder(request, env, userId) {
         const insertOrderQuery = `
           INSERT INTO orders (
             user_id,
+            team_id,
             order_id,
             post_id,
             status,
@@ -818,12 +1132,13 @@ async function createOrder(request, env, userId) {
             comment_group_id,
             message,
             api_created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         
         await env.COMMENT_BOT_DB.prepare(insertOrderQuery)
           .bind(
             userId,
+            teamId,
             createdOrder.order_id,
             createdOrder.post_id,
             createdOrder.status,
@@ -860,8 +1175,9 @@ async function createOrder(request, env, userId) {
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
  * @param {string} userId - The user ID to filter by
+ * @param {string|null} teamId - The team ID to filter by (if user is in a team)
  */
-async function getOrders(request, env, userId) {
+async function getOrders(request, env, userId, teamId) {
   try {
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get('limit') || '50');
@@ -869,16 +1185,52 @@ async function getOrders(request, env, userId) {
     const status = url.searchParams.get('status') || null;
     
     // Build query based on filters
-    let query = `
-      SELECT 
-        o.*,
-        cg.name as comment_group_name
-      FROM orders o
-      LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
-      WHERE o.user_id = ?
-    `;
+    // If user is in a team, show all orders from team members
+    // Otherwise, only show user's own orders
+    let query;
+    let params;
     
-    const params = [userId];
+    if (teamId) {
+      // First get all team member IDs
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+      
+      if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+        const memberIds = teamMembersResult.data.map(m => m.user_id);
+        
+        query = `
+          SELECT 
+            o.*,
+            cg.name as comment_group_name
+          FROM orders o
+          LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+          WHERE o.user_id IN (${memberIds.map(() => '?').join(',')})
+             OR o.team_id = ?
+        `;
+        params = [...memberIds, teamId];
+      } else {
+        // Fallback if no members found
+        query = `
+          SELECT 
+            o.*,
+            cg.name as comment_group_name
+          FROM orders o
+          LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+          WHERE o.team_id = ?
+        `;
+        params = [teamId];
+      }
+    } else {
+      query = `
+        SELECT 
+          o.*,
+          cg.name as comment_group_name
+        FROM orders o
+        LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+        WHERE o.user_id = ?
+      `;
+      params = [userId];
+    }
     if (status) {
       query += ' AND o.status = ?';
       params.push(status);
@@ -894,8 +1246,10 @@ async function getOrders(request, env, userId) {
     }
     
     // Get total count
-    let countQuery = 'SELECT COUNT(*) as total FROM orders WHERE user_id = ?';
-    const countParams = [userId];
+    let countQuery = teamId 
+      ? 'SELECT COUNT(*) as total FROM orders WHERE team_id = ?'
+      : 'SELECT COUNT(*) as total FROM orders WHERE user_id = ?';
+    const countParams = teamId ? [teamId] : [userId];
     if (status) {
       countQuery += ' AND status = ?';
       countParams.push(status);
@@ -904,9 +1258,62 @@ async function getOrders(request, env, userId) {
     const countResult = await executeQuery(env.COMMENT_BOT_DB, countQuery, countParams);
     const total = countResult.success && countResult.data.length > 0 ? countResult.data[0].total : 0;
     
+    // Get the orders
+    let orders = result.data;
+    
+    // If this is a team query, fetch creator information from USERS_DB
+    if (teamId && orders.length > 0) {
+      // Get unique user IDs
+      const userIds = [...new Set(orders.map(o => o.user_id).filter(id => id))];
+      
+      if (userIds.length > 0) {
+        try {
+          // Fetch user data from sessions in USERS_DB
+          // We look for any session (even expired) to get user info
+          const userQuery = `
+            SELECT 
+              user_id,
+              user_data,
+              MAX(created_at) as latest_session
+            FROM sessions 
+            WHERE user_id IN (${userIds.map(() => '?').join(',')})
+            GROUP BY user_id
+          `;
+          
+          const userResult = await executeQuery(env.USERS_DB, userQuery, userIds);
+          
+          if (userResult.success) {
+            // Create a map of user data
+            const userMap = {};
+            userResult.data.forEach(row => {
+              try {
+                const userData = JSON.parse(row.user_data);
+                userMap[row.user_id] = {
+                  id: row.user_id,
+                  name: userData.name || userData.email,
+                  email: userData.email
+                };
+              } catch (e) {
+                console.error('Error parsing user data:', e);
+              }
+            });
+            
+            // Add creator info to orders
+            orders = orders.map(order => ({
+              ...order,
+              creator: userMap[order.user_id] || null
+            }));
+          }
+        } catch (e) {
+          console.error('Error fetching creator data:', e);
+          // Continue without creator data
+        }
+      }
+    }
+    
     return jsonResponse({
       success: true,
-      orders: result.data,
+      orders: orders,
       pagination: {
         total: total,
         limit: limit,
@@ -927,8 +1334,9 @@ async function getOrders(request, env, userId) {
  * @param {string} orderId - ID of the order to check
  * @param {Object} env - Environment bindings (optional for database update)
  * @param {string} userId - The user ID to verify ownership
+ * @param {string|null} teamId - The team ID to verify ownership (if user is in a team)
  */
-async function getOrderStatus(orderId, env = null, userId = null) {
+async function getOrderStatus(orderId, env = null, userId = null, teamId = null) {
   try {
     // Fetch status from external API
     const orderStatus = await fetchAPI(`/api/orders/${orderId}/status`);
@@ -955,7 +1363,14 @@ async function getOrderStatus(orderId, env = null, userId = null) {
     
     // Fetch the complete order data from database
     if (env) {
-      const orderQuery = `
+      const orderQuery = teamId ? `
+        SELECT 
+          o.*,
+          cg.name as comment_group_name
+        FROM orders o
+        LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+        WHERE o.order_id = ? AND o.team_id = ?
+      ` : `
         SELECT 
           o.*,
           cg.name as comment_group_name
@@ -964,7 +1379,8 @@ async function getOrderStatus(orderId, env = null, userId = null) {
         WHERE o.order_id = ? AND o.user_id = ?
       `;
       
-      const result = await executeQuery(env.COMMENT_BOT_DB, orderQuery, [orderId, userId]);
+      const params = teamId ? [orderId, teamId] : [orderId, userId];
+      const result = await executeQuery(env.COMMENT_BOT_DB, orderQuery, params);
       
       if (result.success && result.data.length > 0) {
         return jsonResponse({
