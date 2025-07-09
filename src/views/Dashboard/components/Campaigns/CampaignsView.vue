@@ -224,6 +224,12 @@
                 </div>
               </div>
               
+              <div class="d-flex flex-column align-end">
+                <div v-if="campaign.creator" class="text-caption text-medium-emphasis">
+                  Created by: {{ campaign.creator.name || campaign.creator.email }}
+                </div>
+              </div>
+              
               <div class="d-flex gap-1">
                 <v-btn
                   icon
@@ -401,6 +407,11 @@
         
         <v-card-text>
           <v-form ref="campaignForm">
+            <div v-if="editingCampaign && editingCampaign.creator" class="mb-4">
+              <v-alert type="info" variant="tonal" density="compact">
+                Created by: {{ editingCampaign.creator.name || editingCampaign.creator.email }}
+              </v-alert>
+            </div>
             <!-- Status at the top -->
             <v-select
               v-model="formData.status"
@@ -1849,7 +1860,11 @@ onMounted(() => {
 /* Dark theme support */
 .v-theme--dark .launch-count-wrapper {
   background-color: rgba(255, 255, 255, 0.09);
-  border-color: rgba(134, 239, 172, 0.5);
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.v-theme--dark .launch-count-wrapper.purple-theme {
+  border-color: rgba(168, 85, 247, 0.5);
 }
 
 .v-theme--dark .launch-count-input {
@@ -1857,11 +1872,15 @@ onMounted(() => {
 }
 
 .v-theme--dark .launch-count-btn {
-  color: rgba(134, 239, 172, 0.9);
+  color: rgba(168, 85, 247, 0.9);
+}
+
+.v-theme--dark .purple-theme .launch-count-btn {
+  color: rgba(168, 85, 247, 0.9);
 }
 
 .v-theme--dark .launch-count-btn:hover:not(:disabled) {
-  background-color: rgba(134, 239, 172, 0.1);
+  background-color: rgba(168, 85, 247, 0.1);
 }
 
 .v-theme--dark .launch-count-btn:disabled {
@@ -1869,11 +1888,19 @@ onMounted(() => {
 }
 
 .v-theme--dark .launch-count-btn.minus {
-  border-right-color: rgba(134, 239, 172, 0.5);
+  border-right-color: rgba(168, 85, 247, 0.5);
+}
+
+.v-theme--dark .purple-theme .launch-count-btn.minus {
+  border-right-color: rgba(168, 85, 247, 0.5);
 }
 
 .v-theme--dark .launch-count-btn.plus {
-  border-left-color: rgba(134, 239, 172, 0.5);
+  border-left-color: rgba(168, 85, 247, 0.5);
+}
+
+.v-theme--dark .purple-theme .launch-count-btn.plus {
+  border-left-color: rgba(168, 85, 247, 0.5);
 }
 
 /* Custom scrollbar for launches list */

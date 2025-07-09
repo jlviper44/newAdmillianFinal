@@ -26,6 +26,7 @@ async function initializeSparksTable(db) {
           CREATE TABLE IF NOT EXISTS sparks_new (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
+            team_id TEXT,
             name TEXT NOT NULL,
             tiktok_link TEXT NOT NULL,
             spark_code TEXT NOT NULL,
@@ -83,6 +84,7 @@ async function initializeSparksTable(db) {
         CREATE TABLE IF NOT EXISTS sparks (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
+          team_id TEXT,
           name TEXT NOT NULL,
           tiktok_link TEXT NOT NULL,
           spark_code TEXT NOT NULL,
@@ -114,11 +116,12 @@ async function initializeSparksTable(db) {
       CREATE INDEX IF NOT EXISTS idx_sparks_user_id ON sparks(user_id)
     `).run();
     
-    // Add user_id column if it doesn't exist (for existing tables)
+    // Add user_id and team_id columns if they don't exist (for existing tables)
     try {
-      // Check if user_id column exists
+      // Check if columns exist
       const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
       const hasUserIdColumn = tableInfo.results.some(col => col.name === 'user_id');
+      const hasTeamIdColumn = tableInfo.results.some(col => col.name === 'team_id');
       
       if (!hasUserIdColumn) {
         console.log('Adding user_id column to existing sparks table...');
@@ -129,8 +132,14 @@ async function initializeSparksTable(db) {
         await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
         console.log('Updated existing sparks with default user_id');
       }
+      
+      if (!hasTeamIdColumn) {
+        console.log('Adding team_id column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN team_id TEXT`).run();
+        console.log('Added team_id column to sparks table');
+      }
     } catch (error) {
-      console.error('Error checking/adding user_id column:', error);
+      console.error('Error checking/adding user_id/team_id columns:', error);
       // Continue execution as this might not be critical
     }
 
@@ -152,9 +161,25 @@ async function initializeSparksTable(db) {
 }
 
 /**
- * Extract user_id from session
+ * Get user's team ID from the database
  */
-async function getUserIdFromSession(request, env) {
+async function getUserTeamId(env, userId) {
+  try {
+    const result = await env.USERS_DB.prepare(
+      'SELECT team_id FROM team_members WHERE user_id = ?'
+    ).bind(userId).first();
+    
+    return result?.team_id || null;
+  } catch (error) {
+    console.error('Error getting user team ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract user_id and team_id from session
+ */
+async function getUserInfoFromSession(request, env) {
   try {
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
@@ -174,10 +199,45 @@ async function getUserIdFromSession(request, env) {
       throw new Error('Invalid or expired session');
     }
     
-    return session.user_id;
+    const userId = session.user_id;
+    const teamId = await getUserTeamId(env, userId);
+    
+    return { userId, teamId };
   } catch (error) {
-    console.error('Error extracting user_id from session:', error);
+    console.error('Error extracting user info from session:', error);
     throw new Error('Authentication required');
+  }
+}
+
+/**
+ * Check if user has access to a spark
+ */
+async function checkSparkAccess(db, env, sparkId, userId, teamId) {
+  try {
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        return await db.prepare(
+          `SELECT * FROM sparks WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(sparkId, ...memberIds, teamId).first();
+      } else {
+        return await db.prepare(
+          'SELECT * FROM sparks WHERE id = ? AND team_id = ?'
+        ).bind(sparkId, teamId).first();
+      }
+    } else {
+      return await db.prepare(
+        'SELECT * FROM sparks WHERE id = ? AND user_id = ?'
+      ).bind(sparkId, userId).first();
+    }
+  } catch (error) {
+    console.error('Error checking spark access:', error);
+    return null;
   }
 }
 
@@ -572,8 +632,8 @@ async function listSparks(request, db, corsHeaders, env) {
       console.error('Error checking/adding user_id column:', e);
     }
     
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -581,9 +641,28 @@ async function listSparks(request, db, corsHeaders, env) {
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
     
-    // Build the query - always include user_id filter
-    let query = 'SELECT * FROM sparks WHERE user_id = ?';
-    const params = [userId];
+    // Build the query - filter by team members if in a team
+    let query = 'SELECT * FROM sparks WHERE ';
+    const params = [];
+    
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        query += `(user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)`;
+        params.push(...memberIds, teamId);
+      } else {
+        query += 'team_id = ?';
+        params.push(teamId);
+      }
+    } else {
+      // Only show user's own sparks
+      query += 'user_id = ?';
+      params.push(userId);
+    }
     
     // Apply search filter
     if (search) {
@@ -670,12 +749,11 @@ async function getSpark(sparkId, request, db, corsHeaders, env) {
       console.error('Error checking/adding user_id column:', e);
     }
     
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
-      .first();
+    // Check if user has access to the spark
+    const spark = await checkSparkAccess(db, env, sparkId, userId, teamId);
     
     if (!spark) {
       return new Response(
@@ -741,8 +819,8 @@ async function createSpark(request, db, corsHeaders, env) {
       console.error('Error checking/adding user_id column:', e);
     }
     
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const sparkData = await request.json();
     
@@ -869,11 +947,12 @@ async function createSpark(request, db, corsHeaders, env) {
     // Insert into database
     await db.prepare(`
       INSERT INTO sparks 
-      (id, user_id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, team_id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
       userId,
+      teamId,
       sparkData.name,
       sparkData.tiktokLink,
       sparkData.sparkCode,
@@ -926,15 +1005,13 @@ async function createSpark(request, db, corsHeaders, env) {
  */
 async function updateSpark(sparkId, request, db, corsHeaders, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const sparkData = await request.json();
     
-    // Get existing spark - filtered by user_id
-    const existingSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
-      .first();
+    // Check if user has access to the spark
+    const existingSpark = await checkSparkAccess(db, env, sparkId, userId, teamId);
     
     if (!existingSpark) {
       return new Response(
@@ -1050,12 +1127,12 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       }
     }
     
-    // Update the spark - filtered by user_id
+    // Update the spark
     await db.prepare(`
       UPDATE sparks 
       SET name = ?, tiktok_link = ?, spark_code = ?, offer = ?, offer_name = ?, 
           thumbnail = ?, status = ?
-      WHERE id = ? AND user_id = ?
+      WHERE id = ?
     `).bind(
       sparkData.name,
       sparkData.tiktokLink,
@@ -1064,13 +1141,12 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       offerName,
       thumbnail,
       sparkData.status || existingSpark.status,
-      sparkId,
-      userId
+      sparkId
     ).run();
     
     // Fetch the updated spark
-    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
+    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
+      .bind(sparkId)
       .first();
     
     return new Response(
@@ -1110,13 +1186,11 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
  */
 async function deleteSpark(sparkId, request, db, corsHeaders, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    // Check if spark exists - filtered by user_id
-    const existingSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
-      .first();
+    // Check if user has access to the spark
+    const existingSpark = await checkSparkAccess(db, env, sparkId, userId, teamId);
     
     if (!existingSpark) {
       return new Response(
@@ -1131,8 +1205,8 @@ async function deleteSpark(sparkId, request, db, corsHeaders, env) {
       );
     }
     
-    // Delete the spark - filtered by user_id
-    await db.prepare('DELETE FROM sparks WHERE id = ? AND user_id = ?').bind(sparkId, userId).run();
+    // Delete the spark
+    await db.prepare('DELETE FROM sparks WHERE id = ?').bind(sparkId).run();
     
     return new Response(
       JSON.stringify({ 
@@ -1171,13 +1245,11 @@ async function deleteSpark(sparkId, request, db, corsHeaders, env) {
  */
 async function toggleSparkStatus(sparkId, request, db, corsHeaders, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    // Get current spark - filtered by user_id
-    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
-      .first();
+    // Check if user has access to the spark
+    const spark = await checkSparkAccess(db, env, sparkId, userId, teamId);
     
     if (!spark) {
       return new Response(
@@ -1195,13 +1267,13 @@ async function toggleSparkStatus(sparkId, request, db, corsHeaders, env) {
     // Toggle status
     const newStatus = spark.status === 'active' ? 'inactive' : 'active';
     
-    await db.prepare('UPDATE sparks SET status = ? WHERE id = ? AND user_id = ?')
-      .bind(newStatus, sparkId, userId)
+    await db.prepare('UPDATE sparks SET status = ? WHERE id = ?')
+      .bind(newStatus, sparkId)
       .run();
     
     // Fetch updated spark
-    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
+    const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
+      .bind(sparkId)
       .first();
     
     return new Response(
@@ -1241,8 +1313,8 @@ async function toggleSparkStatus(sparkId, request, db, corsHeaders, env) {
  */
 async function getSparkStats(sparkId, request, db, corsHeaders, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     // Get spark to ensure it exists - filtered by user_id
     const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')

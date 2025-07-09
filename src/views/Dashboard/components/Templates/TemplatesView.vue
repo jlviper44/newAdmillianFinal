@@ -85,6 +85,7 @@
             
             <div class="text-caption text-grey mt-2">
               <div>Created: {{ formatDate(template.created_at) }}</div>
+              <div v-if="template.creator">Created by: {{ template.creator.name || template.creator.email }}</div>
               <div>Version: {{ template.version || 1 }}</div>
             </div>
           </v-card-item>
@@ -195,6 +196,26 @@
               </v-col>
               
               <v-col cols="12">
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <v-btn 
+                    variant="text"
+                    color="primary"
+                    @click="previewTemplate()"
+                  >
+                    <v-icon class="mr-1">mdi-eye</v-icon>
+                    Preview
+                  </v-btn>
+                  <div>
+                    <v-btn variant="text" @click="showCreateModal = false">Cancel</v-btn>
+                    <v-btn 
+                      color="primary" 
+                      @click="saveTemplate"
+                      class="ml-2"
+                    >
+                      Save
+                    </v-btn>
+                  </div>
+                </div>
                 <v-textarea
                   v-model="templateForm.html"
                   label="HTML Content"
@@ -207,25 +228,6 @@
             </v-row>
           </v-form>
         </v-card-text>
-        
-        <v-card-actions>
-          <v-btn 
-            variant="text"
-            color="primary"
-            @click="previewTemplate()"
-          >
-            <v-icon class="mr-1">mdi-eye</v-icon>
-            Preview
-          </v-btn>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showCreateModal = false">Cancel</v-btn>
-          <v-btn 
-            color="primary" 
-            @click="saveTemplate"
-          >
-            Save
-          </v-btn>
-        </v-card-actions>
       </v-card>
     </v-dialog>
     
@@ -241,6 +243,13 @@
         </v-card-title>
         
         <v-card-text>
+          <div v-if="previewingTemplate" class="mb-3">
+            <div class="text-subtitle-2">{{ previewingTemplate.name }}</div>
+            <div class="text-caption text-grey">
+              <span v-if="previewingTemplate.creator">Created by: {{ previewingTemplate.creator.name || previewingTemplate.creator.email }} • </span>
+              <span>{{ formatDate(previewingTemplate.created_at) }}</span>
+            </div>
+          </div>
           <iframe
             :srcdoc="previewIframeContent"
             style="width: 100%; height: 500px; border: 1px solid #ccc;"
@@ -364,6 +373,7 @@ const showCreateModal = ref(false);
 const showPreviewModal = ref(false);
 const editingTemplate = ref(null);
 const previewIframeContent = ref('');
+const previewingTemplate = ref(null);
 
 // Form data
 const templateForm = ref({
@@ -579,8 +589,10 @@ const previewTemplate = (template = null) => {
     
     if (template) {
       htmlContent = template.html;
+      previewingTemplate.value = template;
     } else {
       htmlContent = templateForm.value.html;
+      previewingTemplate.value = null;
     }
     
     if (!htmlContent) {

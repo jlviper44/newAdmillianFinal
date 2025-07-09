@@ -13,6 +13,7 @@ async function initializeCampaignsTable(db) {
       CREATE TABLE IF NOT EXISTS campaigns (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        team_id TEXT,
         name TEXT NOT NULL,
         description TEXT,
         regions TEXT NOT NULL, -- JSON array of regions
@@ -48,8 +49,15 @@ async function initializeCampaignsTable(db) {
         await db.prepare(`UPDATE campaigns SET user_id = 'default_user' WHERE user_id IS NULL`).run();
         console.log('Updated NULL user_id values to default_user');
       }
+      
+      // Check if team_id column exists
+      const hasTeamIdColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'team_id');
+      if (!hasTeamIdColumn) {
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN team_id TEXT`).run();
+        console.log('Added team_id column to campaigns table');
+      }
     } catch (error) {
-      console.error('Error handling user_id column:', error);
+      console.error('Error handling user_id/team_id columns:', error);
     }
     
     console.log('Campaigns table initialized successfully');
@@ -69,9 +77,94 @@ function generateId() {
 }
 
 /**
- * Extract user_id from session
+ * Get user's team ID from the database
  */
-async function getUserIdFromSession(request, env) {
+async function getUserTeamId(env, userId) {
+  try {
+    const result = await env.USERS_DB.prepare(
+      'SELECT team_id FROM team_members WHERE user_id = ?'
+    ).bind(userId).first();
+    
+    return result?.team_id || null;
+  } catch (error) {
+    console.error('Error getting user team ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Get user info from user_id
+ */
+async function getUserInfo(env, userId) {
+  try {
+    // First try to get from team_members which has name and email
+    const teamMemberResult = await env.USERS_DB.prepare(
+      'SELECT user_email, user_name FROM team_members WHERE user_id = ?'
+    ).bind(userId).first();
+    
+    if (teamMemberResult) {
+      return {
+        email: teamMemberResult.user_email,
+        name: teamMemberResult.user_name || teamMemberResult.user_email
+      };
+    }
+    
+    // Fallback to sessions table
+    const sessionResult = await env.USERS_DB.prepare(
+      'SELECT user_data FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).bind(userId).first();
+    
+    if (sessionResult && sessionResult.user_data) {
+      const userData = JSON.parse(sessionResult.user_data);
+      return {
+        email: userData.email,
+        name: userData.name || userData.email || 'Unknown'
+      };
+    }
+    
+    return { email: 'Unknown', name: 'Unknown' };
+  } catch (error) {
+    console.error('Error getting user info:', error);
+    return { email: 'Unknown', name: 'Unknown' };
+  }
+}
+
+/**
+ * Check if user has access to a campaign
+ */
+async function checkCampaignAccess(db, env, campaignId, userId, teamId) {
+  try {
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        return await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        return await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      return await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
+  } catch (error) {
+    console.error('Error checking campaign access:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract user_id and team_id from session
+ */
+async function getUserInfoFromSession(request, env) {
   try {
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
@@ -91,9 +184,12 @@ async function getUserIdFromSession(request, env) {
       throw new Error('Invalid or expired session');
     }
     
-    return session.user_id;
+    const userId = session.user_id;
+    const teamId = await getUserTeamId(env, userId);
+    
+    return { userId, teamId };
   } catch (error) {
-    console.error('Error extracting user_id from session:', error);
+    console.error('Error extracting user info from session:', error);
     throw new Error('Authentication required');
   }
 }
@@ -117,8 +213,8 @@ async function listCampaigns(db, request, env) {
       console.error('Error checking/adding user_id column:', e);
     }
     
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -128,9 +224,28 @@ async function listCampaigns(db, request, env) {
     const region = url.searchParams.get('region') || 'all';
     const offset = (page - 1) * limit;
     
-    // Build query conditions - always include user_id filter
-    let whereConditions = ['user_id = ?'];
-    let params = [userId];
+    // Build query conditions - filter by team members if in a team
+    let whereConditions = [];
+    let params = [];
+    
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        whereConditions.push(`(user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)`);
+        params.push(...memberIds, teamId);
+      } else {
+        whereConditions.push('team_id = ?');
+        params.push(teamId);
+      }
+    } else {
+      // Only show user's own campaigns
+      whereConditions.push('user_id = ?');
+      params.push(userId);
+    }
     
     if (search) {
       whereConditions.push('(name LIKE ? OR id LIKE ?)');
@@ -175,7 +290,7 @@ async function listCampaigns(db, request, env) {
     params.push(limit, offset);
     
     const result = await db.prepare(query).bind(...params).all();
-    const campaigns = (result.results || []).map(campaign => ({
+    let campaigns = (result.results || []).map(campaign => ({
       ...campaign,
       regions: JSON.parse(campaign.regions || '[]'),
       launches: JSON.parse(campaign.launches || '{}'),
@@ -191,6 +306,24 @@ async function listCampaigns(db, request, env) {
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     }));
+    
+    // If user is in a team, add creator information to each campaign
+    if (teamId) {
+      // Get unique user IDs
+      const uniqueUserIds = [...new Set(result.results.map(c => c.user_id))];
+      
+      // Fetch user info for all creators
+      const userInfoMap = {};
+      for (const creatorId of uniqueUserIds) {
+        userInfoMap[creatorId] = await getUserInfo(env, creatorId);
+      }
+      
+      // Add creator info to campaigns
+      campaigns = campaigns.map((campaign, index) => ({
+        ...campaign,
+        creator: userInfoMap[result.results[index].user_id] || { name: 'Unknown', email: 'Unknown' }
+      }));
+    }
     
     return new Response(
       JSON.stringify({
@@ -258,12 +391,31 @@ async function getCampaign(db, campaignId, request, env) {
       );
     }
     
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    const campaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    let campaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        campaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        campaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      campaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     if (!campaign) {
       return new Response(
@@ -275,7 +427,7 @@ async function getCampaign(db, campaignId, request, env) {
       );
     }
     
-    const formattedCampaign = {
+    let formattedCampaign = {
       ...campaign,
       regions: JSON.parse(campaign.regions || '[]'),
       launches: JSON.parse(campaign.launches || '{}'),
@@ -291,6 +443,12 @@ async function getCampaign(db, campaignId, request, env) {
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     };
+    
+    // Add creator information if user is in a team
+    if (teamId && campaign.user_id) {
+      const creatorInfo = await getUserInfo(env, campaign.user_id);
+      formattedCampaign.creator = creatorInfo;
+    }
     
     return new Response(
       JSON.stringify(formattedCampaign),
@@ -323,8 +481,8 @@ async function getCampaign(db, campaignId, request, env) {
  */
 async function createCampaign(db, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const campaignData = await request.json();
     
@@ -414,13 +572,14 @@ async function createCampaign(db, request, env) {
     // Insert campaign
     await db.prepare(`
       INSERT INTO campaigns (
-        id, user_id, name, description, regions, tiktok_store_id, redirect_store_id,
+        id, user_id, team_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
         status, is_active, traffic, launches, max_launch_number, total_launches
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
       userId,
+      teamId,
       campaignData.name,
       campaignData.description || null,
       JSON.stringify(campaignData.regions),
@@ -480,13 +639,32 @@ async function createCampaign(db, request, env) {
  */
 async function updateCampaign(db, campaignId, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    // Check if campaign exists and belongs to user
-    const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Check if campaign exists and user has permission
+    let existingCampaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        existingCampaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        existingCampaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      existingCampaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     if (!existingCampaign) {
       return new Response(
@@ -529,7 +707,7 @@ async function updateCampaign(db, campaignId, request, env) {
         max_launch_number = ?,
         total_launches = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
+      WHERE id = ?
     `).bind(
       campaignData.name,
       campaignData.description || null,
@@ -545,8 +723,7 @@ async function updateCampaign(db, campaignId, request, env) {
       campaignData.launches ? JSON.stringify(campaignData.launches) : existingCampaign.launches,
       campaignData.maxLaunchNumber !== undefined ? campaignData.maxLaunchNumber : existingCampaign.max_launch_number,
       campaignData.totalLaunches !== undefined ? campaignData.totalLaunches : existingCampaign.total_launches,
-      campaignId,
-      userId
+      campaignId
     ).run();
     
     // Fetch and return the updated campaign
@@ -596,13 +773,11 @@ async function updateCampaign(db, campaignId, request, env) {
  */
 async function deleteCampaign(db, campaignId, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    // Check if campaign exists and belongs to user
-    const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Check if campaign exists and user has access
+    const existingCampaign = await checkCampaignAccess(db, env, campaignId, userId, teamId);
     
     if (!existingCampaign) {
       return new Response(
@@ -616,8 +791,8 @@ async function deleteCampaign(db, campaignId, request, env) {
     
     // Delete campaign
     await db.prepare(
-      'DELETE FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).run();
+      'DELETE FROM campaigns WHERE id = ?'
+    ).bind(campaignId).run();
     
     return new Response(
       JSON.stringify({ 
@@ -648,12 +823,11 @@ async function deleteCampaign(db, campaignId, request, env) {
  */
 async function toggleCampaignActive(db, campaignId, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Check if campaign exists and user has access
+    const existingCampaign = await checkCampaignAccess(db, env, campaignId, userId, teamId);
     
     if (!existingCampaign) {
       return new Response(
@@ -673,8 +847,8 @@ async function toggleCampaignActive(db, campaignId, request, env) {
         is_active = ?,
         status = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).bind(newIsActive, newStatus, campaignId, userId).run();
+      WHERE id = ?
+    `).bind(newIsActive, newStatus, campaignId).run();
     
     return new Response(
       JSON.stringify({
@@ -706,8 +880,8 @@ async function toggleCampaignActive(db, campaignId, request, env) {
  */
 async function toggleCampaignStatus(db, campaignId, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const existingCampaign = await db.prepare(
       'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
@@ -792,8 +966,8 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
  */
 async function manageCampaignLaunches(db, campaignId, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const requestData = await request.json();
     const { action, launchData } = requestData;
@@ -1748,8 +1922,8 @@ async function createRedirectStoreOfferPage(db, campaign, campaignId, launchNumb
  */
 async function generateCampaignLink(db, request, env) {
   try {
-    // Get user_id from session
-    const userId = await getUserIdFromSession(request, env);
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     
     const requestData = await request.json();
     const { campaignId, launchNumber } = requestData;

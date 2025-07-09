@@ -42,9 +42,16 @@ const selectedTab = ref('general');
               :active="selectedTab === 'teams'"
               @click="selectedTab = 'teams'"
               prepend-icon="mdi-account-group"
-              title="Teams"
               rounded="lg"
-            ></v-list-item>
+            >
+              <v-list-item-title class="d-flex align-center">
+                Teams
+                <v-chip color="amber" size="x-small" variant="flat" class="ml-2">
+                  <v-icon start size="x-small">mdi-crown</v-icon>
+                  Admin
+                </v-chip>
+              </v-list-item-title>
+            </v-list-item>
             
             <v-list-item
               v-if="user?.isAdmin"

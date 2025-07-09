@@ -13,6 +13,7 @@ async function initializeShopifyStoresTable(db) {
       CREATE TABLE IF NOT EXISTS shopify_stores (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        team_id TEXT,
         store_name TEXT NOT NULL,
         store_url TEXT NOT NULL UNIQUE,
         access_token TEXT NOT NULL,
@@ -29,9 +30,10 @@ async function initializeShopifyStoresTable(db) {
 
     // Add user_id column if it doesn't exist (for existing tables)
     try {
-      // Check if user_id column exists
+      // Check if user_id and team_id columns exist
       const tableInfo = await db.prepare(`PRAGMA table_info(shopify_stores)`).all();
       const hasUserIdColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'user_id');
+      const hasTeamIdColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'team_id');
       
       if (!hasUserIdColumn) {
         // Add user_id column with default value
@@ -42,8 +44,13 @@ async function initializeShopifyStoresTable(db) {
         await db.prepare(`UPDATE shopify_stores SET user_id = 'default_user' WHERE user_id IS NULL`).run();
         console.log('Updated NULL user_id values to default_user');
       }
+      
+      if (!hasTeamIdColumn) {
+        await db.prepare(`ALTER TABLE shopify_stores ADD COLUMN team_id TEXT`).run();
+        console.log('Added team_id column to shopify_stores table');
+      }
     } catch (error) {
-      console.error('Error handling user_id column:', error);
+      console.error('Error handling user_id/team_id columns:', error);
     }
 
     // Create indexes for better performance
@@ -77,9 +84,62 @@ async function initializeShopifyStoresTable(db) {
 }
 
 /**
- * Extract user_id from session
+ * Get user's team ID from the database
  */
-async function getUserIdFromSession(request, env) {
+async function getUserTeamId(env, userId) {
+  try {
+    const result = await env.USERS_DB.prepare(
+      'SELECT team_id FROM team_members WHERE user_id = ?'
+    ).bind(userId).first();
+    
+    return result?.team_id || null;
+  } catch (error) {
+    console.error('Error getting user team ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Get user info from user_id
+ */
+async function getUserInfo(env, userId) {
+  try {
+    // First try to get from team_members which has name and email
+    const teamMemberResult = await env.USERS_DB.prepare(
+      'SELECT user_email, user_name FROM team_members WHERE user_id = ?'
+    ).bind(userId).first();
+    
+    if (teamMemberResult) {
+      return {
+        email: teamMemberResult.user_email,
+        name: teamMemberResult.user_name || teamMemberResult.user_email
+      };
+    }
+    
+    // Fallback to sessions table
+    const sessionResult = await env.USERS_DB.prepare(
+      'SELECT user_data FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).bind(userId).first();
+    
+    if (sessionResult && sessionResult.user_data) {
+      const userData = JSON.parse(sessionResult.user_data);
+      return {
+        email: userData.email,
+        name: userData.name || userData.email || 'Unknown'
+      };
+    }
+    
+    return { email: 'Unknown', name: 'Unknown' };
+  } catch (error) {
+    console.error('Error getting user info:', error);
+    return { email: 'Unknown', name: 'Unknown' };
+  }
+}
+
+/**
+ * Extract user_id and team_id from session
+ */
+async function getUserInfoFromSession(request, env) {
   try {
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
@@ -99,10 +159,45 @@ async function getUserIdFromSession(request, env) {
       throw new Error('Invalid or expired session');
     }
     
-    return session.user_id;
+    const userId = session.user_id;
+    const teamId = await getUserTeamId(env, userId);
+    
+    return { userId, teamId };
   } catch (error) {
-    console.error('Error extracting user_id from session:', error);
+    console.error('Error extracting user info from session:', error);
     throw new Error('Authentication required');
+  }
+}
+
+/**
+ * Check if user has access to a store
+ */
+async function checkStoreAccess(db, env, storeId, userId, teamId) {
+  try {
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        return await db.prepare(
+          `SELECT * FROM shopify_stores WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(storeId, ...memberIds, teamId).first();
+      } else {
+        return await db.prepare(
+          'SELECT * FROM shopify_stores WHERE id = ? AND team_id = ?'
+        ).bind(storeId, teamId).first();
+      }
+    } else {
+      return await db.prepare(
+        'SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?'
+      ).bind(storeId, userId).first();
+    }
+  } catch (error) {
+    console.error('Error checking store access:', error);
+    return null;
   }
 }
 
@@ -264,16 +359,35 @@ async function listStores(request, db, env, corsHeaders) {
       console.error('Error checking/adding user_id column:', e);
     }
     
-    const userId = await getUserIdFromSession(request, env);
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '10');
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
     
-    // Build the query
-    let query = 'SELECT id, store_name, store_url, status, features, created_at, updated_at FROM shopify_stores WHERE user_id = ?';
-    const params = [userId];
+    // Build the query based on team membership
+    let query;
+    const params = [];
+    
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        query = `SELECT id, user_id, store_name, store_url, status, features, created_at, updated_at FROM shopify_stores WHERE (user_id IN (${placeholders}) OR team_id = ?)`;
+        params.push(...memberIds, teamId);
+      } else {
+        query = 'SELECT id, user_id, store_name, store_url, status, features, created_at, updated_at FROM shopify_stores WHERE team_id = ?';
+        params.push(teamId);
+      }
+    } else {
+      query = 'SELECT id, user_id, store_name, store_url, status, features, created_at, updated_at FROM shopify_stores WHERE user_id = ?';
+      params.push(userId);
+    }
     
     // Apply search filter
     if (search) {
@@ -291,7 +405,7 @@ async function listStores(request, db, env, corsHeaders) {
     query += ' ORDER BY created_at DESC';
     
     // Get total count
-    const countQuery = query.replace('SELECT id, store_name, store_url, status, features, created_at, updated_at', 'SELECT COUNT(*) as count');
+    const countQuery = query.replace('SELECT id, user_id, store_name, store_url, status, features, created_at, updated_at', 'SELECT COUNT(*) as count');
     const countResult = await db.prepare(countQuery).bind(...params).first();
     const totalStores = countResult.count;
     
@@ -303,11 +417,29 @@ async function listStores(request, db, env, corsHeaders) {
     const result = await db.prepare(query).bind(...params).all();
     const stores = result.results || [];
     
-    // Parse features JSON for each store
-    const processedStores = stores.map(store => ({
+    // Parse features JSON for each store and add creator info if in team
+    let processedStores = stores.map(store => ({
       ...store,
       features: store.features ? JSON.parse(store.features) : []
     }));
+    
+    // If user is in a team, add creator information to each store
+    if (teamId) {
+      // Get unique user IDs
+      const uniqueUserIds = [...new Set(stores.map(s => s.user_id))];
+      
+      // Fetch user info for all creators
+      const userInfoMap = {};
+      for (const creatorId of uniqueUserIds) {
+        userInfoMap[creatorId] = await getUserInfo(env, creatorId);
+      }
+      
+      // Add creator info to stores
+      processedStores = processedStores.map(store => ({
+        ...store,
+        creator: userInfoMap[store.user_id] || { name: 'Unknown', email: 'Unknown' }
+      }));
+    }
     
     const totalPages = Math.ceil(totalStores / limit);
     
@@ -366,12 +498,10 @@ async function getStore(storeId, request, db, env, corsHeaders) {
       console.error('Error checking/adding user_id column:', e);
     }
     
-    const userId = await getUserIdFromSession(request, env);
-    const store = await db.prepare(`
-      SELECT id, store_name, store_url, status, features, metadata, created_at, updated_at 
-      FROM shopify_stores 
-      WHERE id = ? AND user_id = ?
-    `).bind(storeId, userId).first();
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    
+    // Check access using helper function
+    const store = await checkStoreAccess(db, env, storeId, userId, teamId);
     
     if (!store) {
       return new Response(
@@ -386,12 +516,26 @@ async function getStore(storeId, request, db, env, corsHeaders) {
       );
     }
     
+    // Return only non-sensitive data
+    const { id, user_id, store_name, store_url, status, features, metadata, created_at, updated_at } = store;
+    
     // Parse JSON fields
-    const processedStore = {
-      ...store,
-      features: store.features ? JSON.parse(store.features) : [],
-      metadata: store.metadata ? JSON.parse(store.metadata) : {}
+    let processedStore = {
+      id,
+      store_name,
+      store_url,
+      status,
+      features: features ? JSON.parse(features) : [],
+      metadata: metadata ? JSON.parse(metadata) : {},
+      created_at,
+      updated_at
     };
+    
+    // Add creator information if user is in a team
+    if (teamId && user_id) {
+      const creatorInfo = await getUserInfo(env, user_id);
+      processedStore.creator = creatorInfo;
+    }
     
     return new Response(
       JSON.stringify({
@@ -430,7 +574,7 @@ async function getStore(storeId, request, db, env, corsHeaders) {
  */
 async function createStore(request, db, env, corsHeaders) {
   try {
-    const userId = await getUserIdFromSession(request, env);
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     const storeData = await request.json();
     
     // Validate required fields
@@ -476,11 +620,12 @@ async function createStore(request, db, env, corsHeaders) {
     // Insert into database
     await db.prepare(`
       INSERT INTO shopify_stores 
-      (id, user_id, store_name, store_url, access_token, api_key, api_secret, webhook_secret, status, features, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, team_id, store_name, store_url, access_token, api_key, api_secret, webhook_secret, status, features, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
       userId,
+      teamId,
       storeData.store_name,
       storeUrl,
       storeData.access_token || null,
@@ -496,8 +641,8 @@ async function createStore(request, db, env, corsHeaders) {
     const createdStore = await db.prepare(`
       SELECT id, store_name, store_url, status, features, created_at, updated_at 
       FROM shopify_stores 
-      WHERE id = ? AND user_id = ?
-    `).bind(id, userId).first();
+      WHERE id = ?
+    `).bind(id).first();
     
     return new Response(
       JSON.stringify({
@@ -556,13 +701,11 @@ async function createStore(request, db, env, corsHeaders) {
  */
 async function updateStore(storeId, request, db, env, corsHeaders) {
   try {
-    const userId = await getUserIdFromSession(request, env);
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
     const storeData = await request.json();
     
-    // Get existing store
-    const existingStore = await db.prepare('SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?')
-      .bind(storeId, userId)
-      .first();
+    // Check access and get existing store
+    const existingStore = await checkStoreAccess(db, env, storeId, userId, teamId);
     
     if (!existingStore) {
       return new Response(
@@ -618,7 +761,7 @@ async function updateStore(storeId, request, db, env, corsHeaders) {
       UPDATE shopify_stores 
       SET store_name = ?, store_url = ?, access_token = ?, api_key = ?, 
           api_secret = ?, webhook_secret = ?, status = ?, features = ?, metadata = ?
-      WHERE id = ? AND user_id = ?
+      WHERE id = ?
     `).bind(
       storeData.store_name,
       storeUrl,
@@ -629,16 +772,15 @@ async function updateStore(storeId, request, db, env, corsHeaders) {
       storeData.status || existingStore.status,
       features,
       metadata,
-      storeId,
-      userId
+      storeId
     ).run();
     
     // Fetch the updated store
     const updatedStore = await db.prepare(`
       SELECT id, store_name, store_url, status, features, created_at, updated_at 
       FROM shopify_stores 
-      WHERE id = ? AND user_id = ?
-    `).bind(storeId, userId).first();
+      WHERE id = ?
+    `).bind(storeId).first();
     
     return new Response(
       JSON.stringify({
@@ -680,11 +822,9 @@ async function updateStore(storeId, request, db, env, corsHeaders) {
  */
 async function deleteStore(storeId, request, db, env, corsHeaders) {
   try {
-    const userId = await getUserIdFromSession(request, env);
-    // Check if store exists
-    const existingStore = await db.prepare('SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?')
-      .bind(storeId, userId)
-      .first();
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    // Check access and get existing store
+    const existingStore = await checkStoreAccess(db, env, storeId, userId, teamId);
     
     if (!existingStore) {
       return new Response(
@@ -699,8 +839,8 @@ async function deleteStore(storeId, request, db, env, corsHeaders) {
       );
     }
     
-    // Delete the store
-    await db.prepare('DELETE FROM shopify_stores WHERE id = ? AND user_id = ?').bind(storeId, userId).run();
+    // Delete the store - only delete if user has access (already checked above)
+    await db.prepare('DELETE FROM shopify_stores WHERE id = ?').bind(storeId).run();
     
     return new Response(
       JSON.stringify({ 
@@ -739,11 +879,9 @@ async function deleteStore(storeId, request, db, env, corsHeaders) {
  */
 async function toggleStoreStatus(storeId, request, db, env, corsHeaders) {
   try {
-    const userId = await getUserIdFromSession(request, env);
-    // Get current store
-    const store = await db.prepare('SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?')
-      .bind(storeId, userId)
-      .first();
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    // Check access and get current store
+    const store = await checkStoreAccess(db, env, storeId, userId, teamId);
     
     if (!store) {
       return new Response(
@@ -761,16 +899,16 @@ async function toggleStoreStatus(storeId, request, db, env, corsHeaders) {
     // Toggle status
     const newStatus = store.status === 'active' ? 'inactive' : 'active';
     
-    await db.prepare('UPDATE shopify_stores SET status = ? WHERE id = ? AND user_id = ?')
-      .bind(newStatus, storeId, userId)
+    await db.prepare('UPDATE shopify_stores SET status = ? WHERE id = ?')
+      .bind(newStatus, storeId)
       .run();
     
     // Fetch updated store
     const updatedStore = await db.prepare(`
       SELECT id, store_name, store_url, status, features, created_at, updated_at 
       FROM shopify_stores 
-      WHERE id = ? AND user_id = ?
-    `).bind(storeId, userId).first();
+      WHERE id = ?
+    `).bind(storeId).first();
     
     return new Response(
       JSON.stringify({
@@ -812,12 +950,10 @@ async function toggleStoreStatus(storeId, request, db, env, corsHeaders) {
  */
 async function getStoreCredentials(storeId, request, db, env, corsHeaders) {
   try {
-    const userId = await getUserIdFromSession(request, env);
-    const store = await db.prepare(`
-      SELECT id, store_name, store_url, access_token, api_key, api_secret, webhook_secret, status
-      FROM shopify_stores 
-      WHERE id = ? AND user_id = ?
-    `).bind(storeId, userId).first();
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    
+    // Check access and get store with sensitive data
+    const store = await checkStoreAccess(db, env, storeId, userId, teamId);
     
     if (!store) {
       return new Response(
@@ -878,11 +1014,9 @@ async function getStoreCredentials(storeId, request, db, env, corsHeaders) {
  */
 async function testConnection(storeId, request, db, env, corsHeaders) {
   try {
-    const userId = await getUserIdFromSession(request, env);
-    // Get store details
-    const store = await db.prepare('SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?')
-      .bind(storeId, userId)
-      .first();
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    // Check access and get store details
+    const store = await checkStoreAccess(db, env, storeId, userId, teamId);
     
     if (!store) {
       return new Response(

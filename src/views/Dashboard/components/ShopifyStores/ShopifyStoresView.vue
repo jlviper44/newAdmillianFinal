@@ -107,7 +107,8 @@
             </div>
             
             <div class="text-caption text-grey">
-              Added {{ formatDate(store.created_at) }}
+              <div>Added {{ formatDate(store.created_at) }}</div>
+              <div v-if="store.creator">Created by: {{ store.creator.name || store.creator.email }}</div>
             </div>
           </v-card-text>
           
@@ -191,6 +192,11 @@
         
         <v-card-text>
           <v-form ref="storeForm">
+            <div v-if="editingStore && editingStore.creator" class="mb-4">
+              <v-alert type="info" variant="tonal" density="compact">
+                Created by: {{ editingStore.creator.name || editingStore.creator.email }}
+              </v-alert>
+            </div>
             <div class="mb-4">
               <p class="text-subtitle-2 mb-2">Status</p>
               <v-chip-group
