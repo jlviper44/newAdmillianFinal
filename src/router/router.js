@@ -107,11 +107,25 @@ router.beforeEach(async (to, from, next) => {
   
   // Check authentication requirements
   if (to.meta.requiresAuth) {
-    const { isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, loading, initAuth } = useAuth();
+    const { isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, loading, initAuth, showAuthModal } = useAuth();
     
     // Initialize auth if not already done
     if (loading.value) {
       await initAuth();
+    }
+    
+    // Check if user is authenticated
+    if (!isAuthenticated.value) {
+      // If we're already on the home page, just show the auth modal
+      if (to.path === '/') {
+        showAuthModal.value = true;
+        next();
+        return;
+      }
+      // Otherwise redirect to home and show auth modal
+      showAuthModal.value = true;
+      next('/');
+      return;
     }
     
     // Check subscription-specific requirements
@@ -126,7 +140,7 @@ router.beforeEach(async (to, from, next) => {
         hasRequiredAccess = hasDashboardAccess.value;
       }
       
-      if (!hasRequiredAccess && isAuthenticated.value) {
+      if (!hasRequiredAccess) {
         next('/');
         return;
       }
