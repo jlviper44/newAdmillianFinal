@@ -24,7 +24,8 @@ const props = defineProps({
     type: Object,
     default: () => ({
       offerName: null,
-      subId: null
+      subId: null,
+      subId2: null
     })
   }
 })
@@ -62,6 +63,12 @@ const filteredClicksData = computed(() => {
     )
   }
   
+  if (props.filters.subId2) {
+    filtered = filtered.filter(item => 
+      item.subid_2 === props.filters.subId2
+    )
+  }
+  
   return filtered
 })
 
@@ -77,6 +84,12 @@ const filteredConversionsData = computed(() => {
   if (props.filters.subId) {
     filtered = filtered.filter(item => 
       item.subid_1 === props.filters.subId
+    )
+  }
+  
+  if (props.filters.subId2) {
+    filtered = filtered.filter(item => 
+      item.subid_2 === props.filters.subId2
     )
   }
   

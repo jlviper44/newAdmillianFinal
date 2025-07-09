@@ -35,7 +35,8 @@ const props = defineProps({
     type: Object,
     default: () => ({
       offerName: null,
-      subId: null
+      subId: null,
+      subId2: null
     })
   }
 })
@@ -50,7 +51,8 @@ const exporting = ref({
 const clicksHeaders = [
   { title: 'Date & Time', key: 'click_date', sortable: true, align: 'start' },
   { title: 'Offer Name', key: 'offer.offer_name', sortable: true, align: 'start' },
-  { title: 'Sub ID', key: 'subid_1', sortable: true, align: 'start' }
+  { title: 'Sub ID', key: 'subid_1', sortable: true, align: 'start' },
+  { title: 'Sub ID 2', key: 'subid_2', sortable: true, align: 'start' }
 ]
 
 // Table headers for conversions
@@ -58,6 +60,7 @@ const conversionsHeaders = [
   { title: 'Date & Time', key: 'conversion_date', sortable: true, align: 'start' },
   { title: 'Offer Name', key: 'offer_name', sortable: true, align: 'start' },
   { title: 'Sub ID', key: 'subid_1', sortable: true, align: 'start' },
+  { title: 'Sub ID 2', key: 'subid_2', sortable: true, align: 'start' },
   { title: 'Price', key: 'price', sortable: true, align: 'end' }
 ]
 
@@ -74,6 +77,12 @@ const filteredClicksData = computed(() => {
   if (props.filters.subId) {
     filtered = filtered.filter(item => 
       item.subid_1 === props.filters.subId
+    )
+  }
+  
+  if (props.filters.subId2) {
+    filtered = filtered.filter(item => 
+      item.subid_2 === props.filters.subId2
     )
   }
   
@@ -95,6 +104,12 @@ const filteredConversionsData = computed(() => {
     )
   }
   
+  if (props.filters.subId2) {
+    filtered = filtered.filter(item => 
+      item.subid_2 === props.filters.subId2
+    )
+  }
+  
   return filtered
 })
 
@@ -104,13 +119,14 @@ const exportClicksData = () => {
   
   try {
     // Convert data to CSV format
-    const headers = ['Date & Time', 'Offer Name', 'Sub ID']
+    const headers = ['Date & Time', 'Offer Name', 'Sub ID', 'Sub ID 2']
     const csvContent = filteredClicksData.value.map(item => {
       const date = props.formatDateAndTime(item.click_date)
       const offerName = item.offer?.offer_name || ''
       const subId = item.subid_1 || ''
+      const subId2 = item.subid_2 || ''
       
-      return [date, offerName, subId].join(',')
+      return [date, offerName, subId, subId2].join(',')
     })
     
     // Add headers row
@@ -140,14 +156,15 @@ const exportConversionsData = () => {
   
   try {
     // Convert data to CSV format
-    const headers = ['Date & Time', 'Offer Name', 'Sub ID', 'Price']
+    const headers = ['Date & Time', 'Offer Name', 'Sub ID', 'Sub ID 2', 'Price']
     const csvContent = filteredConversionsData.value.map(item => {
       const date = props.formatDateAndTime(item.conversion_date)
       const offerName = item.offer_name || ''
       const subId = item.subid_1 || ''
+      const subId2 = item.subid_2 || ''
       const price = item.price || '0.00'
       
-      return [date, offerName, subId, price].join(',')
+      return [date, offerName, subId, subId2, price].join(',')
     })
     
     // Add headers row

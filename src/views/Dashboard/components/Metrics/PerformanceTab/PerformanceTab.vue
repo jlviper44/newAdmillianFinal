@@ -47,7 +47,8 @@ const selectedDate = ref(new Date())
 // Filter state
 const filters = ref({
   offerName: null,
-  subId: null
+  subId: null,
+  subId2: null
 })
 
 // Set default date to today
@@ -121,13 +122,15 @@ const formatDateForApi = (date, isEndDate = false) => {
 const clicksFields = [
   'click_date',
   'offer',
-  'subid_1'
+  'subid_1',
+  'subid_2'
 ]
 
 const conversionsFields = [
   'conversion_date',
   'offer_name',
   'subid_1',
+  'subid_2',
   'price'
 ]
 
@@ -174,6 +177,7 @@ const fetchClicksData = async () => {
     } else {
       clicksData.value = []
     }
+    console.log(clicksData.value)
   } catch (err) {
     clicksError.value = err.response?.data?.error || err.message || `Failed to fetch clicks data`
   } finally {
@@ -274,6 +278,19 @@ const subIdOptions = computed(() => {
   return [...new Set([...clicksSubIds, ...conversionSubIds])].sort()
 })
 
+const subId2Options = computed(() => {
+  const clicksSubIds2 = clicksData.value
+    .map(item => item.subid_2)
+    .filter(id => id)
+  
+  const conversionSubIds2 = conversionsData.value
+    .map(item => item.subid_2)
+    .filter(id => id)
+  
+  // Combine unique subid_2s from both datasets
+  return [...new Set([...clicksSubIds2, ...conversionSubIds2])].sort()
+})
+
 // Function to apply filters
 const applyFilters = () => {
   // Filters are automatically applied through computed properties
@@ -283,6 +300,7 @@ const applyFilters = () => {
 const clearFilters = () => {
   filters.value.offerName = null
   filters.value.subId = null
+  filters.value.subId2 = null
 }
 
 // Watch for changes in API credentials to refresh data
@@ -388,6 +406,20 @@ onMounted(() => {
             v-model="filters.subId"
             :items="subIdOptions"
             label="Filter by Sub ID"
+            variant="outlined"
+            clearable
+            class="me-4 mb-2 filter-input"
+            style="min-width: 250px;"
+            density="comfortable"
+            hide-details
+            prepend-inner-icon="mdi-identifier"
+            @update:model-value="applyFilters"
+          ></v-autocomplete>
+          
+          <v-autocomplete
+            v-model="filters.subId2"
+            :items="subId2Options"
+            label="Filter by Sub ID 2"
             variant="outlined"
             clearable
             class="me-4 mb-2 filter-input"
