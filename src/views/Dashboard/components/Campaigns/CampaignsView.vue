@@ -57,9 +57,12 @@
               :items="[
                 { title: 'All Regions', value: 'all' },
                 { title: 'United States', value: 'US' },
+                { title: 'USA', value: 'USA' },
                 { title: 'United Kingdom', value: 'UK' },
+                { title: 'Canada', value: 'CA' },
                 { title: 'Germany', value: 'DE' },
                 { title: 'Australia', value: 'AU' },
+                { title: 'AUS', value: 'AUS' },
                 { title: 'New Zealand', value: 'NZ' },
                 { title: 'Czech Republic', value: 'CZ' },
                 { title: 'Slovakia', value: 'SK' }
@@ -1018,9 +1021,12 @@ const linkFormData = ref({
 // Available regions
 const availableRegions = [
   { title: 'United States', value: 'US' },
+  { title: 'USA', value: 'USA' },
   { title: 'United Kingdom', value: 'UK' },
+  { title: 'Canada', value: 'CA' },
   { title: 'Germany', value: 'DE' },
   { title: 'Australia', value: 'AU' },
+  { title: 'AUS', value: 'AUS' },
   { title: 'New Zealand', value: 'NZ' },
   { title: 'Czech Republic', value: 'CZ' },
   { title: 'Slovakia', value: 'SK' }
