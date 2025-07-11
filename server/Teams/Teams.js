@@ -565,7 +565,7 @@ async function handleAddTeamMember(request, env) {
       });
     }
     
-    return new Response(JSON.stringify({ error: 'Failed to add team member' }), {
+    return new Response(JSON.stringify({ error: result.error || 'Failed to add team member' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -698,7 +698,12 @@ async function handleBulkAddTeamMembers(request, env) {
         continue;
       }
       
+      // Log for debugging
+      console.log(`Adding user ${userToAdd.userId} (${trimmedEmail}) to team ${teamId}`);
+      
       // Add user to team
+      // Add a small delay to ensure unique timestamp in member ID
+      await new Promise(resolve => setTimeout(resolve, 10));
       const memberId = `member_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const addQuery = `
         INSERT INTO team_members (id, team_id, user_id, user_email, user_name, role)
@@ -721,7 +726,7 @@ async function handleBulkAddTeamMembers(request, env) {
       } else {
         results.failed.push({ 
           email: trimmedEmail, 
-          reason: 'Failed to add to team' 
+          reason: addResult.error || 'Failed to add to team' 
         });
       }
     }
