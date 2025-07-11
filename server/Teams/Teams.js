@@ -521,7 +521,7 @@ async function handleAddTeamMember(request, env) {
   }
   
   const url = new URL(request.url);
-  const teamId = url.pathname.split('/')[4]; // /api/teams/{teamId}/members
+  const teamId = url.pathname.split('/')[3]; // /api/teams/{teamId}/members
   const { userId, userEmail, userName } = await request.json();
   
   if (!userId || !userEmail) {
@@ -647,7 +647,7 @@ async function handleBulkAddTeamMembers(request, env) {
   }
   
   const url = new URL(request.url);
-  const teamId = url.pathname.split('/')[4]; // /api/teams/{teamId}/bulk-members
+  const teamId = url.pathname.split('/')[3]; // /api/teams/{teamId}/bulk-members
   const { emails } = await request.json();
   
   if (!teamId || teamId.trim() === '') {
@@ -815,7 +815,7 @@ async function handleUpdateTeamOwner(request, env) {
   }
   
   const url = new URL(request.url);
-  const teamId = url.pathname.split('/')[4]; // /api/teams/{teamId}/owner
+  const teamId = url.pathname.split('/')[3]; // /api/teams/{teamId}/owner
   const { ownerId } = await request.json();
   
   if (!ownerId) {
