@@ -16,6 +16,8 @@ const allTeams = ref([]);
 const showAllTeams = ref(false);
 const bulkEmails = ref('');
 const newOwnerId = ref('');
+const selectedTeam = ref(null); // For admin operations on any team
+const selectedMember = ref(null); // For admin operations on team members
 
 // Feedback dialog
 const feedbackDialog = ref(false);
@@ -150,10 +152,11 @@ async function createTeam() {
 
 // Update team
 async function updateTeam() {
-  if (!team.value) return;
+  const teamToUpdate = selectedTeam.value || team.value;
+  if (!teamToUpdate) return;
   
   try {
-    const response = await fetch(`/api/teams/${team.value.id}`, {
+    const response = await fetch(`/api/teams/${teamToUpdate.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -164,6 +167,7 @@ async function updateTeam() {
     
     if (response.ok) {
       editDialog.value = false;
+      selectedTeam.value = null;
       await fetchUserTeam();
       await fetchAllTeams();
     } else {
@@ -178,10 +182,13 @@ async function updateTeam() {
 
 // Remove member from team
 async function removeMember() {
-  if (!team.value || !memberToRemove.value) return;
+  const teamToUpdate = selectedTeam.value || team.value;
+  const memberToRemoveId = selectedMember.value || memberToRemove.value;
+  if (!teamToUpdate || !memberToRemoveId) return;
   
   try {
-    const response = await fetch(`/api/teams/${team.value.id}/members/${memberToRemove.value.user_id}`, {
+    const userId = memberToRemoveId.user_id || memberToRemoveId.id;
+    const response = await fetch(`/api/teams/${teamToUpdate.id}/members/${userId}`, {
       method: 'DELETE',
       credentials: 'include'
     });
@@ -189,7 +196,10 @@ async function removeMember() {
     if (response.ok) {
       removeMemberDialog.value = false;
       memberToRemove.value = null;
+      selectedTeam.value = null;
+      selectedMember.value = null;
       await fetchUserTeam();
+      await fetchAllTeams();
     } else {
       const error = await response.json();
       showFeedback('Error', error.error || 'Failed to remove member', 'error');
@@ -202,7 +212,8 @@ async function removeMember() {
 
 // Bulk add members
 async function bulkAddMembers() {
-  if (!team.value || !bulkEmails.value.trim()) return;
+  const teamToUpdate = selectedTeam.value || team.value;
+  if (!teamToUpdate || !bulkEmails.value.trim()) return;
   
   // Parse emails from textarea (one per line or comma-separated)
   const emails = bulkEmails.value
@@ -216,7 +227,7 @@ async function bulkAddMembers() {
   }
   
   try {
-    const response = await fetch(`/api/teams/${team.value.id}/bulk-members`, {
+    const response = await fetch(`/api/teams/${teamToUpdate.id}/bulk-members`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -229,6 +240,7 @@ async function bulkAddMembers() {
       const result = await response.json();
       bulkAddDialog.value = false;
       bulkEmails.value = '';
+      selectedTeam.value = null;
       
       // Show results
       let message = '';
@@ -247,6 +259,7 @@ async function bulkAddMembers() {
       
       showFeedback('Bulk Add Results', message || 'Operation completed', result.results.failed.length > 0 ? 'warning' : 'success');
       await fetchUserTeam();
+      await fetchAllTeams();
     } else {
       const error = await response.json();
       showFeedback('Error', error.error || 'Failed to add members', 'error');
@@ -287,17 +300,22 @@ async function changeTeamOwner() {
 
 // Delete team
 async function deleteTeam() {
-  if (!team.value) return;
+  const teamToDelete = selectedTeam.value || team.value;
+  if (!teamToDelete) return;
   
   try {
-    const response = await fetch(`/api/teams/${team.value.id}`, {
+    const response = await fetch(`/api/teams/${teamToDelete.id}`, {
       method: 'DELETE',
       credentials: 'include'
     });
     
     if (response.ok) {
       deleteTeamDialog.value = false;
-      team.value = null;
+      if (teamToDelete.id === team.value?.id) {
+        team.value = null;
+      }
+      selectedTeam.value = null;
+      await fetchUserTeam();
       await fetchAllTeams();
     } else {
       const error = await response.json();
@@ -333,10 +351,36 @@ function openRemoveMemberDialog(member) {
   removeMemberDialog.value = true;
 }
 
-onMounted(() => {
-  fetchUserTeam();
-  if (user.value?.isAdmin) {
-    fetchAllTeams();
+// Admin functions for managing any team
+function editTeamById(teamToEdit) {
+  selectedTeam.value = teamToEdit;
+  teamForm.value.name = teamToEdit.name;
+  teamForm.value.description = teamToEdit.description || '';
+  editDialog.value = true;
+}
+
+function openBulkAddForTeam(teamToEdit) {
+  selectedTeam.value = teamToEdit;
+  bulkAddDialog.value = true;
+}
+
+function openDeleteDialogForTeam(teamToDelete) {
+  selectedTeam.value = teamToDelete;
+  deleteTeamDialog.value = true;
+}
+
+function openRemoveMemberDialogForTeam(teamToEdit, member) {
+  selectedTeam.value = teamToEdit;
+  selectedMember.value = member;
+  removeMemberDialog.value = true;
+}
+
+onMounted(async () => {
+  await fetchUserTeam();
+  if (isAdmin.value) {
+    await fetchAllTeams();
+    // Auto-show all teams for admins
+    showAllTeams.value = true;
   }
 });
 </script>
@@ -503,16 +547,82 @@ onMounted(() => {
                 v-for="t in allTeams"
                 :key="t.id"
                 cols="12"
-                md="6"
               >
-                <v-card variant="outlined" class="pa-3">
-                  <h4 class="text-subtitle-1">{{ t.name }}</h4>
-                  <p v-if="t.description" class="text-body-2 text-grey-darken-1">
-                    {{ t.description }}
-                  </p>
-                  <p class="text-caption text-grey mt-2">
-                    {{ t.member_count }} member{{ t.member_count !== 1 ? 's' : '' }}
-                  </p>
+                <v-card variant="outlined" class="pa-4">
+                  <div class="d-flex justify-space-between align-start mb-4">
+                    <div>
+                      <h4 class="text-h5">{{ t.name }}</h4>
+                      <p v-if="t.description" class="text-body-2 text-grey-darken-1 mt-1">
+                        {{ t.description }}
+                      </p>
+                      <div class="mt-2">
+                        <p class="text-caption text-grey">
+                          {{ t.member_count }} member{{ t.member_count !== 1 ? 's' : '' }}
+                        </p>
+                        <p v-if="t.members && t.members.find(m => m.id === t.owner_id)" class="text-caption text-grey">
+                          Owner: {{ t.members.find(m => m.id === t.owner_id).name || t.members.find(m => m.id === t.owner_id).email }}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <v-btn
+                        variant="text"
+                        icon="mdi-pencil"
+                        size="small"
+                        @click="editTeamById(t)"
+                      ></v-btn>
+                      <v-btn
+                        variant="text"
+                        icon="mdi-account-multiple-plus"
+                        size="small"
+                        color="primary"
+                        @click="openBulkAddForTeam(t)"
+                      ></v-btn>
+                      <v-btn
+                        variant="text"
+                        icon="mdi-delete"
+                        size="small"
+                        color="error"
+                        @click="openDeleteDialogForTeam(t)"
+                      ></v-btn>
+                    </div>
+                  </div>
+                  
+                  <v-divider class="mb-4"></v-divider>
+                  
+                  <div class="mb-3">
+                    <h4 class="text-subtitle-1">Team Members</h4>
+                  </div>
+                  
+                  <v-list density="compact">
+                    <v-list-item
+                      v-for="member in t.members"
+                      :key="member.id"
+                      :title="member.name || member.email"
+                      :subtitle="member.email"
+                    >
+                      <template v-slot:append>
+                        <div class="d-flex align-center gap-2">
+                          <v-chip
+                            v-if="member.id === t.owner_id"
+                            color="amber"
+                            size="small"
+                            variant="tonal"
+                          >
+                            <v-icon start size="x-small">mdi-crown</v-icon>
+                            Owner
+                          </v-chip>
+                          <v-btn
+                            variant="text"
+                            icon="mdi-account-remove"
+                            size="small"
+                            color="error"
+                            @click="openRemoveMemberDialogForTeam(t, member)"
+                          ></v-btn>
+                        </div>
+                      </template>
+                    </v-list-item>
+                  </v-list>
                 </v-card>
               </v-col>
             </v-row>
@@ -526,7 +636,7 @@ onMounted(() => {
   <v-dialog v-model="editDialog" max-width="500">
     <v-card>
       <v-card-title>
-        {{ team ? 'Edit Team' : 'Create Team' }}
+        {{ selectedTeam || team ? 'Edit Team' : 'Create Team' }}
       </v-card-title>
       <v-card-text>
         <v-form>
@@ -546,7 +656,7 @@ onMounted(() => {
           ></v-textarea>
           
           <!-- Only show these fields when creating a new team -->
-          <template v-if="!team">
+          <template v-if="!team && !selectedTeam">
             <v-divider class="my-4"></v-divider>
             
             <v-text-field
@@ -574,13 +684,13 @@ onMounted(() => {
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn @click="editDialog = false">Cancel</v-btn>
+        <v-btn @click="editDialog = false; selectedTeam = null">Cancel</v-btn>
         <v-btn
           color="primary"
-          @click="team ? updateTeam() : createTeam()"
+          @click="(selectedTeam || team) ? updateTeam() : createTeam()"
           :disabled="!teamForm.name"
         >
-          {{ team ? 'Update' : 'Create' }}
+          {{ (selectedTeam || team) ? 'Update' : 'Create' }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -604,7 +714,7 @@ onMounted(() => {
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn @click="deleteTeamDialog = false">Cancel</v-btn>
+        <v-btn @click="deleteTeamDialog = false; selectedTeam = null">Cancel</v-btn>
         <v-btn color="error" @click="deleteTeam">Delete</v-btn>
       </v-card-actions>
     </v-card>
@@ -615,7 +725,7 @@ onMounted(() => {
     <v-card>
       <v-card-title>Remove Team Member</v-card-title>
       <v-card-text>
-        <p>Are you sure you want to remove <strong>{{ memberToRemove?.user_name || memberToRemove?.user_email }}</strong> from the team?</p>
+        <p>Are you sure you want to remove <strong>{{ (selectedMember || memberToRemove)?.user_name || (selectedMember || memberToRemove)?.name || (selectedMember || memberToRemove)?.user_email || (selectedMember || memberToRemove)?.email }}</strong> from the team?</p>
         <v-alert type="info" variant="tonal" class="mt-3">
           <p class="text-body-2 mb-0">After removal:</p>
           <ul class="ml-4 mt-1 text-body-2">
@@ -627,7 +737,7 @@ onMounted(() => {
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn @click="removeMemberDialog = false; memberToRemove = null">Cancel</v-btn>
+        <v-btn @click="removeMemberDialog = false; memberToRemove = null; selectedMember = null; selectedTeam = null">Cancel</v-btn>
         <v-btn color="error" @click="removeMember">Remove</v-btn>
       </v-card-actions>
     </v-card>
@@ -653,7 +763,7 @@ onMounted(() => {
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn @click="bulkAddDialog = false; bulkEmails = ''">Cancel</v-btn>
+        <v-btn @click="bulkAddDialog = false; bulkEmails = ''; selectedTeam = null">Cancel</v-btn>
         <v-btn
           color="primary"
           @click="bulkAddMembers"
