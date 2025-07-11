@@ -650,6 +650,13 @@ async function handleBulkAddTeamMembers(request, env) {
   const teamId = url.pathname.split('/')[4]; // /api/teams/{teamId}/bulk-members
   const { emails } = await request.json();
   
+  if (!teamId || teamId.trim() === '') {
+    return new Response(JSON.stringify({ error: 'Team ID is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
   if (!emails || !Array.isArray(emails) || emails.length === 0) {
     return new Response(JSON.stringify({ error: 'Email list is required' }), {
       status: 400,
@@ -664,6 +671,21 @@ async function handleBulkAddTeamMembers(request, env) {
   };
   
   try {
+    console.log('Bulk add members request:', { teamId, emailCount: emails.length, url: url.pathname });
+    
+    // First verify the team exists
+    const teamCheckQuery = 'SELECT id FROM teams WHERE id = ?';
+    const teamCheckResult = await executeQuery(env.USERS_DB, teamCheckQuery, [teamId]);
+    
+    if (!teamCheckResult.success || teamCheckResult.data.length === 0) {
+      console.error('Team not found:', { teamId, checkResult: teamCheckResult });
+      return new Response(JSON.stringify({ 
+        error: 'Team not found or invalid team ID' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
     for (const email of emails) {
       const trimmedEmail = email.trim().toLowerCase();
       if (!trimmedEmail || !trimmedEmail.includes('@')) {
@@ -705,6 +727,16 @@ async function handleBulkAddTeamMembers(request, env) {
       // Add a small delay to ensure unique timestamp in member ID
       await new Promise(resolve => setTimeout(resolve, 10));
       const memberId = `member_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Log the exact values being inserted
+      console.log('Insert values:', {
+        memberId,
+        teamId,
+        userId: userToAdd.userId,
+        userEmail: userToAdd.userEmail,
+        userName: userToAdd.userName
+      });
+      
       const addQuery = `
         INSERT INTO team_members (id, team_id, user_id, user_email, user_name, role)
         VALUES (?, ?, ?, ?, ?, 'member')
@@ -724,6 +756,21 @@ async function handleBulkAddTeamMembers(request, env) {
           name: userToAdd.userName || trimmedEmail
         });
       } else {
+        console.error('Failed to add member:', {
+          error: addResult.error,
+          memberId,
+          teamId,
+          userId: userToAdd.userId,
+          email: trimmedEmail
+        });
+        
+        // Check if it's a foreign key constraint on team_id
+        if (addResult.error && addResult.error.includes('FOREIGN KEY')) {
+          // Double-check if team exists
+          const teamCheck = await executeQuery(env.USERS_DB, 'SELECT id FROM teams WHERE id = ?', [teamId]);
+          console.error('Team existence check:', teamCheck);
+        }
+        
         results.failed.push({ 
           email: trimmedEmail, 
           reason: addResult.error || 'Failed to add to team' 
