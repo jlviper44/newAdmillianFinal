@@ -20,43 +20,43 @@
       <div class="orb orb-3"></div>
     </div>
     
-    <v-container class="fill-height">
+    <v-container class="fill-height mobile-safe-container">
       <v-row align="center" justify="center">
         <v-col cols="12" sm="10" md="8" lg="6" xl="5">
           <div class="text-center content-entrance">
             <!-- Logo/Icon -->
-            <v-icon size="80" color="primary" class="mb-4 robot-icon">mdi-robot-happy</v-icon>
+            <v-icon :size="$vuetify.display.smAndDown ? '60' : '80'" color="primary" class="mb-4 robot-icon">mdi-robot-happy</v-icon>
             
             <!-- Welcome Message -->
-            <h1 class="text-h3 text-md-h2 font-weight-bold mb-3 welcome-title">
+            <h1 :class="$vuetify.display.smAndDown ? 'text-h4 font-weight-bold mb-3 welcome-title' : 'text-h3 text-md-h2 font-weight-bold mb-3 welcome-title'">
               <span class="gradient-text">Welcome to MillianAI</span>
             </h1>
             
             <!-- Subtitle -->
-            <p class="text-body-1 text-md-h6 text-grey mb-6">
+            <p :class="$vuetify.display.smAndDown ? 'text-body-2 text-grey mb-4' : 'text-body-1 text-md-h6 text-grey mb-6'">
               Automate your social media engagement with intelligent comment bots
             </p>
             
             <!-- Features -->
-            <v-row class="mb-4 features-row">
-              <v-col cols="12" md="4" class="mb-2 mb-md-4">
+            <v-row :class="$vuetify.display.smAndDown ? 'mb-3 features-row' : 'mb-4 features-row'">
+              <v-col cols="12" md="4" :class="$vuetify.display.smAndDown ? 'mb-2 mb-md-4' : 'mb-2 mb-md-4'">
                 <div class="feature-card">
-                  <v-icon size="40" color="primary" class="mb-2">mdi-flash</v-icon>
-                  <h3 class="text-subtitle-1 mb-1">Fast & Efficient</h3>
+                  <v-icon :size="$vuetify.display.smAndDown ? '32' : '40'" color="primary" class="mb-2">mdi-flash</v-icon>
+                  <h3 :class="$vuetify.display.smAndDown ? 'text-body-2 mb-1' : 'text-subtitle-1 mb-1'">Fast & Efficient</h3>
                   <p class="text-caption text-grey">Automate comments at scale with lightning speed</p>
                 </div>
               </v-col>
-              <v-col cols="12" md="4" class="mb-2 mb-md-4">
+              <v-col cols="12" md="4" :class="$vuetify.display.smAndDown ? 'mb-2 mb-md-4' : 'mb-2 mb-md-4'">
                 <div class="feature-card">
-                  <v-icon size="40" color="primary" class="mb-2">mdi-brain</v-icon>
-                  <h3 class="text-subtitle-1 mb-1">AI-Powered</h3>
+                  <v-icon :size="$vuetify.display.smAndDown ? '32' : '40'" color="primary" class="mb-2">mdi-brain</v-icon>
+                  <h3 :class="$vuetify.display.smAndDown ? 'text-body-2 mb-1' : 'text-subtitle-1 mb-1'">AI-Powered</h3>
                   <p class="text-caption text-grey">Intelligent comments that feel natural and engaging</p>
                 </div>
               </v-col>
-              <v-col cols="12" md="4" class="mb-2 mb-md-4">
+              <v-col cols="12" md="4" :class="$vuetify.display.smAndDown ? 'mb-2 mb-md-4' : 'mb-2 mb-md-4'">
                 <div class="feature-card">
-                  <v-icon size="40" color="primary" class="mb-2">mdi-shield-check</v-icon>
-                  <h3 class="text-subtitle-1 mb-1">Secure & Reliable</h3>
+                  <v-icon :size="$vuetify.display.smAndDown ? '32' : '40'" color="primary" class="mb-2">mdi-shield-check</v-icon>
+                  <h3 :class="$vuetify.display.smAndDown ? 'text-body-2 mb-1' : 'text-subtitle-1 mb-1'">Secure & Reliable</h3>
                   <p class="text-caption text-grey">Your accounts are safe with our advanced security</p>
                 </div>
               </v-col>
@@ -65,9 +65,9 @@
             <!-- CTA Button -->
             <v-btn 
               color="primary" 
-              size="large" 
+              :size="$vuetify.display.smAndDown ? 'default' : 'large'"
               @click="signIn"
-              class="px-6 cta-button"
+              :class="$vuetify.display.smAndDown ? 'px-4 cta-button mobile-cta-button' : 'px-6 cta-button'"
               elevation="2"
             >
               <v-icon start>mdi-login</v-icon>
@@ -75,7 +75,7 @@
             </v-btn>
             
             <!-- Additional Info -->
-            <p class="text-caption text-grey mt-4">
+            <p :class="$vuetify.display.smAndDown ? 'text-caption text-grey mt-3' : 'text-caption text-grey mt-4'">
               Sign in to access powerful automation tools
             </p>
           </div>
@@ -219,6 +219,7 @@ onUnmounted(() => {
 
 <style scoped>
 .landing-page {
+  min-height: 100vh;
   height: 100vh;
   position: relative;
   overflow: hidden;
@@ -228,7 +229,22 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+.landing-page::before {
+  content: '';
+  position: absolute;
+  top: -100px;
+  left: 0;
+  right: 0;
+  height: 100px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f64f59 100%);
+  z-index: 1;
+}
+
 .v-theme--dark .landing-page {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 33%, #0f3460 66%, #533483 100%);
+}
+
+.v-theme--dark .landing-page::before {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 33%, #0f3460 66%, #533483 100%);
 }
 
@@ -239,6 +255,11 @@ onUnmounted(() => {
   max-height: 100vh;
   padding-top: 2rem !important;
   padding-bottom: 2rem !important;
+}
+
+.mobile-safe-container {
+  padding-top: env(safe-area-inset-top, 1rem) !important;
+  padding-bottom: env(safe-area-inset-bottom, 1rem) !important;
 }
 
 /* Background Pattern */
@@ -612,6 +633,71 @@ onUnmounted(() => {
   animation: button-slide-up 0.8s ease-out 1.2s both;
 }
 
+.mobile-cta-button {
+  position: fixed;
+  bottom: env(safe-area-inset-bottom, 2rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: calc(100% - 2rem);
+  max-width: 300px;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 600px) {
+  .landing-page {
+    min-height: 100vh;
+    height: 100vh;
+    padding-top: 0;
+    padding-bottom: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+  }
+  
+  .landing-page .v-container {
+    padding-top: calc(env(safe-area-inset-top, 0) + 1rem) !important;
+    padding-bottom: calc(env(safe-area-inset-bottom, 1rem) + 80px) !important;
+    max-height: none;
+    position: relative;
+    z-index: 10;
+  }
+  
+  .feature-card {
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  
+  .mobile-cta-button {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom, 1rem) + 1rem);
+    left: 1rem;
+    right: 1rem;
+    transform: none;
+    width: auto;
+    max-width: none;
+  }
+  
+  .content-entrance {
+    padding-bottom: 80px;
+  }
+}
+
+/* Handle devices with notches */
+@media (max-width: 600px) and (orientation: portrait) {
+  .landing-page {
+    margin-top: calc(-1 * env(safe-area-inset-top, 0));
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  
+  .mobile-safe-container {
+    padding-top: 1rem !important;
+  }
+}
+
 @keyframes button-slide-up {
   0% {
     opacity: 0;
@@ -620,6 +706,19 @@ onUnmounted(() => {
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  @keyframes button-slide-up {
+    0% {
+      opacity: 0;
+      transform: translateY(40px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 </style>

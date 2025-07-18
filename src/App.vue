@@ -16,7 +16,7 @@ const mobileActiveTab = ref('dashboard');
 const activePopupMenu = ref(null);
 
 // Authentication
-const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, logout } = useAuth();
+const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, signOut } = useAuth();
 
 
 // All routes
@@ -138,6 +138,20 @@ const handleDashboardClick = () => {
 const navigateToAndClose = (path) => {
   router.push(path);
   activePopupMenu.value = null;
+};
+
+const handleLogout = async () => {
+  // Close the mobile menu
+  mobileMenuOpen.value = false;
+  activePopupMenu.value = null;
+  
+  try {
+    await signOut();
+    // Navigate to home page after logout
+    router.push('/');
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
 };
 
 const getCurrentPageTitle = () => {
@@ -497,7 +511,7 @@ onUnmounted(() => {
             <v-list-item @click="navigateAndClose('/profile')" prepend-icon="mdi-account" title="Profile"></v-list-item>
 
             <!-- Logout -->
-            <v-list-item @click="logout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
+            <v-list-item @click="handleLogout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
           </v-list>
         </v-card-text>
         </v-card>
@@ -533,7 +547,7 @@ onUnmounted(() => {
         ></v-list-item>
 
         <!-- Logout -->
-        <v-list-item @click="logout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
+        <v-list-item @click="handleLogout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
       </v-list>
     </v-navigation-drawer>
     

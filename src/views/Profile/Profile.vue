@@ -61,9 +61,10 @@
                     <v-btn
                       color="error"
                       variant="outlined"
-                      size="small"
+                      size="default"
                       @click="confirmSignOut"
                       block
+                      class="mobile-logout-btn"
                     >
                       <v-icon start size="small">mdi-logout</v-icon>
                       Sign Out
@@ -94,7 +95,7 @@
                       color="error"
                       variant="outlined"
                       size="small"
-                      @click="confirmSignOut"
+                      @click.stop="confirmSignOut"
                     >
                       <v-icon start size="small">mdi-logout</v-icon>
                       Sign Out
@@ -392,8 +393,7 @@
     <!-- Sign Out Confirmation Dialog -->
     <v-dialog 
       v-model="signOutDialog" 
-      :max-width="$vuetify.display.smAndDown ? '100%' : '400px'"
-      :fullscreen="$vuetify.display.smAndDown"
+      :max-width="$vuetify.display.smAndDown ? '320px' : '400px'"
     >
       <v-card>
         <v-card-title :class="$vuetify.display.smAndDown ? 'text-h6 pa-4' : 'text-h5'">
@@ -414,8 +414,9 @@
           <v-btn
             color="error"
             variant="text"
-            @click="handleSignOut"
+            @click.stop="handleSignOut"
             :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+            class="modal-signout-btn"
           >
             Sign Out
           </v-btn>
@@ -469,8 +470,16 @@ const confirmSignOut = () => {
 
 // Handle sign out
 const handleSignOut = async () => {
+  console.log('handleSignOut called');
   signOutDialog.value = false;
-  await signOut();
+  try {
+    await signOut();
+    console.log('Sign out successful');
+    // Navigate to home page after successful logout
+    router.push('/');
+  } catch (error) {
+    console.error('Sign out error:', error);
+  }
 };
 
 // Format Unix timestamp to readable date
@@ -668,10 +677,29 @@ onMounted(async () => {
   .v-btn {
     height: auto !important;
     padding: 8px 16px !important;
+    pointer-events: auto !important;
   }
   
   .v-btn .v-btn__content {
     font-size: 0.875rem !important;
+    pointer-events: none !important;
+  }
+  
+  .mobile-logout-btn {
+    min-height: 44px !important;
+    touch-action: manipulation !important;
+    cursor: pointer !important;
+  }
+  
+  .mobile-logout-btn:hover {
+    background-color: rgba(var(--v-theme-error), 0.04) !important;
+  }
+  
+  .modal-signout-btn {
+    min-height: 36px !important;
+    touch-action: manipulation !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
   }
 }
 </style>
