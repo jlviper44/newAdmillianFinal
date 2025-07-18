@@ -898,9 +898,29 @@ async function createSpark(request, db, corsHeaders, env) {
         )
       `).run();
       
-      const template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
-        .bind(sparkData.offer, userId)
-        .first();
+      // Check template with team permissions
+      let template;
+      if (teamId) {
+        // If user is in a team, get all team members
+        const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+        const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+        
+        if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+          const memberIds = teamMembersResult.results.map(m => m.user_id);
+          const placeholders = memberIds.map(() => '?').join(',');
+          template = await db.prepare(
+            `SELECT name FROM templates WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+          ).bind(sparkData.offer, ...memberIds, teamId).first();
+        } else {
+          template = await db.prepare(
+            'SELECT name FROM templates WHERE id = ? AND team_id = ?'
+          ).bind(sparkData.offer, teamId).first();
+        }
+      } else {
+        template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
+          .bind(sparkData.offer, userId)
+          .first();
+      }
       
       if (template) {
         offerName = template.name;
@@ -964,9 +984,7 @@ async function createSpark(request, db, corsHeaders, env) {
     ).run();
     
     // Fetch the created spark
-    const createdSpark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(id, userId)
-      .first();
+    const createdSpark = await checkSparkAccess(db, env, id, userId, teamId);
     
     return new Response(
       JSON.stringify({
@@ -1083,9 +1101,29 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     let offerName = existingSpark.offer_name;
     if (sparkData.offer !== existingSpark.offer) {
       try {
-        const template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
-          .bind(sparkData.offer, userId)
-          .first();
+        // Check template with team permissions
+        let template;
+        if (teamId) {
+          // If user is in a team, get all team members
+          const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+          const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+          
+          if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+            const memberIds = teamMembersResult.results.map(m => m.user_id);
+            const placeholders = memberIds.map(() => '?').join(',');
+            template = await db.prepare(
+              `SELECT name FROM templates WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+            ).bind(sparkData.offer, ...memberIds, teamId).first();
+          } else {
+            template = await db.prepare(
+              'SELECT name FROM templates WHERE id = ? AND team_id = ?'
+            ).bind(sparkData.offer, teamId).first();
+          }
+        } else {
+          template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
+            .bind(sparkData.offer, userId)
+            .first();
+        }
         
         if (template) {
           offerName = template.name;
@@ -1316,10 +1354,8 @@ async function getSparkStats(sparkId, request, db, corsHeaders, env) {
     // Get user_id and team_id from session
     const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    // Get spark to ensure it exists - filtered by user_id
-    const spark = await db.prepare('SELECT * FROM sparks WHERE id = ? AND user_id = ?')
-      .bind(sparkId, userId)
-      .first();
+    // Get spark to ensure it exists - using team permissions
+    const spark = await checkSparkAccess(db, env, sparkId, userId, teamId);
     
     if (!spark) {
       return new Response(

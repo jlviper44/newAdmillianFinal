@@ -727,9 +727,29 @@ async function updateCampaign(db, campaignId, request, env) {
     ).run();
     
     // Fetch and return the updated campaign
-    const updated = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Use the same logic as the permission check to fetch the updated campaign
+    let updated;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        updated = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        updated = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      updated = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     const response = {
       ...updated,
@@ -883,9 +903,29 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
     // Get user_id and team_id from session
     const { userId, teamId } = await getUserInfoFromSession(request, env);
     
-    const existingCampaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Check if campaign exists and user has permission
+    let existingCampaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        existingCampaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        existingCampaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      existingCampaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     if (!existingCampaign) {
       return new Response(
@@ -916,13 +956,33 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
         status = ?,
         is_active = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).bind(status, isActive, campaignId, userId).run();
+      WHERE id = ?
+    `).bind(status, isActive, campaignId).run();
     
     // Fetch and return the updated campaign
-    const updated = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Use the same logic as the permission check to fetch the updated campaign
+    let updated;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        updated = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        updated = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      updated = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     const response = {
       ...updated,
@@ -974,9 +1034,29 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
     
     console.log(`Managing launches for campaign ${campaignId}: ${action}`);
     
-    const campaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Fetch campaign with team permission check
+    let campaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        campaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        campaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      campaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     if (!campaign) {
       return new Response(
@@ -1031,13 +1111,12 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
         max_launch_number = ?,
         total_launches = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
+      WHERE id = ?
     `).bind(
       JSON.stringify(launches),
       maxLaunchNumber,
       Object.keys(launches).length,
-      campaignId,
-      userId
+      campaignId
     ).run();
     
     return new Response(JSON.stringify({
@@ -1945,10 +2024,29 @@ async function generateCampaignLink(db, request, env) {
       );
     }
     
-    // Fetch campaign data
-    const campaign = await db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).bind(campaignId, userId).first();
+    // Fetch campaign data with team permission check
+    let campaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        campaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        campaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      campaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
     
     if (!campaign) {
       return new Response(
@@ -1992,13 +2090,32 @@ async function generateCampaignLink(db, request, env) {
         launches = ?,
         max_launch_number = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).bind(JSON.stringify(launches), maxLaunchNumber, campaignId, userId).run();
+      WHERE id = ?
+    `).bind(JSON.stringify(launches), maxLaunchNumber, campaignId).run();
     
-    // Get TikTok store details
-    const tiktokStore = await db.prepare(
-      'SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?'
-    ).bind(campaign.tiktok_store_id, userId).first();
+    // Get TikTok store details with team permission check
+    let tiktokStore;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        tiktokStore = await db.prepare(
+          `SELECT * FROM shopify_stores WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaign.tiktok_store_id, ...memberIds, teamId).first();
+      } else {
+        tiktokStore = await db.prepare(
+          'SELECT * FROM shopify_stores WHERE id = ? AND team_id = ?'
+        ).bind(campaign.tiktok_store_id, teamId).first();
+      }
+    } else {
+      tiktokStore = await db.prepare(
+        'SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?'
+      ).bind(campaign.tiktok_store_id, userId).first();
+    }
     
     if (!tiktokStore) {
       return new Response(
