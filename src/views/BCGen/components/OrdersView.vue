@@ -1,6 +1,6 @@
 <template>
   <v-card flat>
-    <v-card-text>
+    <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
       <div v-if="ordersLoading" class="text-center pa-4">
         <v-progress-circular indeterminate color="primary"></v-progress-circular>
         <p class="mt-2">Loading orders...</p>
@@ -19,11 +19,17 @@
           elevation="2"
         >
           <!-- Order Header -->
-          <v-card-title class="d-flex justify-space-between align-center pa-4">
-            <div>
-              <div class="text-h6">Order #{{ order.orderId }}</div>
-              <div class="d-flex align-center gap-2">
-                <span class="text-caption">{{ formatDate(order.createdAt) }}</span>
+          <v-card-title :class="[
+            'd-flex',
+            $vuetify.display.smAndDown ? 'flex-column pa-3' : 'justify-space-between align-center pa-4'
+          ]">
+            <div :class="{ 'mb-2': $vuetify.display.smAndDown }">
+              <div :class="$vuetify.display.smAndDown ? 'text-body-1 font-weight-bold' : 'text-h6'">Order #{{ order.orderId }}</div>
+              <div :class="[
+                'd-flex align-center gap-2',
+                { 'flex-wrap': $vuetify.display.smAndDown }
+              ]">
+                <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">{{ formatDate(order.createdAt) }}</span>
                 <v-chip 
                   v-if="order.refundStatus === 'pending'"
                   size="x-small"
@@ -50,22 +56,25 @@
                 </v-chip>
               </div>
             </div>
-            <div class="text-right">
-              <v-chip 
-                :color="getStatusColor(order.status)"
-                text-color="white"
-                class="mb-1"
-              >
-                {{ order.status?.toUpperCase() || 'PENDING' }}
-              </v-chip>
-              <div class="text-caption">
-                {{ order.quantity || order.totalAccounts || 0 }} accounts • ${{ order.total || order.totalPrice || 0 }}
+            <div :class="$vuetify.display.smAndDown ? 'w-100' : 'text-right'">
+              <div :class="$vuetify.display.smAndDown ? 'd-flex justify-space-between align-center' : ''">
+                <v-chip 
+                  :color="getStatusColor(order.status)"
+                  text-color="white"
+                  :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+                  :class="$vuetify.display.smAndDown ? '' : 'mb-1'"
+                >
+                  {{ order.status?.toUpperCase() || 'PENDING' }}
+                </v-chip>
+                <div :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">
+                  {{ order.quantity || order.totalAccounts || 0 }} accounts • ${{ order.total || order.totalPrice || 0 }}
+                </div>
               </div>
             </div>
           </v-card-title>
           
           <!-- Order Items -->
-          <v-card-text class="pt-0 pb-2">
+          <v-card-text :class="$vuetify.display.smAndDown ? 'pt-0 pb-2 px-3' : 'pt-0 pb-2'">
             <div class="d-flex flex-wrap gap-2 mb-3">
               <v-chip 
                 v-if="order.country"
@@ -89,8 +98,8 @@
           </v-card-text>
           
           <!-- Order Actions -->
-          <v-card-actions>
-            <v-row no-gutters>
+          <v-card-actions :class="{ 'pa-3': $vuetify.display.smAndDown }">
+            <v-row no-gutters :dense="$vuetify.display.smAndDown">
               <v-col 
                 :cols="(order.status === 'fulfilled' || order.status === 'completed') && isWithin24Hours(order.createdAt) && order.status !== 'refunded' ? 6 : 12"
                 :class="(order.status === 'fulfilled' || order.status === 'completed') && isWithin24Hours(order.createdAt) && order.status !== 'refunded' ? 'pr-1' : ''"
@@ -101,6 +110,7 @@
                   color="secondary"
                   block
                   variant="outlined"
+                  :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                 >
                   {{ expandedOrders[order.orderId] ? 'Hide' : 'View' }} Accounts
                 </v-btn>
@@ -119,9 +129,11 @@
                   color="warning"
                   block
                   variant="outlined"
-                  prepend-icon="mdi-cash-refund"
+                  :prepend-icon="$vuetify.display.smAndDown ? '' : 'mdi-cash-refund'"
+                  :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                 >
-                  Request Refund
+                  <v-icon v-if="$vuetify.display.smAndDown" start size="small">mdi-cash-refund</v-icon>
+                  {{ $vuetify.display.smAndDown ? 'Refund' : 'Request Refund' }}
                 </v-btn>
                 <v-btn
                   v-else-if="order.refundStatus === 'pending'"
@@ -129,9 +141,11 @@
                   block
                   variant="outlined"
                   disabled
-                  prepend-icon="mdi-clock-outline"
+                  :prepend-icon="$vuetify.display.smAndDown ? '' : 'mdi-clock-outline'"
+                  :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                 >
-                  Waiting for Response
+                  <v-icon v-if="$vuetify.display.smAndDown" start size="small">mdi-clock-outline</v-icon>
+                  {{ $vuetify.display.smAndDown ? 'Waiting' : 'Waiting for Response' }}
                 </v-btn>
                 <v-btn
                   v-else-if="order.refundStatus === 'approved'"
@@ -139,9 +153,11 @@
                   block
                   variant="tonal"
                   disabled
-                  prepend-icon="mdi-check-circle"
+                  :prepend-icon="$vuetify.display.smAndDown ? '' : 'mdi-check-circle'"
+                  :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                 >
-                  Refund Approved
+                  <v-icon v-if="$vuetify.display.smAndDown" start size="small">mdi-check-circle</v-icon>
+                  {{ $vuetify.display.smAndDown ? 'Approved' : 'Refund Approved' }}
                 </v-btn>
               </v-col>
             </v-row>
@@ -151,7 +167,7 @@
           <v-expand-transition>
             <div v-if="expandedOrders[order.orderId]">
               <v-divider></v-divider>
-              <v-card-text>
+              <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
                 <div v-if="loadingAccounts[order.orderId]" class="text-center pa-4">
                   <v-progress-circular indeterminate size="24"></v-progress-circular>
                   <p class="mt-2">Loading accounts...</p>
@@ -159,17 +175,23 @@
                 
                 <div v-else-if="orderAccounts[order.orderId]">
                   <!-- Quick Actions Bar -->
-                  <div class="d-flex justify-space-between align-center mb-4 pa-2">
-                    <div class="text-h6">
-                      <v-icon start color="primary">mdi-account-multiple</v-icon>
+                  <div :class="[
+                    'd-flex align-center mb-4 pa-2',
+                    $vuetify.display.smAndDown ? 'flex-column gap-2' : 'justify-space-between'
+                  ]">
+                    <div :class="$vuetify.display.smAndDown ? 'text-body-1 font-weight-bold' : 'text-h6'">
+                      <v-icon start color="primary" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-account-multiple</v-icon>
                       {{ orderAccounts[order.orderId].length }} Accounts
                     </div>
                     <v-btn
                       @click="copyAllAccounts(order)"
                       color="primary"
                       variant="tonal"
-                      prepend-icon="mdi-content-copy"
+                      :prepend-icon="$vuetify.display.smAndDown ? '' : 'mdi-content-copy'"
+                      :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+                      :block="$vuetify.display.smAndDown"
                     >
+                      <v-icon v-if="$vuetify.display.smAndDown" start size="small">mdi-content-copy</v-icon>
                       Copy All
                     </v-btn>
                   </div>
@@ -183,23 +205,32 @@
                     elevation="2"
                   >
                     <!-- Account Header -->
-                    <v-card-title class="account-header pa-4">
-                      <div class="d-flex justify-space-between align-center w-100">
-                        <div class="d-flex align-center">
+                    <v-card-title :class="[
+                      'account-header',
+                      $vuetify.display.smAndDown ? 'pa-3' : 'pa-4'
+                    ]">
+                      <div :class="[
+                        'd-flex align-center w-100',
+                        $vuetify.display.smAndDown ? 'flex-column' : 'justify-space-between'
+                      ]">
+                        <div :class="[
+                          'd-flex align-center',
+                          { 'mb-2': $vuetify.display.smAndDown }
+                        ]">
                           <v-avatar 
                             :color="account.refunded ? 'error' : 'primary'"
-                            size="40"
-                            class="mr-3"
+                            :size="$vuetify.display.smAndDown ? '32' : '40'"
+                            :class="$vuetify.display.smAndDown ? 'mr-2' : 'mr-3'"
                           >
-                            <span class="text-h6">{{ index + 1 }}</span>
+                            <span :class="$vuetify.display.smAndDown ? 'text-body-2' : 'text-h6'">{{ index + 1 }}</span>
                           </v-avatar>
                           <div>
-                            <div class="text-h6">
+                            <div :class="$vuetify.display.smAndDown ? 'text-body-2' : 'text-h6'">
                               {{ account.country || order.country }}
                               <v-chip 
-                                size="small" 
+                                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
                                 variant="tonal"
-                                class="ml-2"
+                                :class="$vuetify.display.smAndDown ? 'ml-1' : 'ml-2'"
                                 :color="account.Status === 'Active' ? 'success' : 'warning'"
                               >
                                 {{ account.Status || 'Active' }}
@@ -210,13 +241,15 @@
                             </div>
                           </div>
                         </div>
-                        <div>
+                        <div v-if="!$vuetify.display.smAndDown || account.refunded">
                           <v-chip 
                             v-if="account.refunded"
                             color="error"
                             variant="elevated"
-                            prepend-icon="mdi-close-circle"
+                            :prepend-icon="$vuetify.display.smAndDown ? '' : 'mdi-close-circle'"
+                            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                           >
+                            <v-icon v-if="$vuetify.display.smAndDown" start size="small">mdi-close-circle</v-icon>
                             REFUNDED
                           </v-chip>
                         </div>
@@ -226,22 +259,22 @@
                     <v-divider></v-divider>
                     
                     <!-- Account Details -->
-                    <v-card-text class="pa-4">
-                      <v-row>
+                    <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
+                      <v-row :dense="$vuetify.display.smAndDown">
                         <!-- Left Column - Compact Credentials -->
-                        <v-col cols="12" md="6">
-                          <v-card variant="outlined" class="pa-3 equal-height-card">
-                            <div class="text-subtitle-2 text-grey mb-3">
+                        <v-col cols="12" :md="$vuetify.display.smAndDown ? '12' : '6'">
+                          <v-card variant="outlined" :class="$vuetify.display.smAndDown ? 'pa-2 mb-3' : 'pa-3 equal-height-card'">
+                            <div :class="$vuetify.display.smAndDown ? 'text-caption text-grey mb-2' : 'text-subtitle-2 text-grey mb-3'">
                               <v-icon size="small" class="mr-1">mdi-account-details</v-icon>
                               Credentials
                             </div>
                             
                             <!-- Compact credential rows -->
-                            <div class="compact-credentials">
+                            <div :class="$vuetify.display.smAndDown ? 'compact-credentials-mobile' : 'compact-credentials'">
                               <!-- Username -->
-                              <div class="credential-row">
-                                <span class="credential-label">Username</span>
-                                <code class="credential-value">{{ account.Username || account.username || 'N/A' }}</code>
+                              <div :class="$vuetify.display.smAndDown ? 'credential-row-mobile' : 'credential-row'">
+                                <span :class="$vuetify.display.smAndDown ? 'credential-label-mobile' : 'credential-label'">Username</span>
+                                <code :class="$vuetify.display.smAndDown ? 'credential-value-mobile' : 'credential-value'">{{ account.Username || account.username || 'N/A' }}</code>
                                 <v-btn 
                                   v-if="account.Username || account.username"
                                   @click="copyToClipboard(account.Username || account.username, 'Username')"
@@ -253,9 +286,9 @@
                               </div>
                               
                               <!-- Password -->
-                              <div class="credential-row">
-                                <span class="credential-label">Password</span>
-                                <code class="credential-value">{{ account.Password || account.passTiktok || account.password || 'N/A' }}</code>
+                              <div :class="$vuetify.display.smAndDown ? 'credential-row-mobile' : 'credential-row'">
+                                <span :class="$vuetify.display.smAndDown ? 'credential-label-mobile' : 'credential-label'">Password</span>
+                                <code :class="$vuetify.display.smAndDown ? 'credential-value-mobile' : 'credential-value'">{{ account.Password || account.passTiktok || account.password || 'N/A' }}</code>
                                 <v-btn 
                                   v-if="account.Password || account.passTiktok || account.password"
                                   @click="copyToClipboard(account.Password || account.passTiktok || account.password, 'Password')"
@@ -267,9 +300,9 @@
                               </div>
                               
                               <!-- Email -->
-                              <div class="credential-row" v-if="account.Email || account.mail">
-                                <span class="credential-label">Email</span>
-                                <code class="credential-value">{{ account.Email || account.mail }}</code>
+                              <div :class="$vuetify.display.smAndDown ? 'credential-row-mobile' : 'credential-row'" v-if="account.Email || account.mail">
+                                <span :class="$vuetify.display.smAndDown ? 'credential-label-mobile' : 'credential-label'">Email</span>
+                                <code :class="$vuetify.display.smAndDown ? 'credential-value-mobile' : 'credential-value'">{{ account.Email || account.mail }}</code>
                                 <v-btn 
                                   @click="copyToClipboard(account.Email || account.mail, 'Email')"
                                   icon="mdi-content-copy"
@@ -434,14 +467,19 @@
   </v-card>
 
   <!-- Refund Dialog -->
-  <v-dialog v-model="refundDialog" max-width="500">
-    <v-card>
-      <v-card-title>
-        <v-icon class="mr-2">mdi-cash-refund</v-icon>
-        Request Refund
+  <v-dialog 
+    v-model="refundDialog" 
+    :max-width="$vuetify.display.smAndDown ? '100%' : '500'"
+    :fullscreen="$vuetify.display.smAndDown"
+    :transition="$vuetify.display.smAndDown ? 'dialog-bottom-transition' : 'dialog-transition'"
+  >
+    <v-card :class="{ 'mobile-dialog-card': $vuetify.display.smAndDown }">
+      <v-card-title :class="{ 'pa-3': $vuetify.display.smAndDown }">
+        <v-icon class="mr-2" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-cash-refund</v-icon>
+        <span :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">Request Refund</span>
       </v-card-title>
       
-      <v-card-text>
+      <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
         <v-alert type="info" variant="tonal" class="mb-4">
           You are requesting a refund for:
           <div class="mt-2 font-weight-medium">Order #{{ refundOrder?.orderId }}</div>
@@ -458,11 +496,12 @@
         ></v-textarea>
       </v-card-text>
       
-      <v-card-actions>
+      <v-card-actions :class="{ 'pa-3': $vuetify.display.smAndDown }">
         <v-spacer></v-spacer>
         <v-btn
           @click="refundDialog = false"
           :disabled="refundLoading"
+          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
         >
           Cancel
         </v-btn>
@@ -471,6 +510,7 @@
           color="warning"
           variant="flat"
           :loading="refundLoading"
+          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
         >
           Submit Request
         </v-btn>
@@ -479,21 +519,27 @@
   </v-dialog>
 
   <!-- Email Check Dialog -->
-  <v-dialog v-model="emailModal" max-width="800">
-    <v-card>
-      <v-card-title class="d-flex justify-space-between align-center">
-        <div>
-          <v-icon class="mr-2">mdi-email-check</v-icon>
-          Email Check Results
+  <v-dialog 
+    v-model="emailModal" 
+    :max-width="$vuetify.display.smAndDown ? '100%' : '800'"
+    :fullscreen="$vuetify.display.smAndDown"
+    :transition="$vuetify.display.smAndDown ? 'dialog-bottom-transition' : 'dialog-transition'"
+  >
+    <v-card :class="{ 'mobile-dialog-card': $vuetify.display.smAndDown }">
+      <v-card-title class="d-flex justify-space-between align-center" :class="{ 'pa-3': $vuetify.display.smAndDown }">
+        <div class="d-flex align-center">
+          <v-icon class="mr-2" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-email-check</v-icon>
+          <span :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">Email Check Results</span>
         </div>
         <v-btn 
           icon="mdi-close" 
           variant="text" 
           @click="emailModal = false"
+          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
         ></v-btn>
       </v-card-title>
       
-      <v-card-text>
+      <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
         <div v-if="emailLoading" class="text-center pa-8">
           <v-progress-circular indeterminate color="primary"></v-progress-circular>
           <p class="mt-4">Checking emails...</p>
@@ -1160,6 +1206,37 @@ defineExpose({
   border-radius: 4px;
 }
 
+/* Mobile-specific styles */
+.compact-credentials-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.credential-row-mobile {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  gap: 4px;
+}
+
+.credential-label-mobile {
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  text-transform: uppercase;
+}
+
+.credential-value-mobile {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
 /* Responsive adjustments */
 @media (max-width: 960px) {
   .credential-text {
@@ -1168,6 +1245,57 @@ defineExpose({
   
   .totp-display {
     font-size: 1.2em;
+  }
+}
+
+@media (max-width: 600px) {
+  .account-card {
+    margin-bottom: 12px !important;
+  }
+  
+  .equal-height-card {
+    min-height: auto;
+  }
+  
+  /* Mobile-optimized scrollbar */
+  .cookies-code {
+    max-height: 60px;
+  }
+  
+  .cookies-code::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}
+
+/* Mobile dialog styles */
+.mobile-dialog-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* Ensure scrollable content on mobile */
+@media (max-width: 600px) {
+  .mobile-dialog-card .v-card-text {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Ensure action buttons stay visible */
+  .mobile-dialog-card .v-card-actions {
+    position: sticky;
+    bottom: 0;
+    background: inherit;
+    z-index: 1;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  
+  .v-theme--dark .mobile-dialog-card .v-card-actions {
+    border-top-color: rgba(255, 255, 255, 0.12);
   }
 }
 </style>

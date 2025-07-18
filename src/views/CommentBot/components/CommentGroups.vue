@@ -51,28 +51,35 @@ const createGroup = () => {
 
 <template>
   <v-card>
-    <v-card-title class="d-flex align-center">
-      <div>
-        <v-icon class="me-2">mdi-comment-multiple</v-icon>
-        Comment Groups
+    <v-card-title class="d-flex align-center" :class="{ 'flex-wrap': $vuetify.display.smAndDown }">
+      <div class="d-flex align-center" :class="{ 'mb-2': $vuetify.display.smAndDown }">
+        <v-icon class="me-2" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-comment-multiple</v-icon>
+        <span :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">Comment Groups</span>
       </div>
       <v-spacer></v-spacer>
-      <v-btn 
-        color="primary" 
-        class="me-2"
-        prepend-icon="mdi-plus"
-        @click="createGroup"
-      >
-        Create Group
-      </v-btn>
-      <v-btn 
-        color="primary" 
-        variant="outlined" 
-        :loading="loading"
-        @click="refreshCommentGroups"
-      >
-        Refresh
-      </v-btn>
+      <div class="d-flex gap-2">
+        <v-btn 
+          color="primary" 
+          :prepend-icon="$vuetify.display.smAndDown ? '' : 'mdi-plus'"
+          @click="createGroup"
+          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          :icon="$vuetify.display.smAndDown"
+        >
+          <v-icon v-if="$vuetify.display.smAndDown">mdi-plus</v-icon>
+          <span v-else>Create Group</span>
+        </v-btn>
+        <v-btn 
+          color="primary" 
+          variant="outlined" 
+          :loading="loading"
+          @click="refreshCommentGroups"
+          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          :icon="$vuetify.display.smAndDown"
+        >
+          <v-icon>mdi-refresh</v-icon>
+          <span v-if="!$vuetify.display.smAndDown" class="ml-2">Refresh</span>
+        </v-btn>
+      </div>
     </v-card-title>
     
     <v-card-text>
@@ -84,6 +91,71 @@ const createGroup = () => {
           Create a comment group to get started
         </div>
       </div>
+      
+      <!-- Mobile Card Layout -->
+      <div v-else-if="$vuetify.display.smAndDown" class="mobile-comment-groups">
+        <v-card 
+          v-for="group in commentGroups" 
+          :key="group.id"
+          class="mb-3 comment-group-card"
+          variant="outlined"
+        >
+          <v-card-text class="pb-2">
+            <!-- Group Header -->
+            <div class="d-flex justify-space-between align-center mb-2">
+              <h4 class="text-subtitle-1 font-weight-bold">{{ group.name }}</h4>
+              <v-chip size="x-small" color="success">Active</v-chip>
+            </div>
+            
+            <!-- Group Info -->
+            <div class="group-details">
+              <div v-if="group.description" class="text-caption text-medium-emphasis mb-1">
+                {{ group.description }}
+              </div>
+              
+              <div class="d-flex justify-space-between align-center">
+                <div class="text-caption">
+                  <v-icon size="x-small" class="mr-1">mdi-format-list-text</v-icon>
+                  {{ group.legend_count || 0 }} legends
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ new Date(group.created_at).toLocaleDateString() }}
+                </div>
+              </div>
+              
+              <div v-if="showCreator && group.creator" class="text-caption text-medium-emphasis mt-1">
+                <v-icon size="x-small" class="mr-1">mdi-account</v-icon>
+                {{ group.creator.name }}
+              </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="d-flex gap-2 mt-3">
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                @click="viewDetails(group)"
+                class="flex-grow-1"
+              >
+                <v-icon start size="small">mdi-eye</v-icon>
+                View Details
+              </v-btn>
+              <v-btn
+                color="primary"
+                variant="outlined"
+                size="small"
+                @click="editGroup(group)"
+                icon
+              >
+                <v-icon size="small">mdi-pencil</v-icon>
+              </v-btn>
+            </div>
+          </v-card-text>
+        </v-card>
+      </div>
+      
+      <!-- Desktop Table Layout -->
       <v-table v-else>
         <thead>
           <tr>
@@ -146,3 +218,63 @@ const createGroup = () => {
     </v-card-text>
   </v-card>
 </template>
+
+<style scoped>
+/* Mobile Comment Groups */
+.mobile-comment-groups {
+  max-width: 100%;
+}
+
+.comment-group-card {
+  transition: all 0.2s ease;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+.comment-group-card:active {
+  transform: scale(0.98);
+}
+
+.group-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Mobile optimizations */
+@media (max-width: 600px) {
+  .v-card-title {
+    padding: 12px !important;
+  }
+  
+  .v-card-text {
+    padding: 12px !important;
+  }
+  
+  .comment-group-card {
+    margin-bottom: 8px !important;
+  }
+  
+  .comment-group-card .v-card__text {
+    padding: 12px !important;
+  }
+  
+  /* Ensure buttons don't overflow */
+  .v-btn {
+    min-width: auto !important;
+  }
+}
+
+/* Fix table overflow on tablets */
+@media (max-width: 960px) {
+  .v-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .v-table table {
+    min-width: 600px;
+  }
+}
+</style>

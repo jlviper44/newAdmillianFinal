@@ -10,8 +10,14 @@ const theme = useTheme();
 const isDarkMode = ref(false);
 const scrollY = ref(0);
 
+// Mobile navigation state
+const mobileMenuOpen = ref(false);
+const mobileActiveTab = ref('dashboard');
+const activePopupMenu = ref(null);
+
 // Authentication
-const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user } = useAuth();
+const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, logout } = useAuth();
+
 
 // All routes
 const allRoutes = [
@@ -100,10 +106,78 @@ const isTabActive = (path, tab) => {
   return isActive;
 };
 
+// Mobile navigation methods
+const navigateTo = (path) => {
+  router.push(path);
+};
+
+const navigateAndClose = (path) => {
+  router.push(path);
+  mobileMenuOpen.value = false;
+};
+
+const togglePopupMenu = (menu) => {
+  if (activePopupMenu.value === menu) {
+    activePopupMenu.value = null;
+  } else {
+    activePopupMenu.value = menu;
+  }
+};
+
+const handleDashboardClick = () => {
+  const currentPath = router.currentRoute.value.path;
+  if (currentPath === '/dashboard') {
+    // If already on dashboard, toggle popup menu
+    togglePopupMenu('dashboard');
+  } else {
+    // If not on dashboard, navigate to default dashboard tab
+    router.push('/dashboard?tab=metrics');
+  }
+};
+
+const navigateToAndClose = (path) => {
+  router.push(path);
+  activePopupMenu.value = null;
+};
+
+const getCurrentPageTitle = () => {
+  const route = router.currentRoute.value;
+  const path = route.path;
+  const tab = route.query.tab;
+  
+  if (path === '/dashboard') {
+    return 'Dashboard';
+  }
+  
+  if (path === '/comments') return 'Comment Bot';
+  if (path === '/bc-gen') return 'BC Gen';
+  if (path === '/profile') return 'Profile';
+  if (path === '/settings') return 'Settings';
+  
+  return 'MILLIAN AI';
+};
+
+// Update mobile active tab based on route
+const updateMobileActiveTab = () => {
+  const path = router.currentRoute.value.path;
+  if (path.includes('/dashboard')) mobileActiveTab.value = 'dashboard';
+  else if (path.includes('/comments')) mobileActiveTab.value = 'comments';
+  else if (path.includes('/bc-gen')) mobileActiveTab.value = 'bcgen';
+  else if (path.includes('/profile')) mobileActiveTab.value = 'profile';
+  
+  // Close popup menu when route changes
+  activePopupMenu.value = null;
+};
+
 // Handle scroll for parallax effect
 const handleScroll = () => {
   scrollY.value = window.scrollY;
 };
+
+// Watch route changes to update mobile active tab
+router.afterEach(() => {
+  updateMobileActiveTab();
+});
 
 // Initialize theme on component mount
 onMounted(async () => {
@@ -124,6 +198,9 @@ onMounted(async () => {
   
   // Add scroll listener for parallax effect
   window.addEventListener('scroll', handleScroll);
+  
+  // Update mobile active tab
+  updateMobileActiveTab();
 });
 
 // Clean up scroll listener
@@ -134,9 +211,32 @@ onUnmounted(() => {
 
 <template>
   <v-app>
-    <!-- Futuristic App Bar -->
+    <!-- Mobile App Bar - Simplified and Clean -->
     <v-app-bar
-      v-if="isAuthenticated"
+      v-if="isAuthenticated && $vuetify.display.smAndDown"
+      elevation="0"
+      :height="56"
+      class="mobile-app-bar"
+      :style="{
+        background: isDarkMode ? '#1a1a2e' : '#ffffff',
+        borderBottom: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)'
+      }"
+    >
+      <v-app-bar-title class="mobile-title">
+        <v-icon size="24" :color="isDarkMode ? 'primary' : 'primary'">mdi-robot-excited</v-icon>
+        <span class="ml-2">{{ getCurrentPageTitle() }}</span>
+      </v-app-bar-title>
+      
+      <v-spacer></v-spacer>
+      
+      <v-btn icon variant="text" @click="mobileMenuOpen = true">
+        <v-icon>mdi-dots-vertical</v-icon>
+      </v-btn>
+    </v-app-bar>
+
+    <!-- Desktop App Bar - Keep existing futuristic design -->
+    <v-app-bar
+      v-if="isAuthenticated && $vuetify.display.mdAndUp"
       elevation="0"
       height="70"
       class="futuristic-app-bar header-entrance"
@@ -214,175 +314,226 @@ onUnmounted(() => {
         </v-tooltip>
       </v-btn>
     </v-app-bar>
+
+    <!-- Mobile Bottom Navigation -->
+    <v-bottom-navigation
+      v-if="isAuthenticated && $vuetify.display.smAndDown"
+      v-model="mobileActiveTab"
+      :bg-color="isDarkMode ? '#1a1a2e' : '#ffffff'"
+      grow
+      class="mobile-bottom-nav"
+    >
+      <v-btn 
+        v-if="hasDashboardAccess" 
+        value="dashboard" 
+        @click="handleDashboardClick()"
+        :class="{ 'v-btn--active': activePopupMenu === 'dashboard' || mobileActiveTab === 'dashboard' }"
+      >
+        <v-icon>mdi-view-dashboard</v-icon>
+        <span class="text-caption">Dashboard</span>
+      </v-btn>
+      
+      <v-btn 
+        v-if="hasCommentBotAccess" 
+        value="comments" 
+        @click="togglePopupMenu('comments')"
+        :class="{ 'v-btn--active': activePopupMenu === 'comments' }"
+      >
+        <v-icon>mdi-comment-multiple</v-icon>
+        <span class="text-caption">Comments</span>
+      </v-btn>
+      
+      <v-btn 
+        v-if="hasBcGenAccess" 
+        value="bcgen" 
+        @click="togglePopupMenu('bcgen')"
+        :class="{ 'v-btn--active': activePopupMenu === 'bcgen' }"
+      >
+        <v-icon>mdi-account-multiple-plus</v-icon>
+        <span class="text-caption">BC Gen</span>
+      </v-btn>
+      
+      <v-btn value="profile" @click="navigateTo('/profile')">
+        <v-icon>mdi-account</v-icon>
+        <span class="text-caption">Profile</span>
+      </v-btn>
+    </v-bottom-navigation>
+
+    <!-- Mobile Popup Menus -->
+    <v-slide-y-reverse-transition>
+      <div 
+        v-if="activePopupMenu && $vuetify.display.smAndDown"
+        class="mobile-popup-container"
+      >
+        <!-- Backdrop -->
+        <div 
+          class="mobile-popup-backdrop"
+          @click="activePopupMenu = null"
+        ></div>
+        
+        <!-- Popup Card -->
+        <v-card class="mobile-popup-card" :theme="isDarkMode ? 'dark' : 'light'">
+          <!-- Dashboard Menu -->
+          <v-list v-if="activePopupMenu === 'dashboard'" density="comfortable">
+            <v-list-item
+              @click="navigateToAndClose('/dashboard?tab=metrics')"
+              prepend-icon="mdi-chart-areaspline"
+              title="Metrics"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/dashboard?tab=campaigns')"
+              prepend-icon="mdi-bullhorn"
+              title="Campaigns"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/dashboard?tab=sparks')"
+              prepend-icon="mdi-lightning-bolt"
+              title="Sparks"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/dashboard?tab=templates')"
+              prepend-icon="mdi-file-document-multiple"
+              title="Templates"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/dashboard?tab=shopify')"
+              prepend-icon="mdi-shopping"
+              title="Shopify Stores"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/dashboard?tab=logs')"
+              prepend-icon="mdi-format-list-bulleted"
+              title="Logs"
+              class="mobile-popup-item"
+            ></v-list-item>
+          </v-list>
+
+          <!-- Comments Menu -->
+          <v-list v-if="activePopupMenu === 'comments'" density="comfortable">
+            <v-list-item
+              @click="navigateToAndClose('/comments?tab=orders')"
+              prepend-icon="mdi-format-list-bulleted"
+              title="Orders"
+              :active="isTabActive('/comments', 'orders')"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/comments?tab=credits')"
+              prepend-icon="mdi-wallet"
+              title="Credits"
+              :active="isTabActive('/comments', 'credits')"
+              class="mobile-popup-item"
+            ></v-list-item>
+          </v-list>
+
+          <!-- BC Gen Menu -->
+          <v-list v-if="activePopupMenu === 'bcgen'" density="comfortable">
+            <v-list-item
+              @click="navigateToAndClose('/bc-gen?tab=orders')"
+              prepend-icon="mdi-cart-plus"
+              title="Place Order"
+              :active="isTabActive('/bc-gen', 'orders')"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/bc-gen?tab=my-orders')"
+              prepend-icon="mdi-format-list-bulleted"
+              title="My Orders"
+              :active="isTabActive('/bc-gen', 'my-orders')"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/bc-gen?tab=refunds')"
+              prepend-icon="mdi-cash-refund"
+              title="Refunds"
+              :active="isTabActive('/bc-gen', 'refunds')"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/bc-gen?tab=credits')"
+              prepend-icon="mdi-wallet"
+              title="Credits"
+              :active="isTabActive('/bc-gen', 'credits')"
+              class="mobile-popup-item"
+            ></v-list-item>
+          </v-list>
+        </v-card>
+      </div>
+    </v-slide-y-reverse-transition>
+
+    <!-- Mobile Menu Overlay -->
+    <v-overlay
+      v-model="mobileMenuOpen"
+      v-if="$vuetify.display.smAndDown"
+      class="mobile-menu-overlay"
+      @click="mobileMenuOpen = false"
+    >
+      <transition name="slide-down">
+        <v-card v-if="mobileMenuOpen" class="mobile-menu-card" @click.stop>
+        <v-card-title class="d-flex align-center pa-4">
+          <span>Menu</span>
+          <v-spacer></v-spacer>
+          <v-btn icon variant="text" @click="mobileMenuOpen = false" size="small">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        
+        <v-card-text class="pa-0">
+          <v-list>
+            <!-- Theme Toggle -->
+            <v-list-item @click="toggleDarkMode">
+              <template v-slot:prepend>
+                <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
+              </template>
+              <v-list-item-title>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</v-list-item-title>
+            </v-list-item>
+
+            <!-- Profile -->
+            <v-list-item @click="navigateAndClose('/profile')" prepend-icon="mdi-account" title="Profile"></v-list-item>
+
+            <!-- Logout -->
+            <v-list-item @click="logout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
+          </v-list>
+        </v-card-text>
+        </v-card>
+      </transition>
+    </v-overlay>
     
-    <!-- Navigation Drawer with improved styling -->
+    <!-- Desktop Navigation Drawer -->
     <v-navigation-drawer
-      v-if="isAuthenticated"
+      v-if="isAuthenticated && $vuetify.display.mdAndUp"
       v-model="drawer"
-      :rail="!drawer && $vuetify.display.mdAndUp"
+      :rail="!drawer"
       permanent
-      :expand-on-hover="$vuetify.display.mdAndUp"
-      :location="$vuetify.display.mdAndUp ? 'left' : 'bottom'"
+      :expand-on-hover="true"
       :class="isDarkMode ? 'drawer-dark' : 'drawer-light'"
     >
       <!-- Navigation list -->
       <v-list nav density="compact" class="pt-20">
-        <!-- Dashboard with nested items -->
-        <v-list-group 
-          v-if="visibleRoutes.find(r => r.path === '/dashboard')"
-          value="dashboard"
-          :active="false"
-        >
-          <template v-slot:activator="{ props }">
-            <v-list-item
-              v-bind="props"
-              prepend-icon="mdi-view-dashboard"
-              title="Dashboard"
-              :to="'/dashboard?tab=metrics'"
-            ></v-list-item>
+        <!-- Theme Toggle -->
+        <v-list-item @click="toggleDarkMode">
+          <template v-slot:prepend>
+            <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
           </template>
-          <v-list-item
-            to="/dashboard?tab=metrics"
-            title="Metrics"
-            prepend-icon="mdi-chart-areaspline"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'metrics') }"
-:style="isTabActive('/dashboard', 'metrics') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/dashboard?tab=campaigns"
-            title="Campaigns"
-            prepend-icon="mdi-bullhorn"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'campaigns') }"
-:style="isTabActive('/dashboard', 'campaigns') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/dashboard?tab=sparks"
-            title="Sparks"
-            prepend-icon="mdi-lightning-bolt"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'sparks') }"
-:style="isTabActive('/dashboard', 'sparks') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/dashboard?tab=templates"
-            title="Templates"
-            prepend-icon="mdi-file-document-multiple"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'templates') }"
-:style="isTabActive('/dashboard', 'templates') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/dashboard?tab=shopify"
-            title="Shopify Stores"
-            prepend-icon="mdi-shopping"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'shopify') }"
-:style="isTabActive('/dashboard', 'shopify') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/dashboard?tab=logs"
-            title="Logs"
-            prepend-icon="mdi-format-list-bulleted"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/dashboard', 'logs') }"
-:style="isTabActive('/dashboard', 'logs') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-        </v-list-group>
+          <v-list-item-title>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</v-list-item-title>
+        </v-list-item>
 
-        <!-- Comment Bot with nested items -->
-        <v-list-group 
-          v-if="visibleRoutes.find(r => r.path === '/comments')"
-          value="comments"
-          :active="false"
-        >
-          <template v-slot:activator="{ props }">
-            <v-list-item
-              v-bind="props"
-              prepend-icon="mdi-comment-multiple"
-              title="Comment Bot"
-              :to="'/comments?tab=orders'"
-            ></v-list-item>
-          </template>
-          
-          <v-list-item
-            to="/comments?tab=orders"
-            title="Orders"
-            prepend-icon="mdi-format-list-bulleted"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/comments', 'orders') }"
-:style="isTabActive('/comments', 'orders') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/comments?tab=credits"
-            title="Credits"
-            prepend-icon="mdi-wallet"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/comments', 'credits') }"
-:style="isTabActive('/comments', 'credits') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-        </v-list-group>
-
-        <!-- BC Gen with nested items -->
-        <v-list-group 
-          v-if="visibleRoutes.find(r => r.path === '/bc-gen')"
-          value="bc-gen"
-          :active="false"
-        >
-          <template v-slot:activator="{ props }">
-            <v-list-item
-              v-bind="props"
-              prepend-icon="mdi-account-multiple-plus"
-              title="BC Gen"
-              :to="'/bc-gen?tab=orders'"
-            ></v-list-item>
-          </template>
-          
-          <v-list-item
-            to="/bc-gen?tab=orders"
-            title="Place Order"
-            prepend-icon="mdi-cart-plus"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/bc-gen', 'orders') }"
-:style="isTabActive('/bc-gen', 'orders') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/bc-gen?tab=my-orders"
-            title="My Orders"
-            prepend-icon="mdi-format-list-bulleted"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/bc-gen', 'my-orders') }"
-:style="isTabActive('/bc-gen', 'my-orders') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/bc-gen?tab=refunds"
-            title="Refunds"
-            prepend-icon="mdi-cash-refund"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/bc-gen', 'refunds') }"
-:style="isTabActive('/bc-gen', 'refunds') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-          <v-list-item
-            to="/bc-gen?tab=credits"
-            title="Credits"
-            prepend-icon="mdi-wallet"
-            class="ml-2"
-            :class="{ 'active-tab': isTabActive('/bc-gen', 'credits') }"
-:style="isTabActive('/bc-gen', 'credits') ? 'background-color: #ffffff !important; color: #1976d2 !important;' : 'background-color: transparent !important;'"
-          ></v-list-item>
-        </v-list-group>
-
-        <!-- Standalone items (Profile, Settings) -->
+        <!-- Profile -->
         <v-list-item
-          v-for="item in visibleRoutes.filter(r => !r.requiresSubscription)"
-          :key="`nav-${item.path}`"
-          :to="item.path"
-          :title="item.title"
-          :prepend-icon="item.icon"
-          :active="activeRoute === item.path || (item.path === '/profile' && activeRoute === '/')"
+          to="/profile"
+          prepend-icon="mdi-account"
+          title="Profile"
+          :active="activeRoute === '/profile' || activeRoute === '/'"
           rounded="lg"
         ></v-list-item>
+
+        <!-- Logout -->
+        <v-list-item @click="logout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
       </v-list>
     </v-navigation-drawer>
     
@@ -407,6 +558,235 @@ onUnmounted(() => {
 /* Ensure navigation drawer is below app bar */
 .v-navigation-drawer {
   z-index: 1999 !important;
+}
+
+/* Mobile-First Design Styles */
+.mobile-app-bar {
+  z-index: 2004 !important;
+}
+
+.mobile-title {
+  font-size: 1.1rem !important;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
+.mobile-bottom-nav {
+  z-index: 2003 !important;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.v-theme--dark .mobile-bottom-nav {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.mobile-bottom-nav .v-btn {
+  flex-direction: column !important;
+  height: 56px !important;
+  min-height: 56px !important;
+}
+
+.mobile-bottom-nav .v-btn .v-icon {
+  margin-bottom: 4px !important;
+}
+
+.mobile-bottom-nav .v-btn .text-caption {
+  font-size: 0.625rem !important;
+  line-height: 1 !important;
+}
+
+/* Active popup indicator */
+.mobile-bottom-nav .v-btn--active::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 4px;
+  background-color: rgb(var(--v-theme-primary));
+  border-radius: 0 0 4px 4px;
+  animation: expandWidth 0.2s ease-out;
+}
+
+/* Mobile Menu Overlay Styles */
+.mobile-menu-overlay {
+  align-items: flex-start !important;
+  justify-content: flex-end !important;
+  padding: 0 !important;
+}
+
+.mobile-menu-overlay .v-overlay__content {
+  position: fixed !important;
+  top: 70px !important;
+  right: 16px !important;
+  left: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  width: 280px !important;
+  max-width: calc(100vw - 32px) !important;
+  z-index: 2010 !important;
+}
+
+.mobile-menu-card {
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-menu-card::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 24px;
+  width: 16px;
+  height: 16px;
+  background-color: inherit;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.v-theme--dark .mobile-menu-card {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+}
+
+.v-theme--dark .mobile-menu-card::before {
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Slide down transition */
+.slide-down-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-down-leave-active {
+  transition: all 0.25s ease-in;
+}
+
+.slide-down-enter-from {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.slide-down-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.slide-down-enter-to,
+.slide-down-leave-from {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+@keyframes expandWidth {
+  from {
+    width: 0;
+  }
+  to {
+    width: 40px;
+  }
+}
+
+/* Mobile Content Padding */
+@media (max-width: 959px) {
+  .v-main {
+    padding-top: 56px !important;
+    padding-bottom: 56px !important;
+  }
+}
+
+/* Hide desktop drawer on mobile */
+@media (max-width: 959px) {
+  .v-navigation-drawer {
+    display: none !important;
+  }
+}
+
+/* Mobile Popup Menu Styles */
+.mobile-popup-container {
+  position: fixed;
+  bottom: 56px; /* Height of bottom navigation */
+  left: 0;
+  right: 0;
+  z-index: 2002;
+}
+
+.mobile-popup-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  z-index: -1;
+}
+
+.mobile-popup-card {
+  border-radius: 12px 12px 0 0 !important;
+  margin: 0 8px !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
+  overflow: hidden;
+  position: relative;
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.v-theme--dark .mobile-popup-card {
+  box-shadow: 0 -4px 20px rgba(255, 255, 255, 0.1) !important;
+}
+
+.mobile-popup-card .v-list {
+  padding: 4px 0 8px 0 !important;
+  background-color: transparent !important;
+}
+
+.mobile-popup-item {
+  min-height: 48px !important;
+  padding: 0 16px;
+  margin: 0 8px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.mobile-popup-item:hover {
+  background-color: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.mobile-popup-item.v-list-item--active {
+  background-color: rgba(var(--v-theme-primary), 0.12);
+}
+
+.mobile-popup-item.v-list-item--active .v-list-item__prepend .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+
+/* Add a subtle line to visually connect to bottom nav */
+.mobile-popup-card::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(to right, 
+    transparent 10%, 
+    rgba(var(--v-theme-primary), 0.3) 50%, 
+    transparent 90%
+  );
 }
 
 .main-content {

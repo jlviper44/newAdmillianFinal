@@ -1,17 +1,19 @@
 <template>
   <v-card flat>
-    <v-card-title class="d-flex justify-space-between align-center">
-      <span>Place Order</span>
-      <div class="d-flex align-center" style="gap: 16px;">
+    <v-card-title :class="{ 'pa-3': $vuetify.display.smAndDown, 'flex-wrap': $vuetify.display.smAndDown }">
+      <span :class="$vuetify.display.smAndDown ? 'text-body-1 mb-2' : ''">Place Order</span>
+      <v-spacer v-if="!$vuetify.display.smAndDown"></v-spacer>
+      <div :class="$vuetify.display.smAndDown ? 'd-flex flex-column gap-3 w-100' : 'd-flex align-center'" :style="$vuetify.display.smAndDown ? '' : 'gap: 16px;'">
         <v-chip 
           color="secondary" 
           variant="elevated"
-          size="large"
+          :size="$vuetify.display.smAndDown ? 'default' : 'large'"
           @click="checkAvailability"
           class="text-white"
+          :block="$vuetify.display.smAndDown"
         >
-          <v-icon start>mdi-account-multiple-check</v-icon>
-          <span class="font-weight-bold">Refresh Accounts</span>
+          <v-icon start :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-account-multiple-check</v-icon>
+          <span :class="$vuetify.display.smAndDown ? '' : 'font-weight-bold'">{{ $vuetify.display.smAndDown ? 'Refresh' : 'Refresh Accounts' }}</span>
           <v-icon 
             end 
             size="small"
@@ -23,12 +25,13 @@
         <v-chip 
           color="primary" 
           variant="elevated"
-          size="large"
+          :size="$vuetify.display.smAndDown ? 'default' : 'large'"
           @click="fetchCredits"
           class="text-white"
+          :block="$vuetify.display.smAndDown"
         >
-          <v-icon start>mdi-wallet</v-icon>
-          <span class="font-weight-bold">{{ remainingCredits.toLocaleString() }} credits</span>
+          <v-icon start :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-wallet</v-icon>
+          <span :class="$vuetify.display.smAndDown ? '' : 'font-weight-bold'">{{ remainingCredits.toLocaleString() }} credits</span>
           <v-icon 
             end 
             size="small"
@@ -39,7 +42,7 @@
         </v-chip>
       </div>
     </v-card-title>
-    <v-card-text>
+    <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
       <!-- Availability Loading -->
       <v-alert 
         v-if="availabilityLoading" 
@@ -57,7 +60,7 @@
       </v-alert>
       
       <!-- Region Grid -->
-      <v-row>
+      <v-row :dense="$vuetify.display.smAndDown">
         <v-col 
           v-for="region in regions" 
           :key="region.id"
@@ -67,22 +70,29 @@
         >
           <v-card 
             :elevation="orderQuantities[region.id] > 0 ? 4 : 2"
-            class="pa-3 text-center region-card"
-            :class="{ 'selected-card': orderQuantities[region.id] > 0 }"
+            :class="{ 
+              'pa-2': $vuetify.display.smAndDown,
+              'pa-3': !$vuetify.display.smAndDown,
+              'text-center': true,
+              'region-card': true,
+              'selected-card': orderQuantities[region.id] > 0 
+            }"
             :loading="availabilityLoading"
           >
             <v-img
               :src="`https://flagcdn.com/w80/${region.code}.png`"
               :alt="`${region.name} flag`"
-              width="60"
-              height="40"
+              :width="$vuetify.display.smAndDown ? 40 : 60"
+              :height="$vuetify.display.smAndDown ? 27 : 40"
               class="mx-auto mb-2 flag-image"
               cover
             ></v-img>
-            <div class="text-h6 mb-1 font-weight-bold">{{ region.name }}</div>
+            <div :class="$vuetify.display.smAndDown ? 'text-body-2 mb-1 font-weight-bold' : 'text-h6 mb-1 font-weight-bold'">{{ region.name }}</div>
             <div 
-              class="mb-2 font-weight-bold" 
-              :class="availability[region.id] > 0 ? 'text-success' : 'text-error'"
+              :class="[
+                $vuetify.display.smAndDown ? 'text-caption mb-1' : 'mb-2 font-weight-bold',
+                availability[region.id] > 0 ? 'text-success' : 'text-error'
+              ]"
             >
               <template v-if="availabilityLoading">
                 <v-progress-circular 
@@ -98,7 +108,7 @@
             <div class="d-flex align-center justify-center">
               <v-btn
                 icon="mdi-minus"
-                size="small"
+                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                 variant="tonal"
                 :disabled="availabilityLoading || !orderQuantities[region.id] || orderQuantities[region.id] <= 0"
                 @click="decrementQuantity(region.id)"
@@ -110,7 +120,7 @@
                 density="compact"
                 hide-details
                 single-line
-                class="mx-2 quantity-input"
+                :class="$vuetify.display.smAndDown ? 'mx-1 quantity-input-mobile' : 'mx-2 quantity-input'"
                 :min="0"
                 :max="availability[region.id] || 0"
                 :disabled="availabilityLoading"
@@ -118,7 +128,7 @@
               ></v-text-field>
               <v-btn
                 icon="mdi-plus"
-                size="small"
+                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                 variant="tonal"
                 :disabled="availabilityLoading || orderQuantities[region.id] >= (availability[region.id] || 0)"
                 @click="incrementQuantity(region.id)"
@@ -134,11 +144,12 @@
         type="info"
         variant="tonal"
         class="mt-4 mb-2"
+        :density="$vuetify.display.smAndDown ? 'compact' : 'default'"
       >
-        <div class="d-flex justify-space-between align-center">
-          <span>Total accounts: <strong>{{ orderTotal }}</strong></span>
-          <span>Credits needed: <strong>{{ orderTotal }}</strong></span>
-          <span>Remaining after order: <strong>{{ remainingCredits - orderTotal }}</strong></span>
+        <div :class="$vuetify.display.smAndDown ? 'd-flex flex-column gap-1' : 'd-flex justify-space-between align-center'">
+          <span :class="$vuetify.display.smAndDown ? 'text-caption' : ''">Total accounts: <strong>{{ orderTotal }}</strong></span>
+          <span :class="$vuetify.display.smAndDown ? 'text-caption' : ''">Credits needed: <strong>{{ orderTotal }}</strong></span>
+          <span :class="$vuetify.display.smAndDown ? 'text-caption' : ''">Remaining after order: <strong>{{ remainingCredits - orderTotal }}</strong></span>
         </div>
       </v-alert>
 
@@ -147,12 +158,12 @@
         @click="handleCreateOrder"
         color="primary"
         block
-        size="x-large"
+        :size="$vuetify.display.smAndDown ? 'default' : 'x-large'"
         class="mt-4"
         :loading="orderLoading"
         :disabled="orderTotal === 0 || orderTotal > remainingCredits"
       >
-        <v-icon start>mdi-cart</v-icon>
+        <v-icon start :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-cart</v-icon>
         {{ orderTotal === 0 ? 'Select Accounts to Order' : `Place Order (${orderTotal} credits)` }}
       </v-btn>
     </v-card-text>
@@ -402,24 +413,70 @@ onMounted(() => {
   max-width: 60px;
 }
 
+.quantity-input-mobile {
+  max-width: 45px;
+}
+
 .flag-image {
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.quantity-input :deep(.v-field__input) {
+.quantity-input :deep(.v-field__input),
+.quantity-input-mobile :deep(.v-field__input) {
   text-align: center;
   padding: 0 8px;
 }
 
 /* Hide number input spin buttons */
 .quantity-input :deep(input[type="number"]::-webkit-inner-spin-button),
-.quantity-input :deep(input[type="number"]::-webkit-outer-spin-button) {
+.quantity-input :deep(input[type="number"]::-webkit-outer-spin-button),
+.quantity-input-mobile :deep(input[type="number"]::-webkit-inner-spin-button),
+.quantity-input-mobile :deep(input[type="number"]::-webkit-outer-spin-button) {
   -webkit-appearance: none;
   margin: 0;
 }
 
-.quantity-input :deep(input[type="number"]) {
+.quantity-input :deep(input[type="number"]),
+.quantity-input-mobile :deep(input[type="number"]) {
   -moz-appearance: textfield;
+}
+
+/* Mobile chip styles */
+@media (max-width: 600px) {
+  .v-chip {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .v-chip__content {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  /* Ensure gap between chips */
+  .gap-3 {
+    gap: 16px !important;
+  }
+  
+  .gap-3 > .v-chip {
+    margin: 0 !important;
+  }
+}
+
+/* Animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mdi-spin {
+  animation: spin 1s linear infinite;
 }
 </style>

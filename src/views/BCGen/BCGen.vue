@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AuthGuard from '@/components/AuthGuard.vue';
 import BCGenCredits from './components/BCGenCredits.vue';
@@ -15,6 +15,19 @@ const refundsViewRef = ref(null);
 // State management
 const currentTab = ref('orders');
 const route = useRoute();
+
+// Tab titles mapping
+const tabTitles = {
+  orders: 'Place Order',
+  'my-orders': 'My Orders',
+  refunds: 'Refunds',
+  credits: 'Credits'
+};
+
+// Computed property for current tab title
+const currentTabTitle = computed(() => {
+  return tabTitles[currentTab.value] || 'Account creation system';
+});
 const loading = ref({
   credits: false
 });
@@ -93,8 +106,19 @@ onMounted(() => {
 
 <template>
   <AuthGuard>
-    <v-container fluid>
-      <v-row>
+    <v-container fluid :class="{ 'pa-2': $vuetify.display.smAndDown }">
+      <!-- Mobile Header -->
+      <v-row v-if="$vuetify.display.smAndDown">
+        <v-col cols="12" class="pb-2">
+          <div class="text-center">
+            <h2 class="text-h6 font-weight-bold">BC Gen</h2>
+            <p class="text-caption text-grey-darken-1">{{ currentTabTitle }}</p>
+          </div>
+        </v-col>
+      </v-row>
+
+      <!-- Desktop Header -->
+      <v-row v-else>
         <v-col cols="12">
           <div class="d-flex justify-space-between align-center mb-6">
             <div>
@@ -102,7 +126,7 @@ onMounted(() => {
                 <v-icon icon="mdi-account-multiple-plus" size="x-large" class="mr-2"></v-icon>
                 BC Gen
               </h1>
-              <p class="text-subtitle-1 text-grey-darken-1 mt-1">Account creation system</p>
+              <p class="text-subtitle-1 text-grey-darken-1 mt-1">{{ currentTabTitle }}</p>
             </div>
           </div>
         </v-col>
@@ -162,10 +186,39 @@ onMounted(() => {
   min-height: 500px;
 }
 
-/* Responsive adjustments */
+/* Mobile optimizations */
+@media (max-width: 600px) {
+  .v-card {
+    margin-bottom: 12px !important;
+  }
+  
+  .v-card-title {
+    padding: 12px !important;
+    font-size: 1rem !important;
+  }
+  
+  .v-card-text {
+    padding: 12px !important;
+  }
+  
+  .text-h6 {
+    font-size: 1rem !important;
+  }
+  
+  .v-chip {
+    height: auto !important;
+    padding: 4px 8px !important;
+  }
+}
+
+/* Tab Content */
+.v-tab-content {
+  min-height: 400px;
+}
+
 @media (max-width: 768px) {
-  .tab-content {
-    min-height: 400px;
+  .v-tab-content {
+    min-height: 300px;
   }
 }
 </style>

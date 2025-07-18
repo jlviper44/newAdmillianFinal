@@ -1,23 +1,17 @@
 <template>
   <div>
     <!-- Header -->
-    <v-row class="mb-6">
+    <v-row class="mb-4">
       <v-col cols="12">
-        <div class="d-flex justify-space-between align-center">
-          <div>
-            <h2 class="text-h5 font-weight-bold">Click Tracking Logs</h2>
-            <p class="text-subtitle-2 text-grey-darken-1">Monitor and analyze your TikTok ad campaign performance</p>
-          </div>
-          <div>
-            <v-btn 
-              color="primary" 
-              @click="refreshData"
-              :loading="loading"
-              prepend-icon="mdi-refresh"
-            >
-              Refresh
-            </v-btn>
-          </div>
+        <div class="d-flex justify-end">
+          <v-btn 
+            color="primary" 
+            @click="refreshData"
+            :loading="loading"
+            prepend-icon="mdi-refresh"
+          >
+            Refresh
+          </v-btn>
         </div>
       </v-col>
     </v-row>

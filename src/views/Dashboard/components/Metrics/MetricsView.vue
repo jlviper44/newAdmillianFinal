@@ -291,15 +291,6 @@ onMounted(() => {
       </div>
     </v-alert>
     
-    <!-- Header Card -->
-    <v-card class="mb-4 elevation-2 rounded-lg header-card">
-      <v-card-text class="pa-4">
-        <div class="d-flex align-center">
-          <v-icon icon="mdi-chart-areaspline" color="primary" size="large" class="mr-3"></v-icon>
-          <h2 class="text-h5 font-weight-medium">Affiliate Metrics</h2>
-        </div>
-      </v-card-text>
-    </v-card>
     
     <!-- API Configuration Card -->
     <v-card class="mb-4 elevation-2 rounded-lg api-config-card">

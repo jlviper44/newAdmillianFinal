@@ -300,3 +300,34 @@ const createOrder = async () => {
     </v-card-text>
   </v-card>
 </template>
+
+<style scoped>
+/* Mobile optimizations */
+@media (max-width: 600px) {
+  .v-text-field .v-input__details {
+    padding: 0 12px !important;
+  }
+  
+  .v-textarea .v-input__details {
+    padding: 0 12px !important;
+  }
+  
+  .v-select .v-input__details {
+    padding: 0 12px !important;
+  }
+  
+  /* Compact form spacing on mobile */
+  .v-row {
+    margin: -8px !important;
+  }
+  
+  .v-col {
+    padding: 8px !important;
+  }
+  
+  /* Make hints smaller on mobile */
+  .v-messages {
+    font-size: 0.625rem !important;
+  }
+}
+</style>

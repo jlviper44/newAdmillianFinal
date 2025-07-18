@@ -2,11 +2,7 @@
   <v-container fluid class="shopify-stores-container pa-4">
     <v-row>
       <v-col cols="12">
-        <div class="d-flex justify-space-between align-center mb-6">
-          <div>
-            <h2 class="text-h5 font-weight-bold">Shopify Stores</h2>
-            <p class="text-subtitle-2 text-grey-darken-1">Manage your connected Shopify stores</p>
-          </div>
+        <div class="d-flex justify-end mb-4">
           <v-btn 
             color="primary" 
             @click="openCreateModal"

@@ -1,7 +1,18 @@
 <template>
   <AuthGuard>
-    <v-container fluid>
-      <v-row>
+    <v-container fluid :class="{ 'pa-2': $vuetify.display.smAndDown }">
+      <!-- Mobile Header -->
+      <v-row v-if="$vuetify.display.smAndDown">
+        <v-col cols="12" class="pb-2">
+          <div class="text-center">
+            <h2 class="text-h6 font-weight-bold">Profile</h2>
+            <p class="text-caption text-grey-darken-1">Manage your account settings</p>
+          </div>
+        </v-col>
+      </v-row>
+
+      <!-- Desktop Header -->
+      <v-row v-else>
         <v-col cols="12">
           <div class="d-flex justify-space-between align-center mb-6">
             <div>
@@ -18,42 +29,77 @@
       <v-row>
         <!-- User Information Card -->
         <v-col cols="12">
-          <v-card density="compact">
-            <v-card-title class="d-flex align-center pa-3">
-              <v-icon class="mr-2" size="small">mdi-account-circle</v-icon>
-              <span class="text-h6">User Information</span>
+          <v-card :class="$vuetify.display.smAndDown ? 'ma-1' : ''" density="compact">
+            <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : 'd-flex align-center pa-3'">
+              <v-icon class="mr-2" :size="$vuetify.display.smAndDown ? 'small' : 'small'">mdi-account-circle</v-icon>
+              <span :class="$vuetify.display.smAndDown ? 'text-body-1' : 'text-h6'">User Information</span>
             </v-card-title>
-            <v-card-text class="pa-3">
+            <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-3'">
               <v-row v-if="user" no-gutters>
-                <v-col cols="12" class="d-flex align-center mb-3">
-                  <v-avatar size="60" class="mr-3">
-                    <v-img v-if="user.image" :src="user.image" :alt="user.name"></v-img>
-                    <v-icon v-else size="60">mdi-account-circle</v-icon>
-                  </v-avatar>
-                  <div class="flex-grow-1">
-                    <div class="d-flex align-center">
-                      <span class="text-subtitle-1 font-weight-medium">{{ user.name || 'Not set' }}</span>
-                      <v-chip v-if="user.isAdmin" color="amber" size="small" variant="flat" class="ml-3">
-                        <v-icon start size="small">mdi-crown</v-icon>
-                        Admin
-                      </v-chip>
-                      <v-chip v-if="user?.team" color="primary" size="small" variant="flat" class="ml-2">
-                        <v-icon start size="small">mdi-account-group</v-icon>
-                        {{ user.team.name }}
-                      </v-chip>
+                <v-col cols="12" :class="$vuetify.display.smAndDown ? 'mb-3' : 'd-flex align-center mb-3'">
+                  <!-- Mobile Layout -->
+                  <div v-if="$vuetify.display.smAndDown" class="text-center">
+                    <v-avatar size="80" class="mb-3">
+                      <v-img v-if="user.image" :src="user.image" :alt="user.name"></v-img>
+                      <v-icon v-else size="80">mdi-account-circle</v-icon>
+                    </v-avatar>
+                    <div class="mb-3">
+                      <div class="text-h6 font-weight-medium mb-1">{{ user.name || 'Not set' }}</div>
+                      <div class="text-body-2 text-grey mb-2">{{ user.email || 'Not set' }}</div>
+                      <div class="text-caption text-grey mb-3">ID: {{ user.id }}</div>
+                      <div class="d-flex justify-center gap-2 flex-wrap mb-3">
+                        <v-chip v-if="user.isAdmin" color="amber" size="small" variant="flat">
+                          <v-icon start size="small">mdi-crown</v-icon>
+                          Admin
+                        </v-chip>
+                        <v-chip v-if="user?.team" color="primary" size="small" variant="flat">
+                          <v-icon start size="small">mdi-account-group</v-icon>
+                          {{ user.team.name }}
+                        </v-chip>
+                      </div>
                     </div>
-                    <div class="text-body-2 text-grey">{{ user.email || 'Not set' }}</div>
-                    <div class="text-caption text-grey">ID: {{ user.id }}</div>
+                    <v-btn
+                      color="error"
+                      variant="outlined"
+                      size="small"
+                      @click="confirmSignOut"
+                      block
+                    >
+                      <v-icon start size="small">mdi-logout</v-icon>
+                      Sign Out
+                    </v-btn>
                   </div>
-                  <v-btn
-                    color="error"
-                    variant="outlined"
-                    size="small"
-                    @click="confirmSignOut"
-                  >
-                    <v-icon start size="small">mdi-logout</v-icon>
-                    Sign Out
-                  </v-btn>
+                  <!-- Desktop Layout -->
+                  <template v-else>
+                    <v-avatar size="60" class="mr-3">
+                      <v-img v-if="user.image" :src="user.image" :alt="user.name"></v-img>
+                      <v-icon v-else size="60">mdi-account-circle</v-icon>
+                    </v-avatar>
+                    <div class="flex-grow-1">
+                      <div class="d-flex align-center">
+                        <span class="text-subtitle-1 font-weight-medium">{{ user.name || 'Not set' }}</span>
+                        <v-chip v-if="user.isAdmin" color="amber" size="small" variant="flat" class="ml-3">
+                          <v-icon start size="small">mdi-crown</v-icon>
+                          Admin
+                        </v-chip>
+                        <v-chip v-if="user?.team" color="primary" size="small" variant="flat" class="ml-2">
+                          <v-icon start size="small">mdi-account-group</v-icon>
+                          {{ user.team.name }}
+                        </v-chip>
+                      </div>
+                      <div class="text-body-2 text-grey">{{ user.email || 'Not set' }}</div>
+                      <div class="text-caption text-grey">ID: {{ user.id }}</div>
+                    </div>
+                    <v-btn
+                      color="error"
+                      variant="outlined"
+                      size="small"
+                      @click="confirmSignOut"
+                    >
+                      <v-icon start size="small">mdi-logout</v-icon>
+                      Sign Out
+                    </v-btn>
+                  </template>
                 </v-col>
               </v-row>
               <v-row v-else no-gutters>
@@ -68,16 +114,16 @@
       </v-row>
 
       <!-- Subscription Tiers Section -->
-      <v-row class="mt-6">
-        <v-col cols="12">
-          <h2 class="text-h5 font-weight-bold mb-2">Choose your plan</h2>
-          <p class="text-body-1 text-grey mb-4">Get instant access to powerful automation tools</p>
+      <v-row :class="$vuetify.display.smAndDown ? 'mt-3' : 'mt-6'">
+        <v-col cols="12" :class="$vuetify.display.smAndDown ? 'px-3' : ''">
+          <h2 :class="$vuetify.display.smAndDown ? 'text-h6 font-weight-bold mb-2' : 'text-h5 font-weight-bold mb-2'">Choose your plan</h2>
+          <p :class="$vuetify.display.smAndDown ? 'text-body-2 text-grey mb-3' : 'text-body-1 text-grey mb-4'">Get instant access to powerful automation tools</p>
         </v-col>
       </v-row>
 
       <v-row v-if="subscriptions">
         <!-- Dashboard Tier -->
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="4" :class="$vuetify.display.smAndDown ? 'px-3 pb-3' : ''">
           <v-card 
             class="tier-card h-100"
             :class="{ 'active-tier': subscriptions.dashboard?.isActive }"
@@ -91,11 +137,11 @@
               <p class="text-caption text-white-darken-1 mb-0">Analytics & management tools</p>
             </div>
             
-            <v-card-text class="pa-4">
+            <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
               <!-- Pricing -->
               <div class="text-center mb-4">
                 <div class="d-flex align-center justify-center mb-1">
-                  <span class="text-h4 font-weight-bold">$500</span>
+                  <span :class="$vuetify.display.smAndDown ? 'text-h5 font-weight-bold' : 'text-h4 font-weight-bold'">$500</span>
                   <span class="text-body-2 ml-1">/month</span>
                 </div>
                 <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
@@ -107,7 +153,7 @@
               <div class="mb-4">
                 <div class="feature-item" v-for="feature in dashboardFeatures" :key="feature">
                   <v-icon size="16" color="success" class="mr-2">mdi-check-circle</v-icon>
-                  <span class="text-caption">{{ feature }}</span>
+                  <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">{{ feature }}</span>
                 </div>
               </div>
 
@@ -165,7 +211,7 @@
         </v-col>
 
         <!-- Comment Bot Tier -->
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="4" :class="$vuetify.display.smAndDown ? 'px-3 pb-3' : ''">
           <v-card 
             class="tier-card h-100"
             :class="{ 'active-tier': subscriptions.comment_bot?.isActive }"
@@ -179,11 +225,11 @@
               <p class="text-caption text-white-darken-1 mb-0">Automated social media engagement</p>
             </div>
             
-            <v-card-text class="pa-4">
+            <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
               <!-- Pricing -->
               <div class="text-center mb-4">
                 <div class="d-flex align-center justify-center mb-1">
-                  <span class="text-h4 font-weight-bold">$20</span>
+                  <span :class="$vuetify.display.smAndDown ? 'text-h5 font-weight-bold' : 'text-h4 font-weight-bold'">$20</span>
                   <span class="text-body-2 ml-1">/month</span>
                 </div>
                 <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
@@ -195,7 +241,7 @@
               <div class="mb-4">
                 <div class="feature-item" v-for="feature in commentBotFeatures" :key="feature">
                   <v-icon size="16" color="success" class="mr-2">mdi-check-circle</v-icon>
-                  <span class="text-caption">{{ feature }}</span>
+                  <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">{{ feature }}</span>
                 </div>
               </div>
 
@@ -253,7 +299,7 @@
         </v-col>
 
         <!-- BC Gen Tier -->
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="4" :class="$vuetify.display.smAndDown ? 'px-3 pb-3' : ''">
           <v-card 
             class="tier-card h-100"
             :class="{ 'active-tier': subscriptions.bc_gen?.isActive }"
@@ -267,11 +313,11 @@
               <p class="text-caption text-white-darken-1 mb-0">Premium account marketplace</p>
             </div>
             
-            <v-card-text class="pa-4">
+            <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
               <!-- Pricing -->
               <div class="text-center mb-4">
                 <div class="d-flex align-center justify-center mb-1">
-                  <span class="text-h4 font-weight-bold">$20</span>
+                  <span :class="$vuetify.display.smAndDown ? 'text-h5 font-weight-bold' : 'text-h4 font-weight-bold'">$20</span>
                   <span class="text-body-2 ml-1">/month</span>
                 </div>
                 <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
@@ -283,7 +329,7 @@
               <div class="mb-4">
                 <div class="feature-item" v-for="feature in bcGenFeatures" :key="feature">
                   <v-icon size="16" color="success" class="mr-2">mdi-check-circle</v-icon>
-                  <span class="text-caption">{{ feature }}</span>
+                  <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">{{ feature }}</span>
                 </div>
               </div>
 
@@ -344,19 +390,24 @@
     </v-container>
 
     <!-- Sign Out Confirmation Dialog -->
-    <v-dialog v-model="signOutDialog" max-width="400">
+    <v-dialog 
+      v-model="signOutDialog" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '400px'"
+      :fullscreen="$vuetify.display.smAndDown"
+    >
       <v-card>
-        <v-card-title class="text-h5">
+        <v-card-title :class="$vuetify.display.smAndDown ? 'text-h6 pa-4' : 'text-h5'">
           Confirm Sign Out
         </v-card-title>
-        <v-card-text>
+        <v-card-text :class="$vuetify.display.smAndDown ? 'pa-4' : ''">
           Are you sure you want to sign out of your account?
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions :class="$vuetify.display.smAndDown ? 'pa-4' : ''">
           <v-spacer></v-spacer>
           <v-btn
             variant="text"
             @click="signOutDialog = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
           >
             Cancel
           </v-btn>
@@ -364,6 +415,7 @@
             color="error"
             variant="text"
             @click="handleSignOut"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
           >
             Sign Out
           </v-btn>
@@ -557,7 +609,69 @@ onMounted(async () => {
 /* Responsive adjustments */
 @media (max-width: 959px) {
   .tier-header {
-    padding: 24px 16px;
+    padding: 20px 16px;
+  }
+  
+  .tier-card {
+    margin-bottom: 16px;
+  }
+  
+  .tier-card .v-card-text {
+    padding: 16px !important;
+  }
+  
+  .feature-item {
+    margin-bottom: 6px;
+  }
+  
+  .feature-item .v-icon {
+    font-size: 14px !important;
+  }
+  
+  .feature-item span {
+    font-size: 0.75rem !important;
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 600px) {
+  .tier-card {
+    border-radius: 12px !important;
+    margin-bottom: 12px;
+  }
+  
+  .tier-header {
+    padding: 16px 12px;
+  }
+  
+  .tier-header h3 {
+    font-size: 1.1rem !important;
+  }
+  
+  .tier-header p {
+    font-size: 0.75rem !important;
+  }
+  
+  .tier-card .v-card-text {
+    padding: 12px !important;
+  }
+  
+  .v-chip {
+    height: auto !important;
+    padding: 4px 8px !important;
+  }
+  
+  .v-chip .v-chip__content {
+    font-size: 0.75rem !important;
+  }
+  
+  .v-btn {
+    height: auto !important;
+    padding: 8px 16px !important;
+  }
+  
+  .v-btn .v-btn__content {
+    font-size: 0.875rem !important;
   }
 }
 </style>

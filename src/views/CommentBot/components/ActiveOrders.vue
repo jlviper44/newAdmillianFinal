@@ -69,20 +69,120 @@ const formatDate = (dateString) => {
 </script>
 
 <template>
-  <v-card>
-    <v-card-title>
-      <v-icon class="me-2">mdi-format-list-checks</v-icon>
-      Active Orders
-    </v-card-title>
+  <div>
+    <!-- Empty State -->
+    <div v-if="!hasActiveOrders" class="text-center py-8">
+      <v-icon size="x-large" color="grey-lighten-1" class="mb-2">mdi-emoticon-neutral-outline</v-icon>
+      <div class="text-body-1 text-medium-emphasis">No active orders</div>
+      <div class="text-caption text-medium-emphasis">Create an order to start the bot</div>
+    </div>
     
-    <v-card-text>
-      <div v-if="!hasActiveOrders" class="text-center py-4">
-        <v-icon size="large" color="grey-lighten-1" class="mb-2">mdi-emoticon-neutral-outline</v-icon>
-        <div class="text-body-1 text-medium-emphasis">No active orders</div>
-        <div class="text-caption text-medium-emphasis">Create an order to start the bot</div>
+    <!-- Mobile Card Layout -->
+    <div v-else-if="$vuetify.display.smAndDown" class="mobile-orders">
+      <v-card 
+        v-for="order in paginatedOrders" 
+        :key="order.order_id"
+        class="mb-3 order-card"
+        variant="outlined"
+      >
+        <v-card-text class="pb-2">
+          <!-- Order Header -->
+          <div class="d-flex justify-space-between align-center mb-2">
+            <div class="d-flex align-center">
+              <v-chip
+                size="small"
+                :color="
+                  order.status === 'completed' ? 'success' :
+                  order.status === 'processing' ? 'info' :
+                  order.status === 'failed' ? 'error' : 'warning'
+                "
+                class="mr-2"
+              >
+                {{ order.status }}
+              </v-chip>
+              <span class="text-caption text-medium-emphasis">
+                {{ formatDate(order.created_at) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Order Details -->
+          <div class="order-details">
+            <div class="detail-row">
+              <span class="text-caption text-medium-emphasis">Order ID:</span>
+              <span class="text-caption font-weight-medium">{{ order.order_id.slice(0, 8) }}...</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="text-caption text-medium-emphasis">Post ID:</span>
+              <span class="text-caption font-weight-medium">{{ order.post_id }}</span>
+            </div>
+
+            <div v-if="showCreator && order.creator" class="detail-row">
+              <span class="text-caption text-medium-emphasis">Created by:</span>
+              <span class="text-caption font-weight-medium">{{ order.creator.name }}</span>
+            </div>
+          </div>
+
+          <!-- Progress -->
+          <div class="mt-3">
+            <div class="d-flex justify-space-between align-center mb-1">
+              <span class="text-caption">Progress</span>
+              <span class="text-caption font-weight-medium">
+                {{ orderProgress[order.order_id]?.overall || 0 }}%
+              </span>
+            </div>
+            <v-progress-linear
+              :model-value="orderProgress[order.order_id]?.overall || 0"
+              :color="
+                order.status === 'completed' ? 'success' :
+                order.status === 'processing' ? 'info' :
+                order.status === 'failed' ? 'error' : 'warning'
+              "
+              height="6"
+              rounded
+            ></v-progress-linear>
+            
+            <!-- Progress Details -->
+            <div v-if="orderProgress[order.order_id]" class="mt-2 text-caption">
+              <div v-if="orderProgress[order.order_id].comment" class="d-flex justify-space-between">
+                <span>Comments:</span>
+                <span>{{ orderProgress[order.order_id].comment.completed }}/{{ orderProgress[order.order_id].comment.total }}</span>
+              </div>
+              <div v-if="order.like_count > 0" class="d-flex justify-space-between">
+                <span>Likes:</span>
+                <span>{{ order.like_count }}</span>
+              </div>
+              <div v-if="order.save_count > 0" class="d-flex justify-space-between">
+                <span>Saves:</span>
+                <span>{{ order.save_count }}</span>
+              </div>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+
+      <!-- Mobile Pagination -->
+      <div v-if="totalPages > 1" class="text-center mt-4">
+        <v-pagination
+          v-model="page"
+          :length="totalPages"
+          :total-visible="5"
+          size="small"
+          density="comfortable"
+        ></v-pagination>
       </div>
+    </div>
+    
+    <!-- Desktop Table Layout -->
+    <v-card v-else>
+      <v-card-title>
+        <v-icon class="me-2">mdi-format-list-checks</v-icon>
+        Active Orders
+      </v-card-title>
       
-      <v-table v-else>
+      <v-card-text>
+        <v-table>
         <thead>
           <tr>
             <th>Order ID</th>
@@ -172,5 +272,44 @@ const formatDate = (dateString) => {
         ></v-pagination>
       </div>
     </v-card-text>
-  </v-card>
+    </v-card>
+  </div>
 </template>
+
+<style scoped>
+.mobile-orders {
+  max-width: 100%;
+}
+
+.order-card {
+  transition: all 0.2s ease;
+  border-radius: 12px !important;
+}
+
+.order-card:active {
+  transform: scale(0.98);
+}
+
+.order-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+@media (max-width: 600px) {
+  .order-card {
+    margin-bottom: 8px !important;
+  }
+  
+  .v-card__text {
+    padding: 12px !important;
+  }
+}
+</style>

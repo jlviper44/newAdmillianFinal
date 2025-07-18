@@ -244,21 +244,25 @@ const isFormValid = computed(() => {
 </script>
 
 <template>
-  <v-card>
-    <v-card-title class="d-flex align-center">
-      <div>
-        <v-icon class="me-2">mdi-comment-edit</v-icon>
-        Edit Comment Group
+  <v-card :class="{ 'mobile-dialog-card': $vuetify.display.smAndDown }">
+    <v-card-title class="d-flex align-center" :class="{ 'pa-3': $vuetify.display.smAndDown }">
+      <div class="d-flex align-center">
+        <v-icon class="me-2" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-comment-edit</v-icon>
+        <span :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">Edit Comment Group</span>
       </div>
       <v-spacer></v-spacer>
-      <v-btn icon @click="closeDialog">
+      <v-btn 
+        :icon="true" 
+        @click="closeDialog"
+        :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+      >
         <v-icon>mdi-close</v-icon>
       </v-btn>
     </v-card-title>
     
     <v-divider></v-divider>
     
-    <v-card-text class="pa-4">
+    <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
       <v-form @submit.prevent="updateCommentGroup">
         <!-- Error Alert -->
         <v-alert
@@ -284,7 +288,7 @@ const isFormValid = computed(() => {
         
         <!-- Basic Info -->
         <v-row class="mb-2">
-          <v-col cols="12" md="6">
+          <v-col cols="12" :md="$vuetify.display.smAndDown ? '12' : '6'">
             <v-text-field
               v-model="editedGroup.name"
               label="Group Name"
@@ -292,17 +296,19 @@ const isFormValid = computed(() => {
               variant="outlined"
               :disabled="loading"
               required
+              :density="$vuetify.display.smAndDown ? 'compact' : 'default'"
               :rules="[v => !!v || 'Name is required']"
             ></v-text-field>
           </v-col>
           
-          <v-col cols="12" md="6">
+          <v-col cols="12" :md="$vuetify.display.smAndDown ? '12' : '6'">
             <v-text-field
               v-model="editedGroup.description"
               label="Description (Optional)"
               placeholder="Enter a description for this comment group"
               variant="outlined"
               :disabled="loading"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'default'"
             ></v-text-field>
           </v-col>
         </v-row>
@@ -310,44 +316,47 @@ const isFormValid = computed(() => {
         <v-divider class="my-4"></v-divider>
         
         <!-- Conversation Templates -->
-        <div class="d-flex align-center mb-4">
-          <div class="text-h6">Conversation Templates</div>
-          <v-spacer></v-spacer>
-          <v-btn
-            color="secondary"
-            size="small"
-            prepend-icon="mdi-file-download"
-            class="me-2"
-            @click="downloadJsonTemplate"
-          >
-            Download Template
-          </v-btn>
-          <v-btn
-            color="info"
-            size="small"
-            prepend-icon="mdi-file-upload"
-            class="me-2"
-            :disabled="loading"
-            @click="$refs.fileInput.click()"
-          >
-            Import JSON
-          </v-btn>
-          <input
-            ref="fileInput"
-            type="file"
-            accept=".json"
-            style="display: none"
-            @change="handleJsonImport"
-          />
-          <v-btn
-            color="primary"
-            size="small"
-            prepend-icon="mdi-plus"
-            :disabled="loading"
-            @click="addConversationTemplate"
-          >
-            Add Template
-          </v-btn>
+        <div :class="$vuetify.display.smAndDown ? 'mb-4' : 'd-flex align-center mb-4'">
+          <div :class="$vuetify.display.smAndDown ? 'text-subtitle-1 mb-3' : 'text-h6'">Conversation Templates</div>
+          <v-spacer v-if="!$vuetify.display.smAndDown"></v-spacer>
+          <div :class="$vuetify.display.smAndDown ? 'd-flex flex-column gap-3' : 'd-flex gap-1'">
+            <v-btn
+              color="secondary"
+              :size="$vuetify.display.smAndDown ? 'small' : 'small'"
+              prepend-icon="mdi-file-download"
+              @click="downloadJsonTemplate"
+              :block="$vuetify.display.smAndDown"
+            >
+              Download Template
+            </v-btn>
+            <v-btn
+              color="info"
+              :size="$vuetify.display.smAndDown ? 'small' : 'small'"
+              prepend-icon="mdi-file-upload"
+              :disabled="loading"
+              @click="$refs.fileInput.click()"
+              :block="$vuetify.display.smAndDown"
+            >
+              Import JSON
+            </v-btn>
+            <input
+              ref="fileInput"
+              type="file"
+              accept=".json"
+              style="display: none"
+              @change="handleJsonImport"
+            />
+            <v-btn
+              color="primary"
+              :size="$vuetify.display.smAndDown ? 'small' : 'small'"
+              prepend-icon="mdi-plus"
+              :disabled="loading"
+              @click="addConversationTemplate"
+              :block="$vuetify.display.smAndDown"
+            >
+              Add Template
+            </v-btn>
+          </div>
         </div>
         
         <v-expansion-panels variant="accordion" class="mb-4">
@@ -431,10 +440,11 @@ const isFormValid = computed(() => {
                       label="Message Text"
                       placeholder="Enter the message content"
                       variant="outlined"
-                      rows="2"
+                      :rows="$vuetify.display.smAndDown ? '1' : '2'"
                       auto-grow
                       :disabled="loading"
                       hide-details
+                      :density="$vuetify.display.smAndDown ? 'compact' : 'default'"
                       :rules="[v => !!v && v.trim().length > 0 || 'Message text must contain at least 1 character']"
                     ></v-textarea>
                   </v-card-text>
@@ -458,22 +468,26 @@ const isFormValid = computed(() => {
         </v-expansion-panels>
         
         <!-- Actions -->
-        <div class="d-flex justify-space-between mt-4">
+        <div :class="$vuetify.display.smAndDown ? 'd-flex flex-column gap-3 mt-4' : 'd-flex justify-space-between mt-4'">
           <v-btn
             color="error"
             variant="outlined"
             @click="deleteCommentGroup"
             :loading="deleteLoading"
             :disabled="loading"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+            :block="$vuetify.display.smAndDown"
           >
             <v-icon start>mdi-delete</v-icon>
             Delete Group
           </v-btn>
-          <div class="d-flex gap-2">
+          <div :class="$vuetify.display.smAndDown ? 'd-flex gap-2' : 'd-flex gap-2'">
             <v-btn
               variant="text"
               @click="closeDialog"
               :disabled="loading || deleteLoading"
+              :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+              :class="$vuetify.display.smAndDown ? 'flex-grow-1' : ''"
             >
               Cancel
             </v-btn>
@@ -483,6 +497,8 @@ const isFormValid = computed(() => {
               type="submit"
               :loading="loading"
               :disabled="!editedGroup.name || editedGroup.legends.length === 0 || deleteLoading || !isFormValid"
+              :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+              :class="$vuetify.display.smAndDown ? 'flex-grow-1' : ''"
             >
               Save Changes
             </v-btn>
@@ -495,7 +511,7 @@ const isFormValid = computed(() => {
   <!-- Alert Dialog -->
   <v-dialog
     v-model="alertDialog.show"
-    max-width="500"
+    :max-width="$vuetify.display.smAndDown ? '90%' : '500'"
   >
     <v-card>
       <v-card-title class="d-flex align-center">
@@ -528,7 +544,7 @@ const isFormValid = computed(() => {
   <!-- Confirm Dialog -->
   <v-dialog
     v-model="confirmDialog.show"
-    max-width="500"
+    :max-width="$vuetify.display.smAndDown ? '90%' : '500'"
     persistent
   >
     <v-card>
@@ -558,3 +574,66 @@ const isFormValid = computed(() => {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+/* Mobile dialog styles */
+.mobile-dialog-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* Button spacing on mobile */
+@media (max-width: 600px) {
+  .gap-3 {
+    gap: 16px !important;
+  }
+  
+  .gap-3 > .v-btn {
+    margin: 0 !important;
+  }
+}
+
+/* Ensure scrollable content on mobile */
+@media (max-width: 600px) {
+  .v-card-text {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Compact spacing for mobile */
+  .v-expansion-panel-text {
+    padding: 8px !important;
+  }
+  
+  .v-card.v-card--variant-outlined {
+    margin-bottom: 8px !important;
+  }
+  
+  /* Fix button overflow */
+  .v-btn {
+    min-width: auto !important;
+  }
+  
+  /* Reduce dialog padding */
+  .v-dialog > .v-overlay__content {
+    padding: 0 !important;
+  }
+  
+  /* Ensure action buttons stay visible */
+  .v-card-actions {
+    position: sticky;
+    bottom: 0;
+    background: inherit;
+    z-index: 1;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  
+  .v-theme--dark .v-card-actions {
+    border-top-color: rgba(255, 255, 255, 0.12);
+  }
+}
+</style>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { commentBotApi, usersApi } from '@/services/api';
 import AuthGuard from '@/components/AuthGuard.vue';
@@ -60,6 +60,17 @@ const showCreateGroupDialog = ref(false);
 const showEditGroupDialog = ref(false);
 const showGroupDetailDialog = ref(false);
 const currentTab = ref('orders');
+
+// Tab titles mapping
+const tabTitles = {
+  orders: 'Orders',
+  credits: 'Credits'
+};
+
+// Computed property for current tab title
+const currentTabTitle = computed(() => {
+  return tabTitles[currentTab.value] || 'Automated TikTok comments';
+});
 
 // Get route
 const route = useRoute();
@@ -397,8 +408,19 @@ onUnmounted(() => {
 
 <template>
   <AuthGuard>
-    <v-container fluid>
-      <v-row>
+    <v-container fluid :class="{ 'pa-2': $vuetify.display.smAndDown }">
+      <!-- Mobile Header -->
+      <v-row v-if="$vuetify.display.smAndDown">
+        <v-col cols="12" class="pb-2">
+          <div class="text-center">
+            <h2 class="text-h6 font-weight-bold">Comment Bot</h2>
+            <p class="text-caption text-grey-darken-1">{{ currentTabTitle }}</p>
+          </div>
+        </v-col>
+      </v-row>
+
+      <!-- Desktop Header -->
+      <v-row v-else>
         <v-col cols="12">
           <div class="d-flex justify-space-between align-center mb-6">
             <div>
@@ -406,7 +428,7 @@ onUnmounted(() => {
                 <v-icon icon="mdi-comment-multiple" size="x-large" class="mr-2"></v-icon>
                 Comment Bot
               </h1>
-              <p class="text-subtitle-1 text-grey-darken-1 mt-1">Automated comment posting system for TikTok videos</p>
+              <p class="text-subtitle-1 text-grey-darken-1 mt-1">{{ currentTabTitle }}</p>
             </div>
           </div>
         </v-col>
@@ -430,46 +452,38 @@ onUnmounted(() => {
                   </div>
 
                   <!-- Comment Groups Section -->
-                  <v-card class="mb-6 elevation-1 rounded-lg">
-                    <v-card-title class="d-flex align-center pb-2">
-                      <v-icon icon="mdi-comment-text-multiple" color="primary" class="mr-2"></v-icon>
-                      <span class="text-h6">Comment Groups</span>
-                    </v-card-title>
-                    
-                    <v-divider></v-divider>
-                    
-                    <v-card-text class="pa-4">
-                      <CommentGroups 
-                        :comment-groups="commentGroups"
-                        :loading="loading.commentGroups"
-                        :error="error.commentGroups"
-                        :has-edit-permission="true"
-                        @refresh="fetchCommentGroups"
-                        @create-group="openCreateGroupDialog"
-                        @view-details="fetchCommentGroupDetail"
-                        @edit-group="openEditGroupDialog"
-                      />
-                    </v-card-text>
-                  </v-card>
+                  <div class="mb-4">
+                    <CommentGroups 
+                      :comment-groups="commentGroups"
+                      :loading="loading.commentGroups"
+                      :error="error.commentGroups"
+                      :has-edit-permission="true"
+                      @refresh="fetchCommentGroups"
+                      @create-group="openCreateGroupDialog"
+                      @view-details="fetchCommentGroupDetail"
+                      @edit-group="openEditGroupDialog"
+                    />
+                  </div>
 
                   <!-- Create Order Section -->
                   <v-card class="mb-6 elevation-1 rounded-lg">
-                    <v-card-title class="d-flex align-center justify-space-between pb-2">
+                    <v-card-title class="d-flex align-center justify-space-between pb-2" :class="{ 'flex-wrap': $vuetify.display.smAndDown }">
                       <div class="d-flex align-center">
-                        <v-icon icon="mdi-plus-box" color="primary" class="mr-2"></v-icon>
-                        <span class="text-h6">Create Order</span>
+                        <v-icon icon="mdi-plus-box" color="primary" :size="$vuetify.display.smAndDown ? 'small' : 'default'" class="mr-2"></v-icon>
+                        <span :class="$vuetify.display.smAndDown ? 'text-body-1' : 'text-h6'">Create Order</span>
                       </div>
                       <v-chip 
                         color="primary" 
                         variant="elevated"
-                        size="large"
+                        :size="$vuetify.display.smAndDown ? 'small' : 'large'"
                         @click="fetchCredits"
+                        :class="{ 'mt-2': $vuetify.display.smAndDown }"
                       >
-                        <v-icon start>mdi-wallet</v-icon>
-                        <span class="font-weight-bold">{{ remainingCredits.toLocaleString() }} credits</span>
+                        <v-icon start size="small">mdi-wallet</v-icon>
+                        <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'font-weight-bold'">{{ remainingCredits.toLocaleString() }} credits</span>
                         <v-icon 
                           end 
-                          size="small"
+                          size="x-small"
                           :class="{ 'mdi-spin': loading.credits }"
                         >
                           mdi-refresh
@@ -523,7 +537,13 @@ onUnmounted(() => {
       </v-row>
 
     <!-- Create Comment Group Dialog -->
-    <v-dialog v-model="showCreateGroupDialog" max-width="800" persistent>
+    <v-dialog 
+      v-model="showCreateGroupDialog" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '800'" 
+      :fullscreen="$vuetify.display.smAndDown"
+      persistent
+      :transition="$vuetify.display.smAndDown ? 'dialog-bottom-transition' : 'dialog-transition'"
+    >
       <CreateCommentGroup 
         :loading="loading.createCommentGroup"
         :error="error.createCommentGroup"
@@ -534,7 +554,13 @@ onUnmounted(() => {
     </v-dialog>
 
     <!-- Edit Comment Group Dialog -->
-    <v-dialog v-model="showEditGroupDialog" max-width="800" persistent>
+    <v-dialog 
+      v-model="showEditGroupDialog" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '800'" 
+      :fullscreen="$vuetify.display.smAndDown"
+      persistent
+      :transition="$vuetify.display.smAndDown ? 'dialog-bottom-transition' : 'dialog-transition'"
+    >
       <EditCommentGroup 
         v-if="editingCommentGroup"
         :comment-group="editingCommentGroup"
@@ -549,7 +575,12 @@ onUnmounted(() => {
     </v-dialog>
 
     <!-- Comment Group Detail Dialog -->
-    <v-dialog v-model="showGroupDetailDialog" max-width="800">
+    <v-dialog 
+      v-model="showGroupDetailDialog" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '800'" 
+      :fullscreen="$vuetify.display.smAndDown"
+      :transition="$vuetify.display.smAndDown ? 'dialog-bottom-transition' : 'dialog-transition'"
+    >
       <v-card v-if="loading.commentGroupDetail">
         <v-card-text class="text-center pa-6">
           <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
@@ -577,6 +608,44 @@ onUnmounted(() => {
     </v-container>
   </AuthGuard>
 </template>
+
+<style scoped>
+/* Mobile optimizations */
+@media (max-width: 600px) {
+  .v-card {
+    margin-bottom: 12px !important;
+  }
+  
+  .v-card-title {
+    padding: 12px !important;
+    font-size: 1rem !important;
+  }
+  
+  .v-card-text {
+    padding: 12px !important;
+  }
+  
+  .text-h6 {
+    font-size: 1rem !important;
+  }
+  
+  .v-chip {
+    height: auto !important;
+    padding: 4px 8px !important;
+  }
+}
+
+/* Tab Content */
+.v-tab-content {
+  min-height: 400px;
+}
+
+@media (max-width: 768px) {
+  .v-tab-content {
+    min-height: 300px;
+  }
+}
+</style>
 
 <style scoped>
 @keyframes spin {

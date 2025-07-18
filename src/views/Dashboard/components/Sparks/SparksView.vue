@@ -1,19 +1,16 @@
 <template>
-  <v-container fluid class="sparks-container pa-4">
+  <v-container fluid :class="['sparks-container', $vuetify.display.smAndDown ? 'pa-2' : 'pa-4']">
     <v-row>
       <v-col cols="12">
-        <div class="d-flex justify-space-between align-center mb-6">
-          <div>
-            <h2 class="text-h5 font-weight-bold">Sparks Management</h2>
-            <p class="text-subtitle-2 text-grey-darken-1">Manage your TikTok Spark Ads content</p>
-          </div>
+        <div class="d-flex justify-end mb-3">
           <v-btn 
             color="primary" 
             @click="openCreateModal"
             class="elevation-0"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
           >
-            <v-icon class="mr-2">mdi-plus</v-icon>
-            Create Spark
+            <v-icon :class="$vuetify.display.smAndDown ? '' : 'mr-2'">mdi-plus</v-icon>
+            <span :class="{ 'd-none': $vuetify.display.xs }">Create Spark</span>
           </v-btn>
         </div>
       </v-col>
@@ -21,8 +18,8 @@
     
     <!-- Search and Filters -->
     <v-card class="mb-4">
-      <v-card-text>
-        <v-row align="center">
+      <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
+        <v-row align="center" :dense="$vuetify.display.smAndDown">
           <v-col cols="12" md="6">
             <v-text-field
               v-model="searchQuery"
@@ -31,9 +28,10 @@
               hide-details
               @keyup.enter="searchSparks"
               placeholder="Search by name or code..."
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-text-field>
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" sm="6" md="3">
             <v-select
               v-model="statusFilter"
               label="Status"
@@ -44,10 +42,17 @@
               ]"
               hide-details
               @update:model-value="searchSparks"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-select>
           </v-col>
-          <v-col cols="12" md="3">
-            <v-btn color="primary" @click="searchSparks" class="ml-2">
+          <v-col cols="12" sm="6" md="3">
+            <v-btn 
+              color="primary" 
+              @click="searchSparks" 
+              :class="$vuetify.display.smAndDown ? '' : 'ml-2'"
+              :block="$vuetify.display.smAndDown"
+              :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+            >
               Search
             </v-btn>
           </v-col>
@@ -73,36 +78,40 @@
       <v-col v-for="spark in sparks" :key="spark.id" cols="12" sm="6" md="6" lg="4">
         <v-card :class="{ 'border-error': spark.status === 'disabled' }" class="spark-card">
           <div class="position-relative">
-            <v-img :src="spark.thumbnail" height="200" cover>
+            <v-img 
+              :src="spark.thumbnail" 
+              :height="$vuetify.display.smAndDown ? 150 : 200" 
+              cover
+            >
               <div class="status-badge" v-if="spark.status === 'disabled'">
-                <v-chip color="error" size="small">DISABLED</v-chip>
+                <v-chip color="error" :size="$vuetify.display.smAndDown ? 'x-small' : 'small'">DISABLED</v-chip>
               </div>
             </v-img>
           </div>
           
-          <v-card-title>{{ spark.name }}</v-card-title>
+          <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">{{ spark.name }}</v-card-title>
           
-          <v-card-text>
-            <p><strong>Code:</strong> {{ spark.spark_code }}</p>
-            <p><strong>Offer:</strong> {{ spark.offer_name }}</p>
+          <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
+            <p :class="$vuetify.display.smAndDown ? 'text-body-2' : ''"><strong>Code:</strong> {{ spark.spark_code }}</p>
+            <p :class="$vuetify.display.smAndDown ? 'text-body-2' : ''"><strong>Offer:</strong> {{ spark.offer_name }}</p>
             <p class="text-caption text-grey mt-2">
               Created {{ new Date(spark.created_at).toLocaleDateString() }}
             </p>
           </v-card-text>
           
-          <v-card-actions>
+          <v-card-actions :class="$vuetify.display.smAndDown ? 'pa-2' : ''">
             <v-spacer></v-spacer>
             <v-tooltip text="Edit Spark" location="top">
               <template v-slot:activator="{ props }">
                 <v-btn 
                   icon 
                   variant="text" 
-                  size="small" 
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
                   color="primary" 
                   @click="openEditModal(spark)" 
                   v-bind="props"
                 >
-                  <v-icon>mdi-pencil</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-pencil</v-icon>
                 </v-btn>
               </template>
             </v-tooltip>
@@ -112,12 +121,12 @@
                 <v-btn 
                   icon 
                   variant="text" 
-                  size="small" 
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
                   color="success" 
                   @click="openStatsModal(spark.id)" 
                   v-bind="props"
                 >
-                  <v-icon>mdi-chart-bar</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-chart-bar</v-icon>
                 </v-btn>
               </template>
             </v-tooltip>
@@ -127,12 +136,12 @@
                 <v-btn 
                   icon 
                   variant="text" 
-                  size="small" 
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   color="error" 
                   @click="openDeleteModal(spark.id)" 
                   v-bind="props"
                 >
-                  <v-icon>mdi-delete</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-delete</v-icon>
                 </v-btn>
               </template>
             </v-tooltip>
@@ -146,23 +155,23 @@
                   v-if="spark.status === 'active'" 
                   icon 
                   variant="text" 
-                  size="small" 
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   color="warning" 
                   @click="toggleSparkStatus(spark.id, 'disabled')" 
                   v-bind="props"
                 >
-                  <v-icon>mdi-close-circle</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-close-circle</v-icon>
                 </v-btn>
                 <v-btn 
                   v-else 
                   icon 
                   variant="text" 
-                  size="small" 
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   color="success" 
                   @click="toggleSparkStatus(spark.id, 'active')" 
                   v-bind="props"
                 >
-                  <v-icon>mdi-check-circle</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-check-circle</v-icon>
                 </v-btn>
               </template>
             </v-tooltip>
@@ -185,23 +194,33 @@
     </div>
     
     <!-- Create/Edit Spark Modal -->
-    <v-dialog v-model="showCreateModal" max-width="600px">
+    <v-dialog 
+      v-model="showCreateModal" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '600px'"
+      :fullscreen="$vuetify.display.smAndDown"
+    >
       <v-card>
-        <v-card-title>
+        <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : ''">
           {{ editingSpark ? 'Edit Spark' : 'Create Spark' }}
           <v-spacer></v-spacer>
-          <v-btn icon variant="text" @click="showCreateModal = false">
+          <v-btn 
+            icon 
+            variant="text" 
+            @click="showCreateModal = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
         
-        <v-card-text>
+        <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
           <v-form @submit.prevent="saveSpark">
             <v-text-field
               v-model="sparkForm.name"
               label="Spark Name"
               required
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-text-field>
             
             <v-text-field
@@ -212,6 +231,7 @@
               class="mb-4"
               @input="handleTikTokLinkChange"
               hint="Enter a valid TikTok video URL to automatically extract thumbnail"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-text-field>
             
             <v-text-field
@@ -219,6 +239,7 @@
               label="Spark Code"
               required
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-text-field>
             
             <v-select
@@ -229,6 +250,7 @@
               item-value="id"
               required
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-select>
             
             <!-- Thumbnail Preview -->
@@ -255,13 +277,20 @@
           </v-form>
         </v-card-text>
         
-        <v-card-actions>
+        <v-card-actions :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showCreateModal = false">Cancel</v-btn>
+          <v-btn 
+            variant="text" 
+            @click="showCreateModal = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
+            Cancel
+          </v-btn>
           <v-btn 
             color="primary" 
             @click="saveSpark" 
             :loading="isProcessingThumbnail"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
           >
             Save
           </v-btn>
@@ -270,15 +299,24 @@
     </v-dialog>
     
     <!-- Stats Modal -->
-    <v-dialog v-model="showStatsModal" max-width="900px">
+    <v-dialog 
+      v-model="showStatsModal" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '900px'"
+      :fullscreen="$vuetify.display.smAndDown"
+    >
       <v-card>
-        <v-card-title>
-          <span v-if="currentStats && currentStats.spark && !currentStats.error">
+        <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : ''">
+          <span v-if="currentStats && currentStats.spark && !currentStats.error" :class="$vuetify.display.smAndDown ? 'text-body-2' : ''">
             Spark Stats: {{ currentStats.spark.name || '' }}
           </span>
-          <span v-else>Spark Statistics</span>
+          <span v-else :class="$vuetify.display.smAndDown ? 'text-body-2' : ''">Spark Statistics</span>
           <v-spacer></v-spacer>
-          <v-btn icon variant="text" @click="showStatsModal = false">
+          <v-btn 
+            icon 
+            variant="text" 
+            @click="showStatsModal = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
@@ -406,18 +444,29 @@
     </v-dialog>
     
     <!-- Delete Confirmation Modal -->
-    <v-dialog v-model="showDeleteModal" max-width="500px">
+    <v-dialog 
+      v-model="showDeleteModal" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '500px'"
+      :fullscreen="$vuetify.display.smAndDown"
+    >
       <v-card>
-        <v-card-title>Delete Spark</v-card-title>
-        <v-card-text>
+        <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : ''">Delete Spark</v-card-title>
+        <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
           Are you sure you want to delete this spark? This action cannot be undone.
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showDeleteModal = false">Cancel</v-btn>
+          <v-btn 
+            variant="text" 
+            @click="showDeleteModal = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
+            Cancel
+          </v-btn>
           <v-btn 
             color="error" 
             @click="deleteSpark"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
           >
             Delete
           </v-btn>
@@ -878,5 +927,53 @@ onMounted(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 600px) {
+  .sparks-container {
+    padding: 8px !important;
+  }
+  
+  .spark-card {
+    margin-bottom: 8px;
+  }
+  
+  .spark-card .v-card-title {
+    font-size: 1rem !important;
+    padding: 12px !important;
+  }
+  
+  .spark-card .v-card-text {
+    padding: 12px !important;
+  }
+  
+  .code-display {
+    max-width: 150px;
+    font-size: 0.75rem;
+  }
+  
+  .status-badge {
+    top: 4px;
+    right: 4px;
+  }
+  
+  /* Stack action buttons on mobile */
+  .spark-card .v-card-actions {
+    flex-wrap: wrap;
+    padding: 8px !important;
+  }
+  
+  .spark-card .v-card-actions .v-btn {
+    margin: 2px !important;
+  }
+}
+
+@media (max-width: 960px) {
+  /* Use single column on tablets */
+  .v-row > .v-col {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
 }
 </style>

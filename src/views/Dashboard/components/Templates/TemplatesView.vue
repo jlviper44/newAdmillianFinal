@@ -2,11 +2,7 @@
   <v-container fluid class="templates-container pa-4">
     <v-row>
       <v-col cols="12">
-        <div class="d-flex justify-space-between align-center mb-6">
-          <div>
-            <h2 class="text-h5 font-weight-bold">Templates Management</h2>
-            <p class="text-subtitle-2 text-grey-darken-1">Manage your HTML templates for campaigns</p>
-          </div>
+        <div class="d-flex justify-end mb-4">
           <v-btn 
             color="primary" 
             @click="openCreateModal"
@@ -232,17 +228,27 @@
     </v-dialog>
     
     <!-- Preview Modal -->
-    <v-dialog v-model="showPreviewModal" max-width="900px">
+    <v-dialog 
+      v-model="showPreviewModal" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '900px'"
+      :fullscreen="$vuetify.display.smAndDown"
+      scrollable
+    >
       <v-card>
-        <v-card-title>
+        <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : ''">
           Template Preview
           <v-spacer></v-spacer>
-          <v-btn icon variant="text" @click="showPreviewModal = false">
+          <v-btn 
+            icon 
+            variant="text" 
+            @click="showPreviewModal = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
         
-        <v-card-text>
+        <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
           <div v-if="previewingTemplate" class="mb-3">
             <div class="text-subtitle-2">{{ previewingTemplate.name }}</div>
             <div class="text-caption text-grey">
@@ -252,7 +258,7 @@
           </div>
           <iframe
             :srcdoc="previewIframeContent"
-            style="width: 100%; height: 500px; border: 1px solid #ccc;"
+            :style="`width: 100%; height: ${$vuetify.display.smAndDown ? 'calc(100vh - 200px)' : '500px'}; border: 1px solid #ccc;`"
           ></iframe>
         </v-card-text>
         

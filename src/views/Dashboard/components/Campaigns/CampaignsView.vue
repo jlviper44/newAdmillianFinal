@@ -2,29 +2,24 @@
   <v-container fluid class="campaigns-container pa-4">
     <v-row>
       <v-col cols="12">
-        <div class="d-flex justify-space-between align-center mb-6">
-          <div>
-            <h2 class="text-h5 font-weight-bold">Campaigns</h2>
-            <p class="text-subtitle-2 text-grey-darken-1">Manage your marketing campaigns</p>
-          </div>
-          <div class="d-flex gap-2">
-            <v-btn 
-              color="primary" 
-              @click="openCreateModal"
-              class="elevation-0"
-            >
-              <v-icon class="mr-2">mdi-plus</v-icon>
-              Create Campaign
-            </v-btn>
-          </div>
+        <div class="d-flex justify-end">
+          <v-btn 
+            color="primary" 
+            @click="openCreateModal"
+            class="elevation-0"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
+            <v-icon :class="$vuetify.display.smAndDown ? '' : 'mr-2'">mdi-plus</v-icon>
+            <span :class="{ 'd-none': $vuetify.display.xs }">Create Campaign</span>
+          </v-btn>
         </div>
       </v-col>
     </v-row>
     
     <!-- Search and Filters -->
     <v-card class="mb-4">
-      <v-card-text>
-        <v-row align="center">
+      <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
+        <v-row align="center" :dense="$vuetify.display.smAndDown">
           <v-col cols="12" md="4">
             <v-text-field
               v-model="searchQuery"
@@ -33,9 +28,10 @@
               hide-details
               @keyup.enter="searchCampaigns"
               placeholder="Search by name or ID..."
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-text-field>
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" sm="6" md="3">
             <v-select
               v-model="statusFilter"
               label="Status"
@@ -48,9 +44,10 @@
               ]"
               hide-details
               @update:model-value="searchCampaigns"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-select>
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" sm="6" md="3">
             <v-select
               v-model="regionFilter"
               label="Region"
@@ -69,10 +66,17 @@
               ]"
               hide-details
               @update:model-value="searchCampaigns"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-select>
           </v-col>
           <v-col cols="12" md="2">
-            <v-btn color="primary" @click="searchCampaigns" class="ml-2">
+            <v-btn 
+              color="primary" 
+              @click="searchCampaigns" 
+              :class="$vuetify.display.smAndDown ? '' : 'ml-2'"
+              :block="$vuetify.display.smAndDown"
+              :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+            >
               Search
             </v-btn>
           </v-col>
@@ -233,45 +237,46 @@
                 </div>
               </div>
               
-              <div class="d-flex gap-1">
+              <div class="d-flex gap-1 campaign-actions">
                 <v-btn
                   icon
-                  size="small"
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   variant="plain"
                   @click="openLaunchesModal(campaign)"
                 >
-                  <v-icon color="purple">mdi-rocket-launch</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'" color="purple">mdi-rocket-launch</v-icon>
                   <v-tooltip activator="parent" location="bottom">Manage Launches</v-tooltip>
                 </v-btn>
                 
                 
                 <v-btn
                   icon
-                  size="small"
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   variant="plain"
                   @click="openEditModal(campaign)"
                 >
-                  <v-icon color="primary">mdi-pencil</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'" color="primary">mdi-pencil</v-icon>
                   <v-tooltip activator="parent" location="bottom">Edit</v-tooltip>
                 </v-btn>
                 
                 <v-btn
                   icon
-                  size="small"
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   variant="plain"
                   @click="duplicateCampaign(campaign)"
+                  :class="{ 'd-none': $vuetify.display.xs }"
                 >
-                  <v-icon color="blue">mdi-content-copy</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'" color="blue">mdi-content-copy</v-icon>
                   <v-tooltip activator="parent" location="bottom">Duplicate</v-tooltip>
                 </v-btn>
                 
                 <v-btn
                   icon
-                  size="small"
+                  :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                   variant="plain"
                   @click="confirmDelete(campaign)"
                 >
-                  <v-icon color="error">mdi-delete</v-icon>
+                  <v-icon :size="$vuetify.display.smAndDown ? 'small' : 'default'" color="error">mdi-delete</v-icon>
                   <v-tooltip activator="parent" location="bottom">Delete</v-tooltip>
                 </v-btn>
               </div>
@@ -398,17 +403,24 @@
     </div>
 
     <!-- Create/Edit Campaign Modal -->
-    <v-dialog v-model="showCreateModal" max-width="800px" scrollable>
+    <v-dialog 
+      v-model="showCreateModal" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '800px'" 
+      :fullscreen="$vuetify.display.smAndDown"
+      scrollable
+    >
       <v-card>
-        <v-card-title>
-          {{ editingCampaign ? 'Edit Campaign' : 'Create Campaign' }}
+        <v-card-title :class="$vuetify.display.smAndDown ? 'd-flex align-center pa-3' : ''">
+          <span :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">
+            {{ editingCampaign ? 'Edit Campaign' : 'Create Campaign' }}
+          </span>
           <v-spacer></v-spacer>
-          <v-btn icon variant="text" @click="closeModal">
+          <v-btn icon variant="text" @click="closeModal" :size="$vuetify.display.smAndDown ? 'small' : 'default'">
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
         
-        <v-card-text>
+        <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
           <v-form ref="campaignForm">
             <div v-if="editingCampaign && editingCampaign.creator" class="mb-4">
               <v-alert type="info" variant="tonal" density="compact">
@@ -423,6 +435,7 @@
               variant="outlined"
               class="mb-4"
               :rules="[v => !!v || 'Status is required']"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             >
               <template v-slot:selection="{ item }">
                 <v-chip
@@ -450,6 +463,7 @@
               :rules="[v => !!v || 'Campaign name is required']"
               variant="outlined"
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-text-field>
             
             <v-textarea
@@ -458,10 +472,11 @@
               variant="outlined"
               rows="2"
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-textarea>
 
             <!-- Store Configuration -->
-            <v-row>
+            <v-row :dense="$vuetify.display.smAndDown">
               <v-col cols="12" md="6">
                 <v-select
                   v-model="formData.tiktokStoreId"
@@ -471,6 +486,7 @@
                   item-value="id"
                   variant="outlined"
                   :rules="[v => !!v || 'TikTok store is required']"
+                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                 >
                   <template v-slot:append-inner>
                     <v-btn
@@ -493,6 +509,7 @@
                   :items="['shopify', 'custom']"
                   variant="outlined"
                   @update:model-value="onRedirectTypeChange"
+                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                 >
                   <template v-slot:item="{ item, props }">
                     <v-list-item v-bind="props">
@@ -506,7 +523,7 @@
               </v-col>
             </v-row>
 
-            <v-row v-if="formData.redirectType === 'shopify'">
+            <v-row v-if="formData.redirectType === 'shopify'" :dense="$vuetify.display.smAndDown">
               <v-col cols="12">
                 <v-select
                   v-model="formData.redirectStoreId"
@@ -516,6 +533,7 @@
                   item-value="id"
                   variant="outlined"
                   :rules="formData.redirectType === 'shopify' ? [v => !!v || 'Redirect store is required'] : []"
+                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                 >
                   <template v-slot:append-inner>
                     <v-btn
@@ -533,7 +551,7 @@
               </v-col>
             </v-row>
 
-            <v-row v-else>
+            <v-row v-else :dense="$vuetify.display.smAndDown">
               <v-col cols="12">
                 <v-text-field
                   v-model="formData.customRedirectUrl"
@@ -544,6 +562,7 @@
                     v => !!v || 'Custom URL is required',
                     v => /^https?:\/\/.+/.test(v) || 'Invalid URL format'
                   ] : []"
+                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                 ></v-text-field>
               </v-col>
             </v-row>
@@ -558,6 +577,7 @@
               variant="outlined"
               :loading="loadingTemplates"
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             >
               <template v-slot:item="{ item, props }">
                 <v-list-item v-bind="props">
@@ -576,6 +596,7 @@
               variant="outlined"
               clearable
               class="mb-4"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             >
               <template v-slot:item="{ item, props }">
                 <v-list-item v-bind="props">
@@ -685,15 +706,26 @@
     </v-dialog>
 
     <!-- Manage Launches Modal -->
-    <v-dialog v-model="showLaunchesModal" max-width="800px" scrollable>
+    <v-dialog 
+      v-model="showLaunchesModal" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '800px'" 
+      :fullscreen="$vuetify.display.smAndDown"
+      scrollable
+    >
       <v-card>
-        <v-card-title class="px-4 py-3 border-b">
-          <v-btn icon variant="text" size="small" @click="showLaunchesModal = false" class="mr-3">
+        <v-card-title :class="['border-b', $vuetify.display.smAndDown ? 'pa-3' : 'px-4 py-3']">
+          <v-btn 
+            icon 
+            variant="text" 
+            :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
+            @click="showLaunchesModal = false" 
+            class="mr-3"
+          >
             <v-icon>mdi-close</v-icon>
           </v-btn>
           <div class="d-flex align-center">
-            <v-icon color="purple" class="mr-2">mdi-rocket-launch</v-icon>
-            <span>Manage Launches</span>
+            <v-icon color="purple" :class="$vuetify.display.smAndDown ? 'mr-1' : 'mr-2'" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-rocket-launch</v-icon>
+            <span :class="$vuetify.display.smAndDown ? 'text-body-2' : ''">Manage Launches</span>
           </div>
         </v-card-title>
         
@@ -865,20 +897,31 @@
 
 
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="showDeleteDialog" max-width="400">
+    <v-dialog 
+      v-model="showDeleteDialog" 
+      :max-width="$vuetify.display.smAndDown ? '100%' : '400px'"
+      :fullscreen="$vuetify.display.smAndDown"
+    >
       <v-card>
-        <v-card-title>Confirm Delete</v-card-title>
-        <v-card-text>
+        <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : ''">Confirm Delete</v-card-title>
+        <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
           Are you sure you want to delete "{{ deletingCampaign?.name }}"? This action cannot be undone.
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions :class="$vuetify.display.smAndDown ? 'pa-3' : ''">
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn 
+            variant="text" 
+            @click="showDeleteDialog = false"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
+          >
+            Cancel
+          </v-btn>
           <v-btn 
             color="error" 
             variant="flat"
             @click="deleteCampaign"
             :loading="deleting"
+            :size="$vuetify.display.smAndDown ? 'small' : 'default'"
           >
             Delete
           </v-btn>
@@ -1677,6 +1720,79 @@ onMounted(() => {
 
 .v-theme--dark .campaign-header {
   background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 600px) {
+  .campaigns-container {
+    padding: 8px !important;
+  }
+  
+  .campaign-header {
+    padding: 12px !important;
+  }
+  
+  .campaign-header .d-flex {
+    flex-wrap: wrap;
+  }
+  
+  .campaign-header .d-flex.align-center.justify-space-between {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  
+  .campaign-header .d-flex.gap-1 {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+  
+  .campaign-status-select {
+    max-width: 120px !important;
+  }
+  
+  .text-subtitle-1 {
+    font-size: 0.875rem !important;
+  }
+  
+  .section-title {
+    font-size: 0.625rem !important;
+  }
+  
+  .info-section {
+    min-height: auto !important;
+    padding: 8px !important;
+  }
+  
+  .regions-grid {
+    gap: 0.125rem !important;
+  }
+  
+  .stat-value {
+    font-size: 1rem !important;
+  }
+  
+  .bulk-actions-bar {
+    flex-wrap: wrap;
+  }
+  
+  .bulk-actions-bar .v-btn {
+    margin: 2px;
+  }
+}
+
+@media (max-width: 960px) {
+  .campaign-content {
+    padding: 12px !important;
+  }
+  
+  .campaign-content .v-row {
+    margin: 0 !important;
+  }
+  
+  .campaign-content .v-col {
+    padding: 4px !important;
+  }
 }
 
 .status-chip {

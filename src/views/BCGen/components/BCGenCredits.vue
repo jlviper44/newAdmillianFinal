@@ -153,7 +153,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <v-container fluid class="pa-0">
+    <v-container fluid :class="$vuetify.display.smAndDown ? 'pa-2' : 'pa-0'">
 
       <!-- Credits Balance Card -->
       <v-row>
@@ -169,24 +169,24 @@ onUnmounted(() => {
               <v-icon size="300" :color="$vuetify.theme.current.dark ? 'grey-lighten-2' : 'white'">mdi-wallet</v-icon>
             </div>
             
-            <v-card-text class="pa-8" style="position: relative; z-index: 1;">
-              <v-row align="center" class="ma-0">
-                <v-col cols="12" md="7" class="pa-0">
+            <v-card-text :class="$vuetify.display.smAndDown ? 'pa-4' : 'pa-8'" style="position: relative; z-index: 1;">
+              <v-row align="center" class="ma-0" :class="{ 'flex-column': $vuetify.display.smAndDown }">
+                <v-col cols="12" :md="$vuetify.display.smAndDown ? '12' : '7'" class="pa-0">
                   <div :class="$vuetify.theme.current.dark ? 'text-grey-lighten-2' : 'text-white'">
-                    <div class="text-overline font-weight-medium mb-2" style="opacity: 0.9;">CREDIT BALANCE</div>
-                    <div class="d-flex align-baseline mb-1">
-                      <div class="text-h1 font-weight-bold" style="font-size: 4rem !important; line-height: 1;">
+                    <div class="text-overline font-weight-medium mb-2" style="opacity: 0.9;" :class="{ 'text-center': $vuetify.display.smAndDown }">CREDIT BALANCE</div>
+                    <div class="d-flex align-baseline mb-1" :class="{ 'justify-center': $vuetify.display.smAndDown }">
+                      <div class="font-weight-bold" :style="$vuetify.display.smAndDown ? 'font-size: 2.5rem !important; line-height: 1;' : 'font-size: 4rem !important; line-height: 1;'">
                         {{ credits.balance.toLocaleString() }}
                       </div>
-                      <div class="text-h5 ml-3" style="opacity: 0.9;">credits</div>
+                      <div :class="$vuetify.display.smAndDown ? 'text-h6 ml-2' : 'text-h5 ml-3'" style="opacity: 0.9;">credits</div>
                     </div>
-                    <div class="text-body-1" style="opacity: 0.8;">
+                    <div :class="$vuetify.display.smAndDown ? 'text-body-2 text-center' : 'text-body-1'" style="opacity: 0.8;">
                       Available for BC Gen
                     </div>
                   </div>
                 </v-col>
                 
-                <v-col cols="12" md="5" class="pa-0 mt-6 mt-md-0">
+                <v-col cols="12" :md="$vuetify.display.smAndDown ? '12' : '5'" :class="$vuetify.display.smAndDown ? 'pa-0 mt-4' : 'pa-0 mt-6 mt-md-0'">
                   <v-card 
                     elevation="0" 
                     class="pa-4" 
@@ -197,10 +197,11 @@ onUnmounted(() => {
                       <div class="d-flex align-center justify-center">
                         <v-btn
                           icon
-                          density="comfortable"
+                          :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                           variant="tonal"
                           color="primary"
                           @click="purchaseQuantity = Math.max(1, purchaseQuantity - 10)"
+                          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                         >
                           <v-icon>mdi-minus</v-icon>
                         </v-btn>
@@ -209,18 +210,19 @@ onUnmounted(() => {
                           type="number"
                           min="1"
                           variant="solo"
-                          density="comfortable"
+                          :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                           hide-details
                           single-line
                           class="mx-2 credit-input"
-                          style="max-width: 100px;"
+                          :style="$vuetify.display.smAndDown ? 'max-width: 80px;' : 'max-width: 100px;'"
                         ></v-text-field>
                         <v-btn
                           icon
-                          density="comfortable"
+                          :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                           variant="tonal"
                           color="primary"
                           @click="purchaseQuantity = purchaseQuantity + 10"
+                          :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                         >
                           <v-icon>mdi-plus</v-icon>
                         </v-btn>
@@ -238,14 +240,14 @@ onUnmounted(() => {
                     <v-btn 
                       color="primary" 
                       variant="elevated"
-                      size="large"
+                      :size="$vuetify.display.smAndDown ? 'default' : 'large'"
                       :loading="loading.createCheckout"
                       @click="createCheckout"
                       block
                       class="text-none"
                       style="border-radius: 12px;"
                     >
-                      <v-icon start>mdi-cart-plus</v-icon>
+                      <v-icon start :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-cart-plus</v-icon>
                       Purchase Credits
                     </v-btn>
                   </v-card>
@@ -265,24 +267,67 @@ onUnmounted(() => {
       </v-row>
 
       <!-- Transaction History -->
-      <v-row class="mt-6">
+      <v-row :class="$vuetify.display.smAndDown ? 'mt-4' : 'mt-6'">
         <v-col cols="12">
           <v-card elevation="2">
-            <v-card-title class="d-flex justify-space-between align-center">
-              <span>Credit Purchases</span>
+            <v-card-title :class="[
+              'd-flex align-center',
+              $vuetify.display.smAndDown ? 'flex-wrap pa-3' : 'justify-space-between'
+            ]">
+              <span :class="$vuetify.display.smAndDown ? 'text-body-1' : ''">Credit Purchases</span>
+              <v-spacer v-if="!$vuetify.display.smAndDown"></v-spacer>
               <v-btn 
                 variant="text" 
                 color="primary" 
-                size="small"
+                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
                 @click="checkAccess"
                 :loading="loading.checkAccess"
+                :class="{ 'ml-auto': $vuetify.display.smAndDown }"
               >
-                <v-icon start>mdi-refresh</v-icon>
-                Refresh
+                <v-icon start :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-refresh</v-icon>
+                {{ $vuetify.display.smAndDown ? '' : 'Refresh' }}
               </v-btn>
             </v-card-title>
-            <v-card-text>
+            <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
+              <!-- Mobile Card Layout -->
+              <div v-if="$vuetify.display.smAndDown" class="mobile-purchases">
+                <div v-if="credits.memberships.filter(m => m.metadata?.Quantity !== undefined).length === 0" 
+                     class="text-center py-8 text-medium-emphasis">
+                  No credit purchases found
+                </div>
+                <v-card 
+                  v-else
+                  v-for="item in credits.memberships.filter(m => m.metadata?.Quantity !== undefined)"
+                  :key="item.id"
+                  class="mb-3"
+                  variant="outlined"
+                >
+                  <v-card-text class="pa-3">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span class="text-caption text-medium-emphasis">{{ formatDate(item.created_at) }}</span>
+                    </div>
+                    <div class="d-flex justify-space-between align-center">
+                      <div>
+                        <div class="text-caption text-medium-emphasis">Initial</div>
+                        <div class="text-h6 font-weight-bold text-grey-darken-1">
+                          {{ parseInt(item.metadata.InitialQuantity || item.metadata.Quantity).toLocaleString() }}
+                        </div>
+                      </div>
+                      <v-icon size="small" class="mx-2">mdi-arrow-right</v-icon>
+                      <div>
+                        <div class="text-caption text-medium-emphasis">Remaining</div>
+                        <div class="text-h6 font-weight-bold text-primary">
+                          {{ parseInt(item.metadata.Quantity).toLocaleString() }}
+                        </div>
+                      </div>
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </div>
+              
+              <!-- Desktop Table -->
               <v-data-table
+                v-else
                 :headers="[
                   { title: 'Created At', key: 'created_at', align: 'start' },
                   { title: 'Initial Credits', key: 'initial_credits', align: 'end' },
@@ -317,7 +362,7 @@ onUnmounted(() => {
     <v-dialog
       v-model="showPaymentDialog"
       persistent
-      max-width="400"
+      :max-width="$vuetify.display.smAndDown ? '90%' : '400'"
     >
       <v-card>
         <v-card-text class="text-center pa-6">
@@ -363,6 +408,22 @@ onUnmounted(() => {
   text-align: center;
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+/* Mobile styles */
+@media (max-width: 600px) {
+  .credit-input :deep(.v-field__input) {
+    font-size: 1rem;
+  }
+  
+  .mobile-purchases {
+    max-width: 100%;
+  }
+  
+  /* Smaller background icon on mobile */
+  .credit-balance-card > div:first-child v-icon {
+    font-size: 200px !important;
+  }
 }
 
 /* Remove spinner arrows from number input */
