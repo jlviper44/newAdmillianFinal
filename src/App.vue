@@ -529,6 +529,153 @@ onUnmounted(() => {
     >
       <!-- Navigation list -->
       <v-list nav density="compact" class="pt-20">
+        <!-- Dashboard -->
+        <v-list-group v-if="hasDashboardAccess" value="dashboard">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-view-dashboard"
+              title="Dashboard"
+              :active="activeRoute.includes('/dashboard')"
+              rounded="lg"
+            ></v-list-item>
+          </template>
+          
+          <v-list-item
+            to="/dashboard?tab=metrics"
+            prepend-icon="mdi-chart-areaspline"
+            title="Metrics"
+            :active="isTabActive('/dashboard', 'metrics')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/dashboard?tab=campaigns"
+            prepend-icon="mdi-bullhorn"
+            title="Campaigns"
+            :active="isTabActive('/dashboard', 'campaigns')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/dashboard?tab=sparks"
+            prepend-icon="mdi-lightning-bolt"
+            title="Sparks"
+            :active="isTabActive('/dashboard', 'sparks')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/dashboard?tab=templates"
+            prepend-icon="mdi-file-document-multiple"
+            title="Templates"
+            :active="isTabActive('/dashboard', 'templates')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/dashboard?tab=shopify"
+            prepend-icon="mdi-shopping"
+            title="Shopify Stores"
+            :active="isTabActive('/dashboard', 'shopify')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/dashboard?tab=logs"
+            prepend-icon="mdi-format-list-bulleted"
+            title="Logs"
+            :active="isTabActive('/dashboard', 'logs')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+        </v-list-group>
+
+        <!-- Comment Bot -->
+        <v-list-group v-if="hasCommentBotAccess" value="comments">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-comment-multiple"
+              title="Comment Bot"
+              :active="activeRoute.includes('/comments')"
+              rounded="lg"
+            ></v-list-item>
+          </template>
+          
+          <v-list-item
+            to="/comments?tab=orders"
+            prepend-icon="mdi-format-list-bulleted"
+            title="Orders"
+            :active="isTabActive('/comments', 'orders')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/comments?tab=credits"
+            prepend-icon="mdi-wallet"
+            title="Credits"
+            :active="isTabActive('/comments', 'credits')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+        </v-list-group>
+
+        <!-- BC Gen -->
+        <v-list-group v-if="hasBcGenAccess" value="bcgen">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-account-multiple-plus"
+              title="BC Gen"
+              :active="activeRoute.includes('/bc-gen')"
+              rounded="lg"
+            ></v-list-item>
+          </template>
+          
+          <v-list-item
+            to="/bc-gen?tab=orders"
+            prepend-icon="mdi-shopping-outline"
+            title="Place Order"
+            :active="isTabActive('/bc-gen', 'orders')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/bc-gen?tab=my-orders"
+            prepend-icon="mdi-format-list-bulleted"
+            title="My Orders"
+            :active="isTabActive('/bc-gen', 'my-orders')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/bc-gen?tab=refunds"
+            prepend-icon="mdi-undo"
+            title="Refunds"
+            :active="isTabActive('/bc-gen', 'refunds')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/bc-gen?tab=credits"
+            prepend-icon="mdi-wallet"
+            title="Credits"
+            :active="isTabActive('/bc-gen', 'credits')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+        </v-list-group>
+
         <!-- Theme Toggle -->
         <v-list-item @click="toggleDarkMode">
           <template v-slot:prepend>
