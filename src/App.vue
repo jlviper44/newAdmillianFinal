@@ -676,14 +676,6 @@ onUnmounted(() => {
           ></v-list-item>
         </v-list-group>
 
-        <!-- Theme Toggle -->
-        <v-list-item @click="toggleDarkMode">
-          <template v-slot:prepend>
-            <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
-          </template>
-          <v-list-item-title>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</v-list-item-title>
-        </v-list-item>
-
         <!-- Profile -->
         <v-list-item
           to="/profile"
@@ -692,9 +684,6 @@ onUnmounted(() => {
           :active="activeRoute === '/profile' || activeRoute === '/'"
           rounded="lg"
         ></v-list-item>
-
-        <!-- Logout -->
-        <v-list-item @click="handleLogout" prepend-icon="mdi-logout" title="Logout"></v-list-item>
       </v-list>
     </v-navigation-drawer>
     
