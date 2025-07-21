@@ -684,6 +684,15 @@ onUnmounted(() => {
           :active="activeRoute === '/profile' || activeRoute === '/'"
           rounded="lg"
         ></v-list-item>
+
+        <!-- Settings -->
+        <v-list-item
+          to="/settings"
+          prepend-icon="mdi-cog"
+          title="Settings"
+          :active="activeRoute === '/settings'"
+          rounded="lg"
+        ></v-list-item>
       </v-list>
     </v-navigation-drawer>
     
