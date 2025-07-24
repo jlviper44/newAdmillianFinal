@@ -34,13 +34,33 @@ export default {
           envKeys: Object.keys(env)
         });
         
-        if (env.ASSETS) {
+        // Retry mechanism for iPhone Safari
+        const userAgent = request.headers.get('user-agent') || '';
+        const isIPhone = /iPhone|iPad|iPod/i.test(userAgent);
+        let assetsAvailable = !!env.ASSETS;
+        
+        // If ASSETS not available and it's iPhone, retry a few times
+        if (!assetsAvailable && isIPhone) {
+          console.log('ASSETS not available on iPhone, attempting retries...');
+          const maxRetries = 5;
+          const retryDelay = 100; // ms
+          
+          for (let i = 0; i < maxRetries && !assetsAvailable; i++) {
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            assetsAvailable = !!env.ASSETS;
+            console.log(`Retry ${i + 1}/${maxRetries}: ASSETS available = ${assetsAvailable}`);
+          }
+        }
+        
+        if (assetsAvailable && env.ASSETS) {
           const indexRequest = new Request(new URL('/index.html', request.url), request);
           return env.ASSETS.fetch(indexRequest);
         } else {
           // If no ASSETS, return a helpful error with debugging info
           return new Response(
             `Vue app not found. ASSETS binding may be missing.\n\n` +
+            `Device: ${isIPhone ? 'iPhone/iPad' : 'Other'}\n` +
+            `User Agent: ${userAgent}\n` +
             `Available env bindings: ${Object.keys(env).join(', ')}\n\n` +
             `Make sure you:\n` +
             `1. Run 'npm run build' to build the Vue app\n` +

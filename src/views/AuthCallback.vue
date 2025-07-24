@@ -1,6 +1,6 @@
 <template>
-  <v-container class="fill-height d-flex align-center justify-center">
-    <v-card max-width="400" class="pa-6 text-center">
+  <v-container class="fill-height d-flex align-center justify-center" style="min-height: 100vh; background-color: #f5f5f5;">
+    <v-card max-width="400" class="pa-6 text-center" elevation="4">
       <v-progress-circular
         v-if="loading"
         indeterminate
@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
@@ -52,6 +52,13 @@ const error = ref(null)
 
 const processCallback = async () => {
   try {
+    // Add debugging for mobile
+    console.log('Auth callback started', {
+      query: route.query,
+      fullPath: route.fullPath,
+      userAgent: navigator.userAgent
+    })
+    
     const code = route.query.code
     const state = route.query.state
     
@@ -88,8 +95,12 @@ const processCallback = async () => {
       // Direct navigation flow (mobile) - redirect to the web application
       // Add a flag to indicate we need to refresh auth state
       sessionStorage.setItem('auth_callback_complete', 'true')
-      // Use replace to avoid keeping the callback URL in history
-      window.location.replace('/')
+      
+      // Show success message briefly before redirect
+      setTimeout(() => {
+        // Use replace to avoid keeping the callback URL in history
+        window.location.replace('/')
+      }, 500)
     }
     
   } catch (err) {
@@ -115,6 +126,12 @@ const retry = () => {
 }
 
 onMounted(() => {
+  // Add immediate feedback
+  document.body.style.backgroundColor = '#f5f5f5'
   processCallback()
+})
+
+onBeforeUnmount(() => {
+  document.body.style.backgroundColor = ''
 })
 </script>

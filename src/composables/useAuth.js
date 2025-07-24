@@ -107,8 +107,15 @@ export function useAuth() {
       let authWindow = null
       
       if (isMobile) {
-        // For mobile devices, especially iOS, use a simple window.open without popup features
-        authWindow = window.open(authUrl, isIOS ? '_self' : '_blank')
+        // For mobile devices, especially iOS, use location.href for better compatibility
+        if (isIOS) {
+          // Store a flag to indicate we're in the auth flow
+          sessionStorage.setItem('auth_flow_started', 'true')
+          window.location.href = authUrl
+          return
+        } else {
+          authWindow = window.open(authUrl, '_blank')
+        }
       } else {
         // For desktop, use popup window
         const width = 500
