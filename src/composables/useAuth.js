@@ -192,6 +192,15 @@ export function useAuth() {
 
   // Initialize auth on app load
   const initAuth = async () => {
+    // Check if we're returning from an OAuth callback
+    const authCallbackComplete = sessionStorage.getItem('auth_callback_complete')
+    if (authCallbackComplete) {
+      // Clear the flag
+      sessionStorage.removeItem('auth_callback_complete')
+      // Force a fresh auth check
+      loading.value = true
+    }
+    
     await checkAuth()
     // Only check access if we have a valid authenticated user
     if (user.value && user.value.id) {

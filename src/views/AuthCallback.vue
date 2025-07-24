@@ -85,8 +85,11 @@ const processCallback = async () => {
         window.close()
       }, 1500)
     } else {
-      // Direct navigation flow (mobile) - redirect to home
-      window.location.href = '/'
+      // Direct navigation flow (mobile) - redirect to the web application
+      // Add a flag to indicate we need to refresh auth state
+      sessionStorage.setItem('auth_callback_complete', 'true')
+      // Use replace to avoid keeping the callback URL in history
+      window.location.replace('/')
     }
     
   } catch (err) {
@@ -101,7 +104,7 @@ const processCallback = async () => {
     } else {
       // Direct navigation flow (mobile) - redirect to home after delay
       setTimeout(() => {
-        window.location.href = '/'
+        window.location.replace('/')
       }, 2000)
     }
   }
