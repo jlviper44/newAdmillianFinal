@@ -26,6 +26,34 @@ export default {
         return handleAuth(request, env);
       }
       
+      // Handle auth callback route - serve Vue app for client-side routing
+      if (path === '/auth/callback/whop' || path.startsWith('/auth/callback/')) {
+        console.log('Auth callback route detected:', { 
+          path, 
+          hasAssets: !!env.ASSETS,
+          envKeys: Object.keys(env)
+        });
+        
+        if (env.ASSETS) {
+          const indexRequest = new Request(new URL('/index.html', request.url), request);
+          return env.ASSETS.fetch(indexRequest);
+        } else {
+          // If no ASSETS, return a helpful error with debugging info
+          return new Response(
+            `Vue app not found. ASSETS binding may be missing.\n\n` +
+            `Available env bindings: ${Object.keys(env).join(', ')}\n\n` +
+            `Make sure you:\n` +
+            `1. Run 'npm run build' to build the Vue app\n` +
+            `2. Deploy with 'npx wrangler deploy' (not 'wrangler dev')\n` +
+            `3. Or test locally with 'npx wrangler dev'`,
+            { 
+              status: 500,
+              headers: { 'Content-Type': 'text/plain' }
+            }
+          );
+        }
+      }
+      
       // Route Metrics/Affiliate API requests - MUST BE BEFORE GENERIC SQL HANDLER
       if (path.startsWith('/api/affiliate') || path === '/api/sql/raw') {
         // Initialize Metrics tables if needed
@@ -109,11 +137,29 @@ export default {
       }
       
       // For any other route, serve the Vue app
+      console.log('Fallback route handler:', { path, hasAssets: !!env.ASSETS });
+      
       if (env.ASSETS) {
+        // For SPA routes (like /auth/callback/whop), we need to serve index.html
+        // Check if the request is for a specific file (has extension) or a route
+        const hasFileExtension = path.includes('.') && !path.endsWith('/');
+        
+        console.log('Route details:', { path, hasFileExtension });
+        
+        if (!hasFileExtension) {
+          // This is a route, not a file - serve index.html
+          const indexRequest = new Request(new URL('/index.html', request.url), request);
+          console.log('Serving index.html for SPA route:', path);
+          return env.ASSETS.fetch(indexRequest);
+        }
+        
+        // For actual files, serve them directly
+        console.log('Serving file directly:', path);
         return env.ASSETS.fetch(request);
       } else {
         // Fallback for development or if ASSETS is not available
-        return new Response('Not found', { status: 404 });
+        console.log('No ASSETS binding found, returning 404');
+        return new Response('Not found - ASSETS binding missing', { status: 404 });
       }
     } catch (error) {
       console.error(`Error handling request for ${path}: ${error.message}`);

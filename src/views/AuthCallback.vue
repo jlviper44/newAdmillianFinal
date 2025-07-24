@@ -77,23 +77,33 @@ const processCallback = async () => {
     // Success - notify parent window and close
     loading.value = false
     
-    // Send success message to parent window
+    // Check if this is a popup or direct navigation
     if (window.opener) {
+      // Popup flow - send message to parent and close
       window.opener.postMessage({ type: 'auth-success' }, '*')
+      setTimeout(() => {
+        window.close()
+      }, 1500)
+    } else {
+      // Direct navigation flow (mobile) - redirect to home
+      window.location.href = '/'
     }
-    
-    // Close the window after a short delay
-    setTimeout(() => {
-      window.close()
-    }, 1500)
     
   } catch (err) {
     error.value = err.message
     loading.value = false
-    // Close window after a short delay
-    setTimeout(() => {
-      window.close()
-    }, 2000)
+    // Handle error for both popup and direct navigation
+    if (window.opener) {
+      // Popup flow - close window after delay
+      setTimeout(() => {
+        window.close()
+      }, 2000)
+    } else {
+      // Direct navigation flow (mobile) - redirect to home after delay
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 2000)
+    }
   }
 }
 

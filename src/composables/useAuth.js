@@ -112,6 +112,21 @@ export function useAuth() {
         `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
       )
       
+      // Check if popup was blocked
+      if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
+        // Popup was blocked, fallback to redirect for mobile
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        if (isMobile) {
+          // For mobile, use direct redirect instead of popup
+          window.location.href = authUrl
+          return
+        } else {
+          // For desktop, show alert about popup blocker
+          alert('Please allow popups for this site to sign in with Whop.')
+          return
+        }
+      }
+      
       // Track if we received a successful auth callback
       let authCompleted = false
       
