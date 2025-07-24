@@ -192,8 +192,59 @@ export default {
         console.log('Serving file directly:', path);
         return env.ASSETS.fetch(request);
       } else {
-        // Fallback for development or if ASSETS is not available
-        console.log('No ASSETS binding found, returning 404');
+        // Fallback for when ASSETS is not available
+        console.log('No ASSETS binding found for path:', path);
+        
+        // For auth callback routes, return a basic HTML page that completes the auth flow
+        if (path.startsWith('/auth/callback/')) {
+          const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Completing authentication...</title>
+            </head>
+            <body>
+              <div style="text-align: center; padding: 50px; font-family: system-ui;">
+                <h2>Completing authentication...</h2>
+                <p>If you're not redirected automatically, <a href="/">click here</a>.</p>
+              </div>
+              <script>
+                // Try to complete the auth flow
+                try {
+                  const urlParams = new URLSearchParams(window.location.search);
+                  const code = urlParams.get('code');
+                  const state = urlParams.get('state');
+                  
+                  if (code && state) {
+                    // Store the auth params and redirect to home
+                    sessionStorage.setItem('auth_callback_code', code);
+                    sessionStorage.setItem('auth_callback_state', state);
+                    sessionStorage.setItem('auth_callback_provider', 'whop');
+                    sessionStorage.setItem('auth_callback_complete', 'true');
+                    
+                    // Redirect to home page
+                    window.location.href = '/';
+                  }
+                } catch (e) {
+                  console.error('Auth callback error:', e);
+                  window.location.href = '/';
+                }
+              </script>
+            </body>
+            </html>
+          `;
+          
+          return new Response(html, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+            }
+          });
+        }
+        
+        // For other routes, return 404
         return new Response('Not found - ASSETS binding missing', { status: 404 });
       }
     } catch (error) {
