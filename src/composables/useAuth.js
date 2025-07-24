@@ -100,66 +100,77 @@ export function useAuth() {
       
       const { authUrl } = await response.json()
       
-      // Open OAuth flow in new window
-      const width = 500
-      const height = 600
-      const left = (window.screen.width - width) / 2
-      const top = (window.screen.height - height) / 2
+      // Detect if we're on mobile
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
       
-      const authWindow = window.open(
-        authUrl,
-        'whopAuth',
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
-      )
+      let authWindow = null
       
-      // Check if popup was blocked
-      if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
-        // Popup was blocked, fallback to redirect for mobile
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-        if (isMobile) {
-          // For mobile, use direct redirect instead of popup
-          window.location.href = authUrl
-          return
-        } else {
-          // For desktop, show alert about popup blocker
-          alert('Please allow popups for this site to sign in with Whop.')
-          return
-        }
+      if (isMobile) {
+        // For mobile devices, especially iOS, use a simple window.open without popup features
+        authWindow = window.open(authUrl, isIOS ? '_self' : '_blank')
+      } else {
+        // For desktop, use popup window
+        const width = 500
+        const height = 600
+        const left = (window.screen.width - width) / 2
+        const top = (window.screen.height - height) / 2
+        
+        authWindow = window.open(
+          authUrl,
+          'whopAuth',
+          `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+        )
       }
       
-      // Track if we received a successful auth callback
-      let authCompleted = false
-      
-      // Listen for messages from the auth callback window
-      const messageHandler = (event) => {
-        if (event.data && event.data.type === 'auth-success') {
-          authCompleted = true
-          window.removeEventListener('message', messageHandler)
-        }
+      // Check if popup was blocked (mainly for desktop)
+      if (!authWindow && !isMobile) {
+        alert('Please allow popups for this site to sign in with Whop.')
+        return
       }
-      window.addEventListener('message', messageHandler)
       
-      // Check if auth window closed and refresh auth state
-      const checkInterval = setInterval(async () => {
-        if (authWindow && authWindow.closed) {
-          clearInterval(checkInterval)
-          window.removeEventListener('message', messageHandler)
-          
-          // Only check auth if we received a success message
-          if (authCompleted) {
-            setTimeout(async () => {
-              await checkAuth()
-              if (user.value) {
-                await checkAccess()
-              }
-            }, 500)
-          } else {
-            // Window was closed without completing auth
-            // Ensure user remains as it was before
-            user.value = previousUser
+      // For iOS using _self target, we'll navigate away from the app
+      // The auth callback will handle the redirect back
+      if (isIOS && authWindow === window) {
+        return
+      }
+      
+      // For desktop and Android, track the popup/tab
+      if (!isMobile || !isIOS) {
+        // Track if we received a successful auth callback
+        let authCompleted = false
+        
+        // Listen for messages from the auth callback window
+        const messageHandler = (event) => {
+          if (event.data && event.data.type === 'auth-success') {
+            authCompleted = true
+            window.removeEventListener('message', messageHandler)
           }
         }
-      }, 500)
+        window.addEventListener('message', messageHandler)
+        
+        // Check if auth window closed and refresh auth state
+        const checkInterval = setInterval(async () => {
+          if (authWindow && authWindow.closed) {
+            clearInterval(checkInterval)
+            window.removeEventListener('message', messageHandler)
+            
+            // Only check auth if we received a success message
+            if (authCompleted) {
+              setTimeout(async () => {
+                await checkAuth()
+                if (user.value) {
+                  await checkAccess()
+                }
+              }, 500)
+            } else {
+              // Window was closed without completing auth
+              // Ensure user remains as it was before
+              user.value = previousUser
+            }
+          }
+        }, 500)
+      }
     } catch (error) {
     }
   }
