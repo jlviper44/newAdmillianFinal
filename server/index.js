@@ -218,11 +218,12 @@ export default {
                   const state = urlParams.get('state');
                   
                   if (code && state) {
-                    // Store the auth params and redirect to home
-                    sessionStorage.setItem('auth_callback_code', code);
-                    sessionStorage.setItem('auth_callback_state', state);
-                    sessionStorage.setItem('auth_callback_provider', 'whop');
+                    // Set the same flag that AuthCallback.vue sets
                     sessionStorage.setItem('auth_callback_complete', 'true');
+                    
+                    // Also store the parameters for the Vue app to process
+                    sessionStorage.setItem('pending_auth_code', code);
+                    sessionStorage.setItem('pending_auth_state', state);
                     
                     // Redirect to home page
                     window.location.href = '/';

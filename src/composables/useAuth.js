@@ -204,6 +204,31 @@ export function useAuth() {
     if (authCallbackComplete) {
       // Clear the flag
       sessionStorage.removeItem('auth_callback_complete')
+      
+      // Check if we have pending auth parameters (from fallback HTML)
+      const pendingCode = sessionStorage.getItem('pending_auth_code')
+      const pendingState = sessionStorage.getItem('pending_auth_state')
+      
+      if (pendingCode && pendingState) {
+        // Process the auth callback
+        sessionStorage.removeItem('pending_auth_code')
+        sessionStorage.removeItem('pending_auth_state')
+        
+        try {
+          const response = await fetch('/api/auth/callback/whop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: pendingCode, state: pendingState })
+          })
+          
+          if (!response.ok) {
+            throw new Error('Auth callback failed')
+          }
+        } catch (error) {
+          console.error('Error processing auth callback:', error)
+        }
+      }
+      
       // Force a fresh auth check
       loading.value = true
     }
