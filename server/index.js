@@ -27,9 +27,14 @@ export default {
       }
       
       // Handle auth callback route - serve Vue app for client-side routing
-      if (path === '/auth/callback/whop' || path.startsWith('/auth/callback/')) {
+      // TEMPORARILY DISABLED - Let fallback handler deal with this
+      /*
+      const normalizedPath = path.toLowerCase();
+      if (normalizedPath === '/auth/callback/whop' || normalizedPath.startsWith('/auth/callback/')) {
         console.log('Auth callback route detected:', { 
-          path, 
+          path,
+          normalizedPath,
+          url: request.url,
           hasAssets: !!env.ASSETS,
           envKeys: Object.keys(env)
         });
@@ -56,6 +61,15 @@ export default {
           const indexRequest = new Request(new URL('/index.html', request.url), request);
           return env.ASSETS.fetch(indexRequest);
         } else {
+          // Log why we're returning an error instead of falling through
+          console.error('ASSETS binding not available after retries:', {
+            path,
+            normalizedPath,
+            isIPhone,
+            assetsAvailable,
+            envKeys: Object.keys(env)
+          });
+          
           // If no ASSETS, return a helpful error with debugging info
           return new Response(
             `Vue app not found. ASSETS binding may be missing.\n\n` +
@@ -73,6 +87,7 @@ export default {
           );
         }
       }
+      */
       
       // Route Metrics/Affiliate API requests - MUST BE BEFORE GENERIC SQL HANDLER
       if (path.startsWith('/api/affiliate') || path === '/api/sql/raw') {
