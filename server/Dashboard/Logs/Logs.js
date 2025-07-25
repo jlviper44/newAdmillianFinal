@@ -1,7 +1,9 @@
 /**
  * Logs handler for the Dashboard
- * Provides logs functionality with local data
+ * Provides logs functionality with local D1 database storage
  */
+
+import { initializeLogsTable } from './initLogsTable.js';
 
 /**
  * Handle logs API requests
@@ -9,80 +11,685 @@
 export async function handleLogsData(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
+  const method = request.method;
+  
+  // Initialize logs table if needed
+  if (env.LOGS_DB) {
+    await initializeLogsTable(env);
+  }
   
   try {
-    // Special handling for campaigns list endpoint
-    if (path === '/api/logs/campaigns/list') {
+    // Route to appropriate handler based on path and method
+    if (method === 'POST' && path === '/api/logs') {
+      return createLog(request, env);
+    }
+    
+    if (method === 'GET' && path === '/api/logs') {
+      return getLogs(request, env);
+    }
+    
+    if (method === 'GET' && path === '/api/logs/summary') {
+      return getLogsSummary(request, env);
+    }
+    
+    if (method === 'GET' && path === '/api/logs/campaigns/list') {
       return getCampaignsList(request, env);
     }
     
-    // For now, return mock data for other logs endpoints
-    // Since the external logs worker is not accessible in development
-    
-    if (path === '/api/logs/summary') {
-      return new Response(
-        JSON.stringify({
-          total: 0,
-          conversionRate: 0,
-          blocked: 0,
-          first10: 0,
-          last24Hours: {
-            total: 0,
-            passed: 0,
-            blocked: 0
-          }
-        }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+    if (method === 'GET' && path === '/api/logs/by-campaign') {
+      return getLogsByCampaign(request, env);
     }
     
-    if (path === '/api/logs') {
-      const page = parseInt(url.searchParams.get('page') || '1');
-      const limit = parseInt(url.searchParams.get('limit') || '100');
-      
-      return new Response(
-        JSON.stringify({
-          logs: [],
-          pagination: {
-            total: 0,
-            page: page,
-            limit: limit,
-            totalPages: 0
-          }
-        }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+    if (method === 'GET' && path === '/api/logs/by-type') {
+      return getLogsByType(request, env);
     }
     
-    // For other endpoints, return empty data
+    if (method === 'GET' && path.match(/^\/api\/logs\/[^\/]+$/)) {
+      const id = path.split('/').pop();
+      return getLogById(request, env, id);
+    }
+    
+    if (method === 'POST' && path === '/api/logs/clear') {
+      return clearOldLogs(request, env);
+    }
+    
+    if (method === 'POST' && path === '/api/logs/fix-first10') {
+      return fixFirst10Tags(request, env);
+    }
+    
+    if (method === 'POST' && path === '/api/logs/export') {
+      return exportLogs(request, env);
+    }
+    
+    // Unknown endpoint
     return new Response(
-      JSON.stringify({ 
-        message: 'Logs endpoint not implemented in development mode',
-        data: []
-      }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ error: 'Unknown logs endpoint' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }
     );
     
   } catch (error) {
     console.error('Error handling logs request:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Failed to fetch logs data',
+        error: 'Failed to handle logs request',
         message: error.message 
       }),
       { 
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       }
+    );
+  }
+}
+
+/**
+ * Create a new log entry
+ */
+async function createLog(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ error: 'LOGS_DB not configured' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const logData = await request.json();
+    
+    // Get campaign name if not provided
+    let campaignName = logData.campaignName;
+    if (!campaignName && logData.campaignId) {
+      const campaign = await env.DASHBOARD_DB.prepare(
+        'SELECT name FROM campaigns WHERE id = ?'
+      ).bind(logData.campaignId).first();
+      campaignName = campaign?.name || 'Unknown Campaign';
+    }
+    
+    // Insert log entry
+    const result = await env.LOGS_DB.prepare(`
+      INSERT INTO logs (
+        campaignId, campaignName, launchNumber, type, decision,
+        ip, country, region, city, timezone, continent,
+        timestamp, userAgent, referer, url, redirectUrl,
+        os, params, tags
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      logData.campaignId,
+      campaignName,
+      logData.launchNumber || 0,
+      logData.type,
+      logData.decision,
+      logData.ip || null,
+      logData.country || null,
+      logData.region || null,
+      logData.city || null,
+      logData.timezone || null,
+      logData.continent || null,
+      logData.timestamp || new Date().toISOString(),
+      logData.userAgent || null,
+      logData.referer || null,
+      logData.url || null,
+      logData.redirectUrl || null,
+      logData.os || null,
+      JSON.stringify(logData.params || {}),
+      JSON.stringify(logData.tags || [])
+    ).run();
+    
+    // Check if this is one of the first 10 clicks and tag it
+    if (logData.type === 'click' && logData.decision === 'blackhat') {
+      const clickCount = await env.LOGS_DB.prepare(`
+        SELECT COUNT(*) as count FROM logs 
+        WHERE campaignId = ? AND launchNumber = ? 
+        AND type = 'click' AND decision = 'blackhat'
+      `).bind(logData.campaignId, logData.launchNumber || 0).first();
+      
+      if (clickCount.count <= 10) {
+        const tags = logData.tags || [];
+        if (!tags.includes('first10')) {
+          tags.push('first10');
+          await env.LOGS_DB.prepare(
+            'UPDATE logs SET tags = ? WHERE id = ?'
+          ).bind(JSON.stringify(tags), result.meta.last_row_id).run();
+        }
+      }
+    }
+    
+    return new Response(
+      JSON.stringify({ success: true, id: result.meta.last_row_id }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error creating log:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to create log', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Get logs with pagination and filters
+ */
+async function getLogs(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ logs: [], pagination: { total: 0, page: 1, limit: 100, totalPages: 0 } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
+    
+    // Build query with filters
+    let whereConditions = [];
+    let bindParams = [];
+    
+    const campaignId = url.searchParams.get('campaignId');
+    if (campaignId) {
+      whereConditions.push('campaignId = ?');
+      bindParams.push(campaignId);
+    }
+    
+    const type = url.searchParams.get('type');
+    if (type) {
+      whereConditions.push('type = ?');
+      bindParams.push(type);
+    }
+    
+    const decision = url.searchParams.get('decision');
+    if (decision) {
+      whereConditions.push('decision = ?');
+      bindParams.push(decision);
+    }
+    
+    const startDate = url.searchParams.get('startDate');
+    if (startDate) {
+      whereConditions.push('timestamp >= ?');
+      bindParams.push(startDate);
+    }
+    
+    const endDate = url.searchParams.get('endDate');
+    if (endDate) {
+      whereConditions.push('timestamp <= ?');
+      bindParams.push(endDate);
+    }
+    
+    const search = url.searchParams.get('search');
+    if (search) {
+      whereConditions.push('(ip LIKE ? OR userAgent LIKE ? OR referer LIKE ? OR url LIKE ?)');
+      const searchPattern = `%${search}%`;
+      bindParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+    
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    
+    // Get total count
+    const countQuery = `SELECT COUNT(*) as total FROM logs ${whereClause}`;
+    const countStmt = env.LOGS_DB.prepare(countQuery);
+    bindParams.forEach((param, index) => countStmt.bind(index + 1, param));
+    const countResult = await countStmt.first();
+    const total = countResult.total;
+    
+    // Get logs
+    const logsQuery = `
+      SELECT * FROM logs ${whereClause} 
+      ORDER BY timestamp DESC 
+      LIMIT ? OFFSET ?
+    `;
+    const logsStmt = env.LOGS_DB.prepare(logsQuery);
+    bindParams.forEach((param, index) => logsStmt.bind(index + 1, param));
+    logsStmt.bind(bindParams.length + 1, limit);
+    logsStmt.bind(bindParams.length + 2, offset);
+    const logsResult = await logsStmt.all();
+    
+    // Parse JSON fields
+    const logs = (logsResult.results || []).map(log => ({
+      ...log,
+      params: log.params ? JSON.parse(log.params) : {},
+      tags: log.tags ? JSON.parse(log.tags) : []
+    }));
+    
+    return new Response(
+      JSON.stringify({
+        logs,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error getting logs:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to get logs', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Get logs summary statistics
+ */
+async function getLogsSummary(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({
+        total: 0,
+        conversionRate: 0,
+        blocked: 0,
+        first10: 0,
+        last24Hours: { total: 0, passed: 0, blocked: 0 }
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    // Get total clicks
+    const totalResult = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE type = "click"'
+    ).first();
+    const total = totalResult.count;
+    
+    // Get passed clicks (blackhat)
+    const passedResult = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE type = "click" AND decision = "blackhat"'
+    ).first();
+    const passed = passedResult.count;
+    
+    // Get blocked clicks (whitehat)
+    const blockedResult = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE type = "validation" AND decision = "whitehat"'
+    ).first();
+    const blocked = blockedResult.count;
+    
+    // Get first10 tagged logs
+    const first10Result = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE tags LIKE "%first10%"'
+    ).first();
+    const first10 = first10Result.count;
+    
+    // Get last 24 hours stats
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    const last24TotalResult = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE timestamp >= ?'
+    ).bind(yesterday).first();
+    
+    const last24PassedResult = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE timestamp >= ? AND type = "click" AND decision = "blackhat"'
+    ).bind(yesterday).first();
+    
+    const last24BlockedResult = await env.LOGS_DB.prepare(
+      'SELECT COUNT(*) as count FROM logs WHERE timestamp >= ? AND type = "validation" AND decision = "whitehat"'
+    ).bind(yesterday).first();
+    
+    const conversionRate = total > 0 ? (passed / total) * 100 : 0;
+    
+    return new Response(
+      JSON.stringify({
+        total,
+        conversionRate: conversionRate.toFixed(2),
+        blocked,
+        first10,
+        last24Hours: {
+          total: last24TotalResult.count,
+          passed: last24PassedResult.count,
+          blocked: last24BlockedResult.count
+        }
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error getting logs summary:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to get logs summary', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Get logs grouped by campaign
+ */
+async function getLogsByCampaign(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ campaigns: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const result = await env.LOGS_DB.prepare(`
+      SELECT 
+        campaignId,
+        campaignName,
+        COUNT(*) as total,
+        SUM(CASE WHEN type = 'click' AND decision = 'blackhat' THEN 1 ELSE 0 END) as passed,
+        SUM(CASE WHEN type = 'validation' AND decision = 'whitehat' THEN 1 ELSE 0 END) as blocked
+      FROM logs
+      GROUP BY campaignId, campaignName
+      ORDER BY total DESC
+    `).all();
+    
+    const campaigns = (result.results || []).map(row => ({
+      campaignId: row.campaignId,
+      campaignName: row.campaignName,
+      total: row.total,
+      passed: row.passed,
+      blocked: row.blocked,
+      conversionRate: row.total > 0 ? ((row.passed / row.total) * 100).toFixed(2) : 0
+    }));
+    
+    return new Response(
+      JSON.stringify({ campaigns }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error getting logs by campaign:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to get logs by campaign', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Get logs grouped by type
+ */
+async function getLogsByType(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ types: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const result = await env.LOGS_DB.prepare(`
+      SELECT 
+        type,
+        decision,
+        COUNT(*) as count
+      FROM logs
+      GROUP BY type, decision
+      ORDER BY count DESC
+    `).all();
+    
+    const types = (result.results || []).map(row => ({
+      type: row.type,
+      decision: row.decision,
+      count: row.count
+    }));
+    
+    return new Response(
+      JSON.stringify({ types }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error getting logs by type:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to get logs by type', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Get a single log by ID
+ */
+async function getLogById(request, env, id) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ error: 'Log not found' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const log = await env.LOGS_DB.prepare(
+      'SELECT * FROM logs WHERE id = ?'
+    ).bind(id).first();
+    
+    if (!log) {
+      return new Response(
+        JSON.stringify({ error: 'Log not found' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Parse JSON fields
+    log.params = log.params ? JSON.parse(log.params) : {};
+    log.tags = log.tags ? JSON.parse(log.tags) : [];
+    
+    return new Response(
+      JSON.stringify(log),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error getting log by ID:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to get log', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Clear old logs (older than 30 days)
+ */
+async function clearOldLogs(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ error: 'LOGS_DB not configured' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    
+    const result = await env.LOGS_DB.prepare(
+      'DELETE FROM logs WHERE timestamp < ?'
+    ).bind(thirtyDaysAgo).run();
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        deleted: result.meta.changes 
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error clearing old logs:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to clear old logs', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Fix first10 tags for campaigns
+ */
+async function fixFirst10Tags(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ error: 'LOGS_DB not configured' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    // Get all unique campaign/launch combinations
+    const campaigns = await env.LOGS_DB.prepare(`
+      SELECT DISTINCT campaignId, launchNumber 
+      FROM logs 
+      WHERE type = 'click' AND decision = 'blackhat'
+    `).all();
+    
+    let updatedCount = 0;
+    
+    for (const campaign of campaigns.results) {
+      // Get first 10 clicks for this campaign/launch
+      const first10 = await env.LOGS_DB.prepare(`
+        SELECT id, tags FROM logs 
+        WHERE campaignId = ? AND launchNumber = ? 
+        AND type = 'click' AND decision = 'blackhat'
+        ORDER BY timestamp ASC
+        LIMIT 10
+      `).bind(campaign.campaignId, campaign.launchNumber).all();
+      
+      for (const log of first10.results) {
+        const tags = log.tags ? JSON.parse(log.tags) : [];
+        if (!tags.includes('first10')) {
+          tags.push('first10');
+          await env.LOGS_DB.prepare(
+            'UPDATE logs SET tags = ? WHERE id = ?'
+          ).bind(JSON.stringify(tags), log.id).run();
+          updatedCount++;
+        }
+      }
+    }
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        updated: updatedCount 
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error fixing first10 tags:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to fix first10 tags', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Export logs as CSV
+ */
+async function exportLogs(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ error: 'LOGS_DB not configured' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const { filters } = await request.json();
+    
+    // Build query with filters (similar to getLogs)
+    let whereConditions = [];
+    let bindParams = [];
+    
+    if (filters?.campaignId) {
+      whereConditions.push('campaignId = ?');
+      bindParams.push(filters.campaignId);
+    }
+    
+    if (filters?.type) {
+      whereConditions.push('type = ?');
+      bindParams.push(filters.type);
+    }
+    
+    if (filters?.decision) {
+      whereConditions.push('decision = ?');
+      bindParams.push(filters.decision);
+    }
+    
+    if (filters?.startDate) {
+      whereConditions.push('timestamp >= ?');
+      bindParams.push(filters.startDate);
+    }
+    
+    if (filters?.endDate) {
+      whereConditions.push('timestamp <= ?');
+      bindParams.push(filters.endDate);
+    }
+    
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    
+    const query = `SELECT * FROM logs ${whereClause} ORDER BY timestamp DESC`;
+    const stmt = env.LOGS_DB.prepare(query);
+    bindParams.forEach((param, index) => stmt.bind(index + 1, param));
+    const result = await stmt.all();
+    
+    // Convert to CSV
+    const logs = result.results || [];
+    if (logs.length === 0) {
+      return new Response('No logs found', { status: 404 });
+    }
+    
+    // CSV headers
+    const headers = [
+      'ID', 'Campaign ID', 'Campaign Name', 'Launch Number', 'Type', 'Decision',
+      'IP', 'Country', 'Region', 'City', 'Timezone', 'Continent',
+      'Timestamp', 'User Agent', 'Referer', 'URL', 'Redirect URL',
+      'OS', 'Parameters', 'Tags', 'Created At'
+    ];
+    
+    // CSV rows
+    const rows = logs.map(log => [
+      log.id,
+      log.campaignId,
+      log.campaignName,
+      log.launchNumber,
+      log.type,
+      log.decision,
+      log.ip,
+      log.country,
+      log.region,
+      log.city,
+      log.timezone,
+      log.continent,
+      log.timestamp,
+      log.userAgent,
+      log.referer,
+      log.url,
+      log.redirectUrl,
+      log.os,
+      log.params,
+      log.tags,
+      log.created_at
+    ]);
+    
+    // Build CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => {
+        // Escape cells containing commas or quotes
+        const cellStr = String(cell || '');
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }
+        return cellStr;
+      }).join(','))
+    ].join('\n');
+    
+    return new Response(csvContent, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="logs-export-${new Date().toISOString().split('T')[0]}.csv"`
+      }
+    });
+  } catch (error) {
+    console.error('Error exporting logs:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to export logs', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }
@@ -126,9 +733,7 @@ export async function getCampaignsList(request, env) {
     }));
     
     return new Response(
-      JSON.stringify({ 
-        campaigns: campaignsList
-      }),
+      JSON.stringify({ campaigns: campaignsList }),
       { 
         status: 200,
         headers: { 'Content-Type': 'application/json' }

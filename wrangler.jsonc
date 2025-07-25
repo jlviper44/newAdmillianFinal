@@ -35,6 +35,12 @@
       "database_name": "dashboard",
       "database_id": "b8e0ef90-599c-4451-bcaf-8865533ac147",
       "preview_database_id": "dashboard"
+    },
+    {
+      "binding": "LOGS_DB",
+      "database_name": "logs",
+      "database_id": "f8dab513-9543-469e-aac7-3f9bf0b6be84",
+      "preview_database_id": "logs"
     }
   ],
   "vars": {

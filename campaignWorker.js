@@ -1248,9 +1248,9 @@ function generatePageContent(campaign, campaignId, launchNumber) {
           }
         };
         
-        // Log the validation failure
+        // Log the validation failure to local server
         if (navigator.sendBeacon) {
-          navigator.sendBeacon('https://logs.maximillillianh.workers.dev/api/logs', 
+          navigator.sendBeacon('/api/logs', 
             new Blob([JSON.stringify(logData)], {type: 'application/json'}));
         }
         
@@ -1365,16 +1365,16 @@ function generatePageContent(campaign, campaignId, launchNumber) {
         window.location.href = redirectUrl.href;
       }
       
-      // Log and redirect
+      // Log and redirect to local server
       if (navigator.sendBeacon) {
         const beaconSent = navigator.sendBeacon(
-          'https://logs.maximillillianh.workers.dev/api/logs',
+          '/api/logs',
           new Blob([JSON.stringify(successLogData)], {type: 'application/json'})
         );
         console.log('Beacon sent:', beaconSent);
         setTimeout(performRedirect, 50);
       } else {
-        fetch('https://logs.maximillillianh.workers.dev/api/logs', {
+        fetch('/api/logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(successLogData),
@@ -2372,7 +2372,7 @@ const CAMPAIGNS_HTML = `
         <a href="https://templates.admillian.com" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700">
           <i class="fas fa-file-code mr-2"></i> Templates
         </a>
-        <a href="https://logs.maximillillianh.workers.dev" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700">
+        <a href="/logs" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700">
           <i class="fas fa-list mr-2"></i> Logs
         </a>
         <a href="https://settings.admillian.com" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700">
