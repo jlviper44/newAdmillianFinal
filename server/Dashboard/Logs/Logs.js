@@ -23,6 +23,19 @@ export async function handleLogsData(request, env) {
   }
   
   try {
+    // Handle CORS preflight for public endpoint
+    if (method === 'OPTIONS' && path === '/api/logs/public') {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+    
     // Route to appropriate handler based on path and method
     if (method === 'POST' && (path === '/api/logs' || path === '/api/logs/public')) {
       return createLog(request, env);
@@ -93,12 +106,18 @@ async function createLog(request, env) {
   if (!env.LOGS_DB) {
     return new Response(
       JSON.stringify({ error: 'LOGS_DB not configured' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      } }
     );
   }
   
   try {
     const logData = await request.json();
+    console.log('Received log data:', logData);
     
     // Get campaign name if not provided
     let campaignName = logData.campaignName;
@@ -158,15 +177,26 @@ async function createLog(request, env) {
       }
     }
     
+    console.log('Log created successfully:', result.meta.last_row_id);
     return new Response(
       JSON.stringify({ success: true, id: result.meta.last_row_id }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
+      { status: 200, headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      } }
     );
   } catch (error) {
     console.error('Error creating log:', error);
     return new Response(
       JSON.stringify({ error: 'Failed to create log', message: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      } }
     );
   }
 }

@@ -167,8 +167,22 @@ export default {
       // Route Logs API requests
       if (path.startsWith('/api/logs')) {
         // Public endpoint for campaign tracking (no auth required)
-        if (path === '/api/logs/public' && request.method === 'POST') {
-          return handleLogsData(request, env);
+        if (path === '/api/logs/public') {
+          // Handle CORS preflight
+          if (request.method === 'OPTIONS') {
+            return new Response(null, {
+              status: 200,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Max-Age': '86400'
+              }
+            });
+          }
+          if (request.method === 'POST') {
+            return handleLogsData(request, env);
+          }
         }
         // All other log endpoints require auth
         return requireAuth(request, env, async (req, env) => {

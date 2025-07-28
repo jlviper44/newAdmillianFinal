@@ -1279,16 +1279,22 @@ function generatePageContent(campaign, campaignId, launchNumber) {
         };
         
         // Send log to server
+        console.log('Sending whitehat log:', logData);
         if (navigator.sendBeacon) {
-          navigator.sendBeacon('https://cranads.com/api/logs/public', 
+          const sent = navigator.sendBeacon('https://cranads.com/api/logs/public', 
             new Blob([JSON.stringify(logData)], {type: 'application/json'}));
+          console.log('Beacon sent:', sent);
         } else {
           fetch('https://cranads.com/api/logs/public', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(logData),
             keepalive: true
-          }).catch(function(err) {
+          })
+          .then(function(response) {
+            console.log('Log sent successfully:', response.status);
+          })
+          .catch(function(err) {
             console.error('Failed to send log:', err);
           });
         }
