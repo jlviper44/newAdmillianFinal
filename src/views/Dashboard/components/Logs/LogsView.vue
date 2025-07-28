@@ -3,7 +3,11 @@
     <!-- Header -->
     <v-row class="mb-4">
       <v-col cols="12">
-        <div class="d-flex justify-end">
+        <div class="d-flex justify-space-between align-center">
+          <div class="text-caption text-grey-darken-1">
+            <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+            Your timezone: {{ userTimezone }}
+          </div>
           <v-btn 
             color="primary" 
             @click="refreshData"
@@ -213,7 +217,7 @@
         class="elevation-1"
       >
         <template v-slot:item.timestamp="{ item }">
-          {{ formatDateTime(item.timestamp) }}
+          {{ formatDateTime(item.timestamp, { showTimezone: true }) }}
         </template>
 
         <template v-slot:item.type="{ item }">
@@ -298,7 +302,7 @@
                       <strong>Log ID:</strong> {{ selectedLog.id }}
                     </v-col>
                     <v-col cols="6">
-                      <strong>Timestamp:</strong> {{ formatDateTime(selectedLog.timestamp) }}
+                      <strong>Timestamp:</strong> {{ formatDateTime(selectedLog.timestamp, { showTimezone: true }) }}
                     </v-col>
                     <v-col cols="6">
                       <strong>Type:</strong> 
@@ -454,13 +458,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import logsAPI from '@/services/logsAPI';
+import { formatDateTime, getUserTimezone } from '@/utils/dateFormatter';
 
 // State
 const loading = ref(false);
 const logs = ref([]);
 const campaigns = ref([]);
+const userTimezone = ref(getUserTimezone());
+
+// Debug: log first timestamp when data loads
+watch(logs, (newLogs) => {
+  if (newLogs.length > 0 && newLogs[0].timestamp) {
+    const ts = newLogs[0].timestamp;
+    const date = new Date(ts);
+    console.log('=== Timestamp Debug ===');
+    console.log('Raw timestamp from DB:', ts);
+    console.log('Date object:', date);
+    console.log('UTC String:', date.toUTCString());
+    console.log('Local String:', date.toString());
+    console.log('toLocaleString():', date.toLocaleString());
+    console.log('Your timezone:', getUserTimezone());
+    console.log('Formatted with formatter:', formatDateTime(ts, { showTimezone: true }));
+    console.log('===================');
+  }
+});
 const stats = ref({
   total: 0,
   passed: 0,
@@ -549,7 +572,37 @@ const loadLogs = async () => {
     const response = await logsAPI.getLogs(params);
     logs.value = response.logs;
     totalLogs.value = response.pagination.total;
+    
+    // Debug timestamp issue
+    if (response.logs && response.logs.length > 0) {
+      const firstLog = response.logs[0];
+      console.log('=== Logs Timestamp Debug ===');
+      console.log('First log:', firstLog);
+      console.log('Raw timestamp:', firstLog.timestamp);
+      console.log('Timestamp type:', typeof firstLog.timestamp);
+      console.log('Timestamp format matches SQLite?:', firstLog.timestamp?.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/));
+      const date = new Date(firstLog.timestamp);
+      console.log('Date object:', date);
+      console.log('UTC String:', date.toUTCString());
+      console.log('Local String:', date.toString());
+      console.log('Your timezone:', getUserTimezone());
+      console.log('Formatted with formatter:', formatDateTime(firstLog.timestamp, { showTimezone: true }));
+      
+      // Also check if there's a created_at field
+      if (firstLog.created_at) {
+        console.log('--- Also has created_at field ---');
+        console.log('Raw created_at:', firstLog.created_at);
+        console.log('Formatted created_at:', formatDateTime(firstLog.created_at, { showTimezone: true }));
+      }
+      console.log('===================');
+    }
   } catch (error) {
+    console.error('Error loading logs:', error);
+    console.error('Error details:', {
+      message: error.message,
+      response: error.response,
+      data: error.response?.data
+    });
   } finally {
     loading.value = false;
   }
@@ -620,9 +673,7 @@ const confirmClearLogs = async () => {
 };
 
 // Formatting helpers
-const formatDateTime = (timestamp) => {
-  return new Date(timestamp).toLocaleString();
-};
+// formatDateTime is now imported from utils/dateFormatter
 
 const formatLocation = (log) => {
   const parts = [log.country];

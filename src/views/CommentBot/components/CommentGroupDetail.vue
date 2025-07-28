@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { formatDateTime } from '@/utils/dateFormatter';
 
 const props = defineProps({
   commentGroup: {
@@ -10,9 +11,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close']);
 
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleString();
-};
+// formatDateTime is now imported from utils/dateFormatter
 
 const closeDialog = () => {
   emit('close');
@@ -116,11 +115,11 @@ const closeDialog = () => {
       <v-row>
         <v-col cols="12" md="6">
           <div class="text-caption text-medium-emphasis">Created</div>
-          <div class="text-body-2">{{ formatDate(commentGroup.created_at) }}</div>
+          <div class="text-body-2">{{ formatDateTime(commentGroup.created_at) }}</div>
         </v-col>
         <v-col cols="12" md="6">
           <div class="text-caption text-medium-emphasis">Last Updated</div>
-          <div class="text-body-2">{{ formatDate(commentGroup.updated_at) }}</div>
+          <div class="text-body-2">{{ formatDateTime(commentGroup.updated_at) }}</div>
         </v-col>
       </v-row>
     </v-card-text>

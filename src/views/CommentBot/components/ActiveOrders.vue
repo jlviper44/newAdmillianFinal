@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useAuth } from '@/composables/useAuth';
+import { formatDateTime } from '@/utils/dateFormatter';
 
 const { user } = useAuth();
 
@@ -63,9 +64,7 @@ watch(() => props.orders.length, () => {
   }
 });
 
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleString();
-};
+// formatDateTime is now imported from utils/dateFormatter
 </script>
 
 <template>
@@ -101,7 +100,7 @@ const formatDate = (dateString) => {
                 {{ order.status }}
               </v-chip>
               <span class="text-caption text-medium-emphasis">
-                {{ formatDate(order.created_at) }}
+                {{ formatDateTime(order.created_at) }}
               </span>
             </div>
           </div>
@@ -253,7 +252,7 @@ const formatDate = (dateString) => {
                 {{ order.status === 'completed' ? '100%' : 'Loading...' }}
               </div>
             </td>
-            <td>{{ formatDate(order.created_at) }}</td>
+            <td>{{ formatDateTime(order.created_at) }}</td>
           </tr>
         </tbody>
       </v-table>

@@ -29,7 +29,7 @@
                 'd-flex align-center gap-2',
                 { 'flex-wrap': $vuetify.display.smAndDown }
               ]">
-                <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">{{ formatDate(order.createdAt) }}</span>
+                <span :class="$vuetify.display.smAndDown ? 'text-caption' : 'text-caption'">{{ formatDateTime(order.createdAt) }}</span>
                 <v-chip 
                   v-if="order.refundStatus === 'pending'"
                   size="x-small"
@@ -652,6 +652,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { bcgenApi } from '@/services/api'
 import { useAuth } from '@/composables/useAuth'
+import { formatDateTime } from '@/utils/dateFormatter'
 
 const { user } = useAuth()
 
@@ -687,9 +688,7 @@ const showSnackbar = (text, color = 'success') => {
   snackbar.value = { show: true, text, color }
 }
 
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleString()
-}
+// formatDateTime is now imported from utils/dateFormatter
 
 const getStatusColor = (status) => {
   const colors = {

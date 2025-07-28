@@ -13,9 +13,13 @@ export async function handleLogsData(request, env) {
   const path = url.pathname;
   const method = request.method;
   
+  console.log('Logs API called:', { path, method, hasLogsDB: !!env.LOGS_DB });
+  
   // Initialize logs table if needed
   if (env.LOGS_DB) {
     await initializeLogsTable(env);
+  } else {
+    console.warn('LOGS_DB not available in environment');
   }
   
   try {
@@ -229,9 +233,7 @@ async function getLogs(request, env) {
     
     // Get total count
     const countQuery = `SELECT COUNT(*) as total FROM logs ${whereClause}`;
-    const countStmt = env.LOGS_DB.prepare(countQuery);
-    bindParams.forEach((param, index) => countStmt.bind(index + 1, param));
-    const countResult = await countStmt.first();
+    const countResult = await env.LOGS_DB.prepare(countQuery).bind(...bindParams).first();
     const total = countResult.total;
     
     // Get logs
@@ -240,11 +242,7 @@ async function getLogs(request, env) {
       ORDER BY timestamp DESC 
       LIMIT ? OFFSET ?
     `;
-    const logsStmt = env.LOGS_DB.prepare(logsQuery);
-    bindParams.forEach((param, index) => logsStmt.bind(index + 1, param));
-    logsStmt.bind(bindParams.length + 1, limit);
-    logsStmt.bind(bindParams.length + 2, offset);
-    const logsResult = await logsStmt.all();
+    const logsResult = await env.LOGS_DB.prepare(logsQuery).bind(...bindParams, limit, offset).all();
     
     // Parse JSON fields
     const logs = (logsResult.results || []).map(log => ({
@@ -622,9 +620,7 @@ async function exportLogs(request, env) {
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
     
     const query = `SELECT * FROM logs ${whereClause} ORDER BY timestamp DESC`;
-    const stmt = env.LOGS_DB.prepare(query);
-    bindParams.forEach((param, index) => stmt.bind(index + 1, param));
-    const result = await stmt.all();
+    const result = await env.LOGS_DB.prepare(query).bind(...bindParams).all();
     
     // Convert to CSV
     const logs = result.results || [];

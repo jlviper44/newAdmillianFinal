@@ -13,6 +13,7 @@ import CommentGroupDetail from './components/CommentGroupDetail.vue';
 import CreateCommentGroup from './components/CreateCommentGroup.vue';
 import EditCommentGroup from './components/EditCommentGroup.vue';
 import CommentBotCredits from './components/CommentBotCredits.vue';
+import { formatDateTime, getUserTimezone } from '@/utils/dateFormatter';
 
 // State management
 const loading = ref({
@@ -100,6 +101,22 @@ const fetchOrders = async () => {
   try {
     const data = await commentBotApi.getOrders();
     activeOrders.value = data.orders || [];
+    
+    // Debug timestamp issue
+    console.log('=== Comment Bot Order Timestamp Debug ===');
+    console.log('Total orders:', activeOrders.value.length);
+    if (activeOrders.value.length > 0) {
+      const firstOrder = activeOrders.value[0];
+      console.log('First order:', firstOrder);
+      console.log('Raw created_at:', firstOrder.created_at);
+      const date = new Date(firstOrder.created_at);
+      console.log('Date object:', date);
+      console.log('UTC String:', date.toUTCString());
+      console.log('Local String:', date.toString());
+      console.log('Your timezone:', getUserTimezone());
+      console.log('Formatted:', formatDateTime(firstOrder.created_at, { showTimezone: true }));
+    }
+    console.log('==============================');
     
     // Start polling for active orders
     activeOrders.value.forEach(order => {

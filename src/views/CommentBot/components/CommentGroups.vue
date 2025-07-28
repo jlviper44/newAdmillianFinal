@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { useAuth } from '@/composables/useAuth';
+import { formatDateTime } from '@/utils/dateFormatter';
 
 const { user } = useAuth();
 
@@ -119,7 +120,7 @@ const createGroup = () => {
                   {{ group.legend_count || 0 }} legends
                 </div>
                 <div class="text-caption text-medium-emphasis">
-                  {{ new Date(group.created_at).toLocaleDateString() }}
+                  {{ formatDateTime(group.created_at, { format: 'date' }) }}
                 </div>
               </div>
               
@@ -180,7 +181,7 @@ const createGroup = () => {
             </td>
             <td>{{ group.description || 'N/A' }}</td>
             <td>{{ group.legend_count || 0 }}</td>
-            <td>{{ new Date(group.created_at).toLocaleString() }}</td>
+            <td>{{ formatDateTime(group.created_at) }}</td>
             <td>
               <v-chip
                 size="small"
