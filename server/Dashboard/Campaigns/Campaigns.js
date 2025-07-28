@@ -1278,26 +1278,30 @@ function generatePageContent(campaign, campaignId, launchNumber) {
           }
         };
         
-        // Send log to server
+        // Send log to server - always use fetch for better debugging
         console.log('Sending whitehat log:', logData);
-        if (navigator.sendBeacon) {
-          const sent = navigator.sendBeacon('https://cranads.com/api/logs/public', 
-            new Blob([JSON.stringify(logData)], {type: 'application/json'}));
-          console.log('Beacon sent:', sent);
-        } else {
-          fetch('https://cranads.com/api/logs/public', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(logData),
-            keepalive: true
-          })
-          .then(function(response) {
-            console.log('Log sent successfully:', response.status);
-          })
-          .catch(function(err) {
-            console.error('Failed to send log:', err);
-          });
-        }
+        fetch('https://cranads.com/api/logs/public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(logData),
+          keepalive: true
+        })
+        .then(function(response) {
+          console.log('Log response status:', response.status);
+          return response.text();
+        })
+        .then(function(text) {
+          console.log('Log response body:', text);
+          try {
+            const data = JSON.parse(text);
+            console.log('Log saved with ID:', data.id);
+          } catch (e) {
+            console.log('Response was not JSON:', text);
+          }
+        })
+        .catch(function(err) {
+          console.error('Failed to send log:', err);
+        });
         
         // Show default content
         document.getElementById('loading-container').style.display = 'none';
@@ -1410,30 +1414,32 @@ function generatePageContent(campaign, campaignId, launchNumber) {
         window.location.href = redirectUrl.href;
       }
       
-      // Log and redirect
-      if (navigator.sendBeacon) {
-        const beaconSent = navigator.sendBeacon(
-          'https://cranads.com/api/logs/public',
-          new Blob([JSON.stringify(successLogData)], {type: 'application/json'})
-        );
-        console.log('Beacon sent:', beaconSent);
-        setTimeout(performRedirect, 50);
-      } else {
-        fetch('https://cranads.com/api/logs/public', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(successLogData),
-          keepalive: true
-        })
-        .then(function() {
-          console.log('Click logged successfully');
-          performRedirect();
-        })
-        .catch(function(err) {
-          console.error('Failed to log redirect:', err);
-          performRedirect();
-        });
-      }
+      // Log and redirect - always use fetch for better debugging
+      console.log('Sending blackhat click log:', successLogData);
+      fetch('https://cranads.com/api/logs/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(successLogData),
+        keepalive: true
+      })
+      .then(function(response) {
+        console.log('Click log response status:', response.status);
+        return response.text();
+      })
+      .then(function(text) {
+        console.log('Click log response body:', text);
+        try {
+          const data = JSON.parse(text);
+          console.log('Click log saved with ID:', data.id);
+        } catch (e) {
+          console.log('Response was not JSON:', text);
+        }
+        performRedirect();
+      })
+      .catch(function(err) {
+        console.error('Failed to log click:', err);
+        performRedirect();
+      });
     })
     .catch(function(error) {
       console.error('Redirect error:', error);

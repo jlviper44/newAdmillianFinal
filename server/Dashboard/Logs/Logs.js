@@ -13,13 +13,30 @@ export async function handleLogsData(request, env) {
   const path = url.pathname;
   const method = request.method;
   
-  console.log('Logs API called:', { path, method, hasLogsDB: !!env.LOGS_DB });
+  console.log('Logs API called:', { 
+    path, 
+    method, 
+    hasLogsDB: !!env.LOGS_DB,
+    url: request.url,
+    headers: Object.fromEntries(request.headers.entries())
+  });
   
   // Initialize logs table if needed
   if (env.LOGS_DB) {
-    await initializeLogsTable(env);
+    const initialized = await initializeLogsTable(env);
+    console.log('Logs table initialization result:', initialized);
   } else {
-    console.warn('LOGS_DB not available in environment');
+    console.error('LOGS_DB not available in environment');
+    return new Response(
+      JSON.stringify({ error: 'Database not configured' }),
+      { 
+        status: 503,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }
+    );
   }
   
   try {
@@ -78,6 +95,10 @@ export async function handleLogsData(request, env) {
       return exportLogs(request, env);
     }
     
+    if (method === 'GET' && path === '/api/logs/test') {
+      return testLogsDatabase(request, env);
+    }
+    
     // Unknown endpoint
     return new Response(
       JSON.stringify({ error: 'Unknown logs endpoint' }),
@@ -116,8 +137,41 @@ async function createLog(request, env) {
   }
   
   try {
-    const logData = await request.json();
-    console.log('Received log data:', logData);
+    let logData;
+    try {
+      const text = await request.text();
+      console.log('Raw request body:', text);
+      logData = JSON.parse(text);
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON in request body' }),
+        { 
+          status: 400,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        }
+      );
+    }
+    
+    console.log('Parsed log data:', logData);
+    
+    // Validate required fields
+    if (!logData.campaignId) {
+      console.error('Missing required field: campaignId');
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: campaignId' }),
+        { 
+          status: 400,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        }
+      );
+    }
     
     // Get campaign name if not provided
     let campaignName = logData.campaignName;
@@ -778,6 +832,94 @@ export async function getCampaignsList(request, env) {
       }
     );
   }
+}
+
+/**
+ * Test database connection and create a test log
+ */
+async function testLogsDatabase(request, env) {
+  const results = {
+    hasLogsDB: !!env.LOGS_DB,
+    hasDashboardDB: !!env.DASHBOARD_DB,
+    tableExists: false,
+    canInsert: false,
+    canQuery: false,
+    testLogId: null,
+    error: null
+  };
+  
+  try {
+    if (!env.LOGS_DB) {
+      results.error = 'LOGS_DB not bound';
+      return new Response(JSON.stringify(results), {
+        status: 200,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+    
+    // Check if table exists
+    try {
+      const tableCheck = await env.LOGS_DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='logs'"
+      ).first();
+      results.tableExists = !!tableCheck;
+    } catch (e) {
+      results.error = 'Failed to check table: ' + e.message;
+    }
+    
+    // Try to insert a test log
+    try {
+      const testLog = await env.LOGS_DB.prepare(`
+        INSERT INTO logs (
+          campaignId, campaignName, launchNumber, type, decision,
+          ip, country, timestamp, userAgent, url, params, tags
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        'test-campaign',
+        'Test Campaign',
+        0,
+        'test',
+        'test',
+        '127.0.0.1',
+        'TEST',
+        new Date().toISOString(),
+        'Test User Agent',
+        'https://test.com',
+        JSON.stringify({ test: true }),
+        JSON.stringify(['test'])
+      ).run();
+      
+      results.canInsert = true;
+      results.testLogId = testLog.meta.last_row_id;
+    } catch (e) {
+      results.error = 'Failed to insert: ' + e.message;
+    }
+    
+    // Try to query logs
+    try {
+      const logs = await env.LOGS_DB.prepare(
+        'SELECT COUNT(*) as count FROM logs'
+      ).first();
+      results.canQuery = true;
+      results.logCount = logs.count;
+    } catch (e) {
+      results.error = 'Failed to query: ' + e.message;
+    }
+    
+  } catch (error) {
+    results.error = error.message;
+  }
+  
+  return new Response(JSON.stringify(results, null, 2), {
+    status: 200,
+    headers: { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
 }
 
 export default {
