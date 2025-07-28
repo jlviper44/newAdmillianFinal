@@ -24,7 +24,7 @@ export async function handleLogsData(request, env) {
   
   try {
     // Route to appropriate handler based on path and method
-    if (method === 'POST' && path === '/api/logs') {
+    if (method === 'POST' && (path === '/api/logs' || path === '/api/logs/public')) {
       return createLog(request, env);
     }
     

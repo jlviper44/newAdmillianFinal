@@ -1256,6 +1256,43 @@ function generatePageContent(campaign, campaignId, launchNumber) {
         // Log failed validation
         const failureReason = !isMobile ? 'not_mobile' : !hasTtclid ? 'no_ttclid' : 'invalid_referrer';
         
+        // Send log for failed validation
+        const logData = {
+          campaignId: campaignId,
+          launchNumber: launchNumber,
+          type: 'validation',
+          decision: 'whitehat',
+          ip: serverData.clientIP || 'unknown',
+          country: serverData.geoData?.country || 'unknown',
+          region: serverData.geoData?.region || null,
+          city: serverData.geoData?.city || null,
+          timezone: serverData.geoData?.timezone || null,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          referer: document.referrer,
+          url: window.location.href,
+          params: {
+            ttclid: ttclid,
+            test: testMode,
+            failureReason: failureReason
+          }
+        };
+        
+        // Send log to server
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('https://cranads.com/api/logs/public', 
+            new Blob([JSON.stringify(logData)], {type: 'application/json'}));
+        } else {
+          fetch('https://cranads.com/api/logs/public', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(logData),
+            keepalive: true
+          }).catch(function(err) {
+            console.error('Failed to send log:', err);
+          });
+        }
+        
         // Show default content
         document.getElementById('loading-container').style.display = 'none';
         document.querySelectorAll('.shopify-section, header, footer, .header, .footer').forEach(function(el) {
@@ -1337,14 +1374,60 @@ function generatePageContent(campaign, campaignId, launchNumber) {
       
       console.log('Redirecting to:', redirectUrl.href);
       
+      // Log successful click before redirect
+      const successLogData = {
+        campaignId: campaignId,
+        launchNumber: launchNumber,
+        type: 'click',
+        decision: 'blackhat',
+        ip: serverData.clientIP || 'unknown',
+        country: country || 'unknown',
+        region: geoData.region || null,
+        city: geoData.city || null,
+        timezone: geoData.timezone || null,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        referer: document.referrer,
+        url: window.location.href,
+        redirectUrl: redirectUrl.href,
+        os: os,
+        params: {
+          ttclid: ttclid,
+          test: testMode,
+          redirectType: data.redirectType
+        }
+      };
+      
       // Function to perform the redirect
       function performRedirect() {
         console.log('Performing redirect to:', redirectUrl.href);
         window.location.href = redirectUrl.href;
       }
       
-      // Just redirect without external logging
-      performRedirect();
+      // Log and redirect
+      if (navigator.sendBeacon) {
+        const beaconSent = navigator.sendBeacon(
+          'https://cranads.com/api/logs/public',
+          new Blob([JSON.stringify(successLogData)], {type: 'application/json'})
+        );
+        console.log('Beacon sent:', beaconSent);
+        setTimeout(performRedirect, 50);
+      } else {
+        fetch('https://cranads.com/api/logs/public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(successLogData),
+          keepalive: true
+        })
+        .then(function() {
+          console.log('Click logged successfully');
+          performRedirect();
+        })
+        .catch(function(err) {
+          console.error('Failed to log redirect:', err);
+          performRedirect();
+        });
+      }
     })
     .catch(function(error) {
       console.error('Redirect error:', error);

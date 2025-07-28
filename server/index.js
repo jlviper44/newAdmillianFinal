@@ -164,8 +164,13 @@ export default {
         });
       }
       
-      // Route Logs API requests (protected)
+      // Route Logs API requests
       if (path.startsWith('/api/logs')) {
+        // Public endpoint for campaign tracking (no auth required)
+        if (path === '/api/logs/public' && request.method === 'POST') {
+          return handleLogsData(request, env);
+        }
+        // All other log endpoints require auth
         return requireAuth(request, env, async (req, env) => {
           return handleLogsData(req, env);
         });
