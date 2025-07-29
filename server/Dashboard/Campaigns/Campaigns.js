@@ -1152,8 +1152,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
 
 
 
-// Configuration for cloaker service
-const CLOAKER_WORKER_URL = process.env.CLOAKER_WORKER_URL || 'https://cloaker.maximillianfreakyads.workers.dev';
+// Configuration for cloaker service will be passed from env in the handler
 
 /**
  * Get template HTML from database
@@ -1396,6 +1395,9 @@ async function generateCampaignLink(db, request, env) {
       };
       
       // Call cloaker API
+      const CLOAKER_WORKER_URL = env.CLOAKER_WORKER_URL || 'https://cloaker.maximillianfreakyads.workers.dev';
+      console.log('Calling cloaker at:', `${CLOAKER_WORKER_URL}/generate-pages`);
+      
       const cloakerResponse = await fetch(`${CLOAKER_WORKER_URL}/generate-pages`, {
         method: 'POST',
         headers: {
@@ -1413,6 +1415,12 @@ async function generateCampaignLink(db, request, env) {
       
       if (!cloakerResponse.ok) {
         const errorText = await cloakerResponse.text();
+        console.error('Cloaker API error details:', {
+          status: cloakerResponse.status,
+          statusText: cloakerResponse.statusText,
+          url: `${CLOAKER_WORKER_URL}/generate-pages`,
+          errorText: errorText
+        });
         throw new Error(`Cloaker API error: ${cloakerResponse.status} - ${errorText}`);
       }
       
