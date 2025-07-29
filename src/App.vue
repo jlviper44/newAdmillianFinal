@@ -94,10 +94,34 @@ const toggleDrawer = () => {
   drawer.value = !drawer.value;
 };
 
+// List group opened state
+const opened = ref([]);
+
 // Active route for highlighting current page using Vue Router
 const activeRoute = computed(() => {
   return router.currentRoute.value.path;
 });
+
+// Update opened groups based on current route
+const updateOpenedGroups = () => {
+  const path = router.currentRoute.value.path;
+  const newOpened = [];
+  
+  if (path.includes('/dashboard')) {
+    newOpened.push('dashboard');
+  }
+  if (path.includes('/comments')) {
+    newOpened.push('comments');
+  }
+  if (path.includes('/bc-gen')) {
+    newOpened.push('bcgen');
+  }
+  if (path.includes('/settings')) {
+    newOpened.push('settings');
+  }
+  
+  opened.value = newOpened;
+};
 
 // Check if a tab is currently active
 const isTabActive = (path, tab) => {
@@ -132,6 +156,20 @@ const handleDashboardClick = () => {
   } else {
     // If not on dashboard, navigate to default dashboard tab
     router.push('/dashboard?tab=metrics');
+  }
+};
+
+const handleSettingsClick = () => {
+  const currentPath = router.currentRoute.value.path;
+  if (currentPath === '/settings') {
+    // If already on settings, toggle popup menu
+    togglePopupMenu('settings');
+  } else {
+    // If not on settings, navigate to default settings tab
+    // Check if user has any subscription
+    const hasAnySubscription = hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value;
+    const defaultTab = hasAnySubscription ? 'virtual-assistants' : 'teams';
+    router.push(`/settings?tab=${defaultTab}`);
   }
 };
 
@@ -178,6 +216,7 @@ const updateMobileActiveTab = () => {
   else if (path.includes('/comments')) mobileActiveTab.value = 'comments';
   else if (path.includes('/bc-gen')) mobileActiveTab.value = 'bcgen';
   else if (path.includes('/profile')) mobileActiveTab.value = 'profile';
+  else if (path.includes('/settings')) mobileActiveTab.value = 'settings';
   
   // Close popup menu when route changes
   activePopupMenu.value = null;
@@ -188,9 +227,10 @@ const handleScroll = () => {
   scrollY.value = window.scrollY;
 };
 
-// Watch route changes to update mobile active tab
+// Watch route changes to update mobile active tab and opened groups
 router.afterEach(() => {
   updateMobileActiveTab();
+  updateOpenedGroups();
 });
 
 // Initialize theme on component mount
@@ -213,8 +253,9 @@ onMounted(async () => {
   // Add scroll listener for parallax effect
   window.addEventListener('scroll', handleScroll);
   
-  // Update mobile active tab
+  // Update mobile active tab and opened groups
   updateMobileActiveTab();
+  updateOpenedGroups();
 });
 
 // Clean up scroll listener
@@ -367,9 +408,9 @@ onUnmounted(() => {
         <span class="text-caption">BC Gen</span>
       </v-btn>
       
-      <v-btn value="profile" @click="navigateTo('/profile')">
-        <v-icon>mdi-account</v-icon>
-        <span class="text-caption">Profile</span>
+      <v-btn value="profile" @click="togglePopupMenu('more')" :class="{ 'v-btn--active': activePopupMenu === 'more' }">
+        <v-icon>mdi-dots-horizontal</v-icon>
+        <span class="text-caption">More</span>
       </v-btn>
     </v-bottom-navigation>
 
@@ -462,6 +503,13 @@ onUnmounted(() => {
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              @click="navigateToAndClose('/bc-gen?tab=credits')"
+              prepend-icon="mdi-wallet"
+              title="Credits"
+              :active="isTabActive('/bc-gen', 'credits')"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
               @click="navigateToAndClose('/bc-gen?tab=refunds')"
               prepend-icon="mdi-cash-refund"
               title="Refunds"
@@ -469,11 +517,69 @@ onUnmounted(() => {
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
-              @click="navigateToAndClose('/bc-gen?tab=credits')"
-              prepend-icon="mdi-wallet"
-              title="Credits"
-              :active="isTabActive('/bc-gen', 'credits')"
+              v-if="user?.isAdmin"
+              @click="navigateToAndClose('/bc-gen?tab=bcgen-refunds')"
+              prepend-icon="mdi-cash-refund"
               class="mobile-popup-item"
+            >
+              <v-list-item-title class="d-flex align-center">
+                BCGen Refunds
+                <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                  <v-icon start size="x-small">mdi-crown</v-icon>
+                  Admin
+                </v-chip>
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+          <!-- Settings Menu - Hidden for now -->
+          <!-- <v-list v-if="activePopupMenu === 'settings'" density="comfortable">
+            <v-list-item
+              v-if="hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess"
+              @click="navigateToAndClose('/settings?tab=virtual-assistants')"
+              prepend-icon="mdi-assistant"
+              title="Virtual Assistants"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              v-if="user?.isAdmin"
+              @click="navigateToAndClose('/settings?tab=teams')"
+              prepend-icon="mdi-account-group"
+              class="mobile-popup-item"
+            >
+              <v-list-item-title class="d-flex align-center">
+                Teams
+                <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                  <v-icon start size="x-small">mdi-crown</v-icon>
+                  Admin
+                </v-chip>
+              </v-list-item-title>
+            </v-list-item>
+          </v-list> -->
+          <!-- More Menu -->
+          <v-list v-if="activePopupMenu === 'more'" density="comfortable">
+            <v-list-item
+              @click="navigateToAndClose('/profile')"
+              prepend-icon="mdi-account"
+              title="Profile"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <!-- Settings - Hidden for now -->
+            <!-- <v-list-item
+              @click="activePopupMenu = 'settings'"
+              prepend-icon="mdi-cog"
+              class="mobile-popup-item"
+            >
+              <v-list-item-title class="d-flex align-center justify-space-between">
+                Settings
+                <v-icon size="small">mdi-chevron-right</v-icon>
+              </v-list-item-title>
+            </v-list-item> -->
+            <v-divider class="my-2"></v-divider>
+            <v-list-item
+              @click="handleLogout"
+              prepend-icon="mdi-logout"
+              title="Sign Out"
+              class="mobile-popup-item text-error"
             ></v-list-item>
           </v-list>
         </v-card>
@@ -528,9 +634,9 @@ onUnmounted(() => {
       :class="isDarkMode ? 'drawer-dark' : 'drawer-light'"
     >
       <!-- Navigation list -->
-      <v-list nav density="compact" class="pt-20">
+      <v-list nav density="compact" class="pt-20" v-model:opened="opened">
         <!-- Dashboard -->
-        <v-list-group v-if="hasDashboardAccess" value="dashboard">
+        <v-list-group v-if="hasDashboardAccess" value="dashboard" :value="opened.includes('dashboard')">
           <template v-slot:activator="{ props }">
             <v-list-item
               v-bind="props"
@@ -597,7 +703,7 @@ onUnmounted(() => {
         </v-list-group>
 
         <!-- Comment Bot -->
-        <v-list-group v-if="hasCommentBotAccess" value="comments">
+        <v-list-group v-if="hasCommentBotAccess" value="comments" :value="opened.includes('comments')">
           <template v-slot:activator="{ props }">
             <v-list-item
               v-bind="props"
@@ -628,7 +734,7 @@ onUnmounted(() => {
         </v-list-group>
 
         <!-- BC Gen -->
-        <v-list-group v-if="hasBcGenAccess" value="bcgen">
+        <v-list-group v-if="hasBcGenAccess" value="bcgen" :value="opened.includes('bcgen')">
           <template v-slot:activator="{ props }">
             <v-list-item
               v-bind="props"
@@ -658,6 +764,15 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
+            to="/bc-gen?tab=credits"
+            prepend-icon="mdi-wallet"
+            title="Credits"
+            :active="isTabActive('/bc-gen', 'credits')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
             to="/bc-gen?tab=refunds"
             prepend-icon="mdi-undo"
             title="Refunds"
@@ -667,13 +782,21 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
-            to="/bc-gen?tab=credits"
-            prepend-icon="mdi-wallet"
-            title="Credits"
-            :active="isTabActive('/bc-gen', 'credits')"
+            v-if="user?.isAdmin"
+            to="/bc-gen?tab=bcgen-refunds"
+            prepend-icon="mdi-cash-refund"
+            :active="isTabActive('/bc-gen', 'bcgen-refunds')"
             class="ml-2"
             rounded="lg"
-          ></v-list-item>
+          >
+            <v-list-item-title class="d-flex align-center">
+              BCGen Refunds
+              <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                <v-icon start size="x-small">mdi-crown</v-icon>
+                Admin
+              </v-chip>
+            </v-list-item-title>
+          </v-list-item>
         </v-list-group>
 
         <!-- Profile -->
@@ -685,14 +808,49 @@ onUnmounted(() => {
           rounded="lg"
         ></v-list-item>
 
-        <!-- Settings -->
-        <v-list-item
-          to="/settings"
-          prepend-icon="mdi-cog"
-          title="Settings"
-          :active="activeRoute === '/settings'"
-          rounded="lg"
-        ></v-list-item>
+        <!-- Settings - Hidden for now -->
+        <!-- <v-list-group value="settings" :value="opened.includes('settings')">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-cog"
+              :active="activeRoute.includes('/settings')"
+              rounded="lg"
+            >
+              <v-list-item-title>
+                Settings
+              </v-list-item-title>
+            </v-list-item>
+          </template>
+          
+          <v-list-item
+            v-if="hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess"
+            to="/settings?tab=virtual-assistants"
+            prepend-icon="mdi-assistant"
+            title="Virtual Assistants"
+            :active="isTabActive('/settings', 'virtual-assistants')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            v-if="user?.isAdmin"
+            to="/settings?tab=teams"
+            prepend-icon="mdi-account-group"
+            :active="isTabActive('/settings', 'teams')"
+            class="ml-2"
+            rounded="lg"
+          >
+            <v-list-item-title class="d-flex align-center">
+              Teams
+              <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                <v-icon start size="x-small">mdi-crown</v-icon>
+                Admin
+              </v-chip>
+            </v-list-item-title>
+          </v-list-item>
+          
+        </v-list-group> -->
       </v-list>
     </v-navigation-drawer>
     
@@ -1479,5 +1637,64 @@ onUnmounted(() => {
 .v-navigation-drawer .v-list-group .v-list-item.ml-2 .v-list-item__prepend .v-icon {
   margin-left: 0 !important;
   margin-inline-start: 0 !important;
+}
+
+/* Admin chip styling */
+.v-list-item-title .v-chip {
+  height: 18px;
+  font-size: 10px;
+  padding: 0 6px;
+}
+
+.v-list-item-title .v-chip .v-icon {
+  font-size: 12px;
+}
+
+/* Admin chip styling with forced amber color */
+.admin-chip {
+  background-color: #FFC107 !important;
+  color: rgba(0, 0, 0, 0.87) !important;
+}
+
+.admin-chip .v-icon {
+  color: rgba(0, 0, 0, 0.87) !important;
+}
+
+/* Ensure admin chips are always amber in both themes */
+.v-theme--dark .admin-chip,
+.v-theme--light .admin-chip {
+  background-color: #FFC107 !important;
+  color: rgba(0, 0, 0, 0.87) !important;
+}
+
+.v-theme--dark .admin-chip .v-icon,
+.v-theme--light .admin-chip .v-icon {
+  color: rgba(0, 0, 0, 0.87) !important;
+}
+
+/* Ensure chips don't wrap */
+.v-list-item-title {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+/* Mobile popup admin chips */
+.mobile-popup-item .v-list-item-title {
+  flex-wrap: nowrap;
+}
+
+.mobile-popup-item .v-chip {
+  margin-left: auto;
+}
+
+/* Adjust spacing for navigation items with chips */
+.v-navigation-drawer .v-list-item-title .v-chip {
+  opacity: 0.9;
+  transition: opacity 0.2s;
+}
+
+.v-navigation-drawer .v-list-item:hover .v-list-item-title .v-chip {
+  opacity: 1;
 }
 </style>

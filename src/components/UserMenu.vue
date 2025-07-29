@@ -13,7 +13,7 @@
             <v-icon v-else>mdi-account-circle</v-icon>
           </v-avatar>
           <span class="d-none d-sm-inline user-menu-name">{{ user.name || user.email }}</span>
-          <v-chip v-if="user.isAdmin" color="amber" size="x-small" variant="flat" class="ml-2">
+          <v-chip v-if="user.isAdmin" size="x-small" variant="flat" class="ml-2 admin-chip">
             <v-icon start size="x-small">mdi-crown</v-icon>
             Admin
           </v-chip>
@@ -29,7 +29,7 @@
         <v-list-item>
           <v-list-item-title class="font-weight-bold d-flex align-center">
             {{ user.name || 'User' }}
-            <v-chip v-if="user.isAdmin" color="amber" size="x-small" variant="flat" class="ml-3">
+            <v-chip v-if="user.isAdmin" size="x-small" variant="flat" class="ml-3 admin-chip">
               <v-icon start size="x-small">mdi-crown</v-icon>
               Admin
             </v-chip>
@@ -99,5 +99,14 @@ const viewProfile = () => {
 
 .v-theme--dark .user-menu-btn .v-icon {
   color: rgb(224, 224, 224) !important;
+}
+/* Admin chip styling */
+.admin-chip {
+  background-color: #FFC107 !important;
+  color: rgba(0, 0, 0, 0.87) !important;
+}
+
+.admin-chip .v-icon {
+  color: rgba(0, 0, 0, 0.87) !important;
 }
 </style>

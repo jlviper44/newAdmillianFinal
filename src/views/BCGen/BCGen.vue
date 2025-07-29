@@ -1,11 +1,13 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 import BCGenCredits from './components/BCGenCredits.vue';
 import PlaceOrderView from './components/PlaceOrderView.vue';
 import OrdersView from './components/OrdersView.vue';
 import RefundsView from './components/RefundsView.vue';
+import BCGenRefunds from './components/BCGenRefunds.vue';
 import { usersApi } from '@/services/api';
 
 // Component refs
@@ -15,13 +17,15 @@ const refundsViewRef = ref(null);
 // State management
 const currentTab = ref('orders');
 const route = useRoute();
+const { user } = useAuth();
 
 // Tab titles mapping
 const tabTitles = {
   orders: 'Place Order',
   'my-orders': 'My Orders',
   refunds: 'Refunds',
-  credits: 'Credits'
+  credits: 'Credits',
+  'bcgen-refunds': 'BCGen Refunds'
 };
 
 // Computed property for current tab title
@@ -84,7 +88,7 @@ const handleRefundRequested = () => {
 
 // Watch for route query changes
 watch(() => route.query.tab, (newTab) => {
-  if (newTab && ['orders', 'my-orders', 'refunds', 'credits'].includes(newTab)) {
+  if (newTab && ['orders', 'my-orders', 'refunds', 'credits', 'bcgen-refunds'].includes(newTab)) {
     currentTab.value = newTab;
   }
 });
@@ -94,7 +98,7 @@ onMounted(() => {
   fetchCredits();
   
   // Set initial tab from query parameter
-  if (route.query.tab && ['orders', 'my-orders', 'refunds', 'credits'].includes(route.query.tab)) {
+  if (route.query.tab && ['orders', 'my-orders', 'refunds', 'credits', 'bcgen-refunds'].includes(route.query.tab)) {
     currentTab.value = route.query.tab;
   } else if (route.query.showCredits === 'true') {
     currentTab.value = 'credits';
@@ -153,6 +157,11 @@ onMounted(() => {
           <!-- Credits Tab -->
           <div v-if="currentTab === 'credits'">
             <BCGenCredits />
+          </div>
+
+          <!-- BCGen Refunds Tab (Admin Only) -->
+          <div v-if="currentTab === 'bcgen-refunds' && user?.isAdmin">
+            <BCGenRefunds />
           </div>
         </v-col>
       </v-row>
