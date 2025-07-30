@@ -63,6 +63,8 @@
     "WHOP_DASHBOARD_PLAN_ID": "plan_Q9j4r3lUgwBRd",
     "WHOP_DASHBOARD_CHECKOUT_LINK": "https://whop.com/checkout/plan_Q9j4r3lUgwBRd?d2c=true",
     
+    "WHOP_VIRTUAL_ASSISTANT_PRODUCT_ID": "prod_ERumbP46S29DH",
+
     "SHEETDB_API_URL": "https://sheetdb.io/api/v1/zb48wyyweh0rp"
   }
 }

@@ -112,6 +112,7 @@
           </v-card>
         </v-col>
 
+
       </v-row>
 
       <!-- Subscription Tiers Section -->
@@ -517,6 +518,7 @@ const openCheckout = (type) => {
 onMounted(async () => {
   // Refresh access check to get latest subscription data
   await checkAccess();
+  
 });
 </script>
 

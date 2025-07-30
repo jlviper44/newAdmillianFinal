@@ -190,7 +190,7 @@ export async function handleCommentBotData(request, env, session) {
   }
   
   // Get user_id from session (passed by requireAuth middleware)
-  const userId = session?.user?.id;
+  let userId = session?.user?.id;
   if (!userId) {
     return jsonResponse({ error: 'Unauthorized - No user ID found' }, 401);
   }
@@ -1015,6 +1015,9 @@ async function createOrder(request, env, userId, teamId) {
     // Parse request body
     const orderData = await request.json();
     
+    const targetUserId = userId;
+    const targetTeamId = teamId;
+    
     // Validate required fields
     if (!orderData.post_id) {
       return jsonResponse({ error: 'TikTok post ID is required' }, 400);
@@ -1044,10 +1047,10 @@ async function createOrder(request, env, userId, teamId) {
       let groupQuery;
       let groupParams;
       
-      if (teamId) {
+      if (targetTeamId) {
         // If user is in a team, first get all team member IDs
         const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
-        const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+        const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [targetTeamId]);
         
         if (teamMembersResult.success && teamMembersResult.data.length > 0) {
           const memberIds = teamMembersResult.data.map(m => m.user_id);
@@ -1058,16 +1061,16 @@ async function createOrder(request, env, userId, teamId) {
             WHERE id = ? 
             AND (user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)
           `;
-          groupParams = [orderData.comment_group_id, ...memberIds, teamId];
+          groupParams = [orderData.comment_group_id, ...memberIds, targetTeamId];
         } else {
           // Fallback if no members found
           groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND team_id = ?`;
-          groupParams = [orderData.comment_group_id, teamId];
+          groupParams = [orderData.comment_group_id, targetTeamId];
         }
       } else {
         // Only allow using user's own comment groups
         groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
-        groupParams = [orderData.comment_group_id, userId];
+        groupParams = [orderData.comment_group_id, targetUserId];
       }
       
       const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, groupParams);
@@ -1137,8 +1140,8 @@ async function createOrder(request, env, userId, teamId) {
         
         await env.COMMENT_BOT_DB.prepare(insertOrderQuery)
           .bind(
-            userId,
-            teamId,
+            targetUserId,
+            targetTeamId,
             createdOrder.order_id,
             createdOrder.post_id,
             createdOrder.status,

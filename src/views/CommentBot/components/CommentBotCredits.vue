@@ -291,13 +291,13 @@ onUnmounted(() => {
             <v-card-text :class="{ 'pa-3': $vuetify.display.smAndDown }">
               <!-- Mobile Card Layout -->
               <div v-if="$vuetify.display.smAndDown" class="mobile-purchases">
-                <div v-if="credits.memberships.filter(m => m.metadata?.Quantity !== undefined).length === 0" 
+                <div v-if="credits.memberships.filter(m => m.metadata?.InitialQuantity !== undefined || m.metadata?.Quantity !== undefined).length === 0" 
                      class="text-center py-8 text-medium-emphasis">
                   No credit purchases found
                 </div>
                 <v-card 
                   v-else
-                  v-for="item in credits.memberships.filter(m => m.metadata?.Quantity !== undefined)"
+                  v-for="item in credits.memberships.filter(m => m.metadata?.InitialQuantity !== undefined || m.metadata?.Quantity !== undefined)"
                   :key="item.id"
                   class="mb-3"
                   variant="outlined"
@@ -317,7 +317,7 @@ onUnmounted(() => {
                       <div>
                         <div class="text-caption text-medium-emphasis">Remaining</div>
                         <div class="text-h6 font-weight-bold text-primary">
-                          {{ parseInt(item.metadata.Quantity).toLocaleString() }}
+                          {{ parseInt(item.metadata.Quantity || 0).toLocaleString() }}
                         </div>
                       </div>
                     </div>
@@ -333,7 +333,7 @@ onUnmounted(() => {
                   { title: 'Initial Credits', key: 'initial_credits', align: 'end' },
                   { title: 'Remaining Credits', key: 'remaining_credits', align: 'end' }
                 ]"
-                :items="credits.memberships.filter(m => m.metadata?.Quantity !== undefined)"
+                :items="credits.memberships.filter(m => m.metadata?.InitialQuantity !== undefined || m.metadata?.Quantity !== undefined)"
                 :loading="loading.checkAccess"
                 items-per-page="10"
                 no-data-text="No credit purchases found"
@@ -348,7 +348,7 @@ onUnmounted(() => {
                 </template>
                 <template v-slot:item.remaining_credits="{ item }">
                   <span class="text-h6 font-weight-bold text-primary">
-                    {{ parseInt(item.metadata.Quantity).toLocaleString() }}
+                    {{ parseInt(item.metadata.Quantity || 0).toLocaleString() }}
                   </span>
                 </template>
               </v-data-table>

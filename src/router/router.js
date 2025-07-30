@@ -4,6 +4,7 @@ import BCGen from '@/views/BCGen/BCGen.vue';
 import Profile from '@/views/Profile/Profile.vue';
 import Settings from '@/views/Settings/Settings.vue';
 import Dashboard from '@/views/Dashboard/Dashboard.vue';
+import VirtualAssistants from '@/views/VirtualAssistants/VirtualAssistants.vue';
 import AuthCallback from '@/views/AuthCallback.vue';
 import { useAuth } from '@/composables/useAuth';
 
@@ -58,6 +59,17 @@ const routes = [
       title: 'Settings',
       requiresAuth: true,
       requiresAccess: false
+    }
+  },
+  {
+    path: '/virtual-assistants',
+    name: 'VirtualAssistants',
+    component: VirtualAssistants,
+    meta: {
+      title: 'Virtual Assistants',
+      requiresAuth: true,
+      requiresAccess: true,
+      requiresSubscription: 'any'
     }
   },
   {
@@ -138,6 +150,9 @@ router.beforeEach(async (to, from, next) => {
         hasRequiredAccess = hasBcGenAccess.value;
       } else if (to.meta.requiresSubscription === 'dashboard') {
         hasRequiredAccess = hasDashboardAccess.value;
+      } else if (to.meta.requiresSubscription === 'any') {
+        // Allow access if user has any subscription
+        hasRequiredAccess = hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value;
       }
       
       if (!hasRequiredAccess) {

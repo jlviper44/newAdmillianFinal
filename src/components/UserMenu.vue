@@ -26,6 +26,8 @@
       </template>
       
       <v-list>
+        <!-- Debug info -->
+        
         <v-list-item>
           <v-list-item-title class="font-weight-bold d-flex align-center">
             {{ user.name || 'User' }}
@@ -48,8 +50,50 @@
         
         <v-divider class="my-2"></v-divider>
         
+        <!-- Virtual Assistant Switch Account -->
+        <v-list-item 
+          v-if="isVirtualAssistant && !isAssistingUser"
+          prepend-icon="mdi-account-switch"
+          @click="showAccountSwitcher = true"
+        >
+          <v-list-item-title>Switch Account</v-list-item-title>
+          <v-list-item-subtitle class="text-caption">
+            Access accounts you assist
+          </v-list-item-subtitle>
+        </v-list-item>
+        
+        <!-- Currently Assisting -->
+        <v-list-item 
+          v-if="isAssistingUser"
+          prepend-icon="mdi-account-eye"
+          @click="exitVirtualAssistantMode"
+        >
+          <v-list-item-title class="text-success">
+            Currently Assisting
+          </v-list-item-title>
+          <v-list-item-subtitle class="text-caption">
+            {{ user.assistingFor || `User #${getTargetUserId()}` }}
+            <br>
+            <span class="text-primary">Click to exit virtual assistant mode</span>
+          </v-list-item-subtitle>
+        </v-list-item>
+        
+        
         <v-list-item prepend-icon="mdi-account" @click="viewProfile">
           <v-list-item-title>View Profile</v-list-item-title>
+        </v-list-item>
+        
+        <!-- Stop Assisting Button -->
+        <v-list-item 
+          v-if="isAssistingUser"
+          prepend-icon="mdi-close-circle"
+          @click="exitVirtualAssistantMode"
+          class="text-warning"
+        >
+          <v-list-item-title>Stop Assisting</v-list-item-title>
+          <v-list-item-subtitle class="text-caption">
+            Return to your own account
+          </v-list-item-subtitle>
         </v-list-item>
         
         <v-divider class="my-2"></v-divider>
@@ -59,19 +103,128 @@
         </v-list-item>
       </v-list>
     </v-menu>
+    
+    <!-- Account Switcher Dialog -->
+    <v-dialog v-model="showAccountSwitcher" max-width="500">
+      <v-card>
+        <v-card-title>
+          <v-icon class="mr-2">mdi-account-switch</v-icon>
+          Switch Account
+        </v-card-title>
+        
+        <v-card-text>
+          <v-list v-if="virtualAssistantAccounts.length > 0">
+            <v-list-item
+              v-for="account in virtualAssistantAccounts"
+              :key="account.user_id"
+              @click="switchToAccount(account)"
+              :prepend-icon="account.status === 'active' ? 'mdi-account-check' : 'mdi-account-clock'"
+              :disabled="account.status !== 'active'"
+            >
+              <v-list-item-title>
+                {{ account.name || account.email || `User #${account.user_id}` }}
+              </v-list-item-title>
+              <v-list-item-subtitle>
+                <div v-if="account.email">{{ account.email }}</div>
+                <div>Expires: {{ new Date(account.expires_at).toLocaleDateString() }}</div>
+                <v-chip 
+                  :color="account.status === 'active' ? 'success' : 'error'" 
+                  size="x-small"
+                  class="mt-1"
+                >
+                  {{ account.status === 'active' ? 'Active' : 'Expired' }}
+                </v-chip>
+              </v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
+          
+          <v-alert v-else type="info" variant="tonal">
+            You are not currently a virtual assistant for any accounts.
+          </v-alert>
+        </v-card-text>
+        
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showAccountSwitcher = false">
+            Cancel
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup>
+import { ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useRouter } from 'vue-router'
+import { usersApi } from '@/services/api'
 
-const { user, isAuthenticated, signIn, signOut } = useAuth()
+const { user, isAuthenticated, signIn, signOut, isVirtualAssistant, virtualAssistantAccounts, isAssistingUser, getTargetUserId } = useAuth()
 const router = useRouter()
+
+const showAccountSwitcher = ref(false)
+
+// Debug virtual assistant accounts
+watch(virtualAssistantAccounts, (newVal) => {
+  console.log('Virtual assistant accounts updated:', newVal)
+})
+
+watch(isVirtualAssistant, (newVal) => {
+  console.log('Is virtual assistant:', newVal)
+})
+
+watch(isAssistingUser, (newVal) => {
+  console.log('[VA Debug] isAssistingUser changed:', newVal)
+})
+
+watch(user, (newVal) => {
+  console.log('[VA Debug] User data:', {
+    isVirtualAssistant: newVal?.isVirtualAssistant,
+    assistingFor: newVal?.assistingFor,
+    email: newVal?.email
+  })
+}, { deep: true })
+
 
 const viewProfile = () => {
   router.push('/profile')
 }
+
+const switchToAccount = async (account) => {
+  console.log('[VA] Switching to account:', account)
+  showAccountSwitcher.value = false
+  
+  try {
+    // Start virtual assistant mode using the new API
+    const response = await usersApi.startVirtualAssistantMode(account.user_id)
+    console.log('[VA] Virtual assistant mode started:', response)
+    
+    // Reload the page to refresh all data with the new session context
+    window.location.reload()
+  } catch (error) {
+    console.error('[VA] Failed to switch to virtual assistant mode:', error)
+    // Show error message to user
+    alert('Failed to switch to virtual assistant mode. Please try again.')
+  }
+}
+
+const exitVirtualAssistantMode = async () => {
+  console.log('[VA] exitVirtualAssistantMode called')
+  try {
+    console.log('[VA] Calling endVirtualAssistantMode API...')
+    const response = await usersApi.endVirtualAssistantMode()
+    console.log('[VA] Virtual assistant mode ended:', response)
+    
+    // Reload the page to refresh all data with the normal session context
+    console.log('[VA] Reloading page...')
+    window.location.reload()
+  } catch (error) {
+    console.error('[VA] Failed to exit virtual assistant mode:', error)
+    alert('Failed to exit virtual assistant mode. Please try again.')
+  }
+}
+
 </script>
 
 <style scoped>

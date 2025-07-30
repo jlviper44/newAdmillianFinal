@@ -22,12 +22,12 @@ const error = ref({
 });
 
 // Purchase form
-const purchaseQuantity = ref(50);
+const purchaseQuantity = ref(10);
 const showPaymentDialog = ref(false);
 const paymentCheckInterval = ref(null);
 
 // Pricing data
-const creditPrice = ref(2.00);
+const creditPrice = ref(50.00);
 
 // Format unix timestamp to readable date
 const formatDate = (timestamp) => {
@@ -45,7 +45,7 @@ const formatDate = (timestamp) => {
 const fetchPricing = async () => {
   try {
     const data = await usersApi.getPricing();
-    creditPrice.value = data.bcGenCreditPrice;
+    creditPrice.value = data.virtualAssistantCreditPrice;
   } catch (err) {
     console.error('Failed to fetch pricing:', err);
   }
@@ -59,11 +59,11 @@ const checkAccess = async () => {
   try {
     const data = await usersApi.checkAccess();
     
-    // Get BC Gen specific credits
-    const bcGenData = data.subscriptions?.bc_gen;
+    // Get Virtual Assistant specific credits
+    const virtualAssistantData = data.subscriptions?.virtual_assistant;
     
-    credits.value.balance = bcGenData?.totalCredits || 0;
-    credits.value.memberships = bcGenData?.creditMemberships || [];
+    credits.value.balance = virtualAssistantData?.totalCredits || 0;
+    credits.value.memberships = virtualAssistantData?.creditMemberships || [];
   } catch (err) {
     error.value.checkAccess = err.message || 'Failed to check access';
   } finally {
@@ -84,7 +84,7 @@ const createCheckout = async () => {
   try {
     const data = await usersApi.createCheckout({ 
       quantity: purchaseQuantity.value,
-      productType: 'bc_gen'
+      productType: 'virtual_assistant'
     });
     
     if (data.direct_link) {
@@ -137,7 +137,6 @@ const createCheckout = async () => {
   }
 };
 
-
 // Initialize on mount
 onMounted(() => {
   checkAccess();
@@ -166,7 +165,7 @@ onUnmounted(() => {
           >
             <!-- Background Pattern -->
             <div style="position: absolute; top: -50px; right: -50px; opacity: 0.1;">
-              <v-icon size="300" :color="$vuetify.theme.current.dark ? 'grey-lighten-2' : 'white'">mdi-wallet</v-icon>
+              <v-icon size="300" :color="$vuetify.theme.current.dark ? 'grey-lighten-2' : 'white'">mdi-robot</v-icon>
             </div>
             
             <v-card-text :class="$vuetify.display.smAndDown ? 'pa-4' : 'pa-8'" style="position: relative; z-index: 1;">
@@ -181,7 +180,7 @@ onUnmounted(() => {
                       <div :class="$vuetify.display.smAndDown ? 'text-h6 ml-2' : 'text-h5 ml-3'" style="opacity: 0.9;">credits</div>
                     </div>
                     <div :class="$vuetify.display.smAndDown ? 'text-body-2 text-center' : 'text-body-1'" style="opacity: 0.8;">
-                      Available for BC Gen
+                      Available for use
                     </div>
                   </div>
                 </v-col>
@@ -200,7 +199,7 @@ onUnmounted(() => {
                           :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                           variant="tonal"
                           color="primary"
-                          @click="purchaseQuantity = Math.max(1, purchaseQuantity - 10)"
+                          @click="purchaseQuantity = Math.max(1, purchaseQuantity - 5)"
                           :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                         >
                           <v-icon>mdi-minus</v-icon>
@@ -221,13 +220,13 @@ onUnmounted(() => {
                           :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
                           variant="tonal"
                           color="primary"
-                          @click="purchaseQuantity = purchaseQuantity + 10"
+                          @click="purchaseQuantity = purchaseQuantity + 5"
                           :size="$vuetify.display.smAndDown ? 'small' : 'default'"
                         >
                           <v-icon>mdi-plus</v-icon>
                         </v-btn>
                       </div>
-                      <div class="text-caption text-grey mt-2">1 credit = 1 account</div>
+                      <div class="text-caption text-grey mt-2">1 credit = 1 virtual assistant</div>
                     </div>
                     <div class="mb-3">
                       <div class="text-h5 font-weight-bold text-primary text-center mb-1">
@@ -388,11 +387,11 @@ onUnmounted(() => {
 <style scoped>
 /* Gradient backgrounds for light and dark mode */
 .bg-gradient-light {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
 }
 
 .bg-gradient-dark {
-  background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+  background: linear-gradient(135deg, #5a3f69 0%, #3d2a4b 100%);
 }
 
 .credit-balance-card {
@@ -437,7 +436,7 @@ onUnmounted(() => {
   -moz-appearance: textfield;
 }
 
-/* Animation for the wallet icon */
+/* Animation for the robot icon */
 @keyframes float {
   0% { transform: translateY(0px) rotate(-5deg); }
   50% { transform: translateY(-20px) rotate(5deg); }

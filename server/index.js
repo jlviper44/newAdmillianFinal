@@ -134,6 +134,7 @@ export default {
       // Route Sparks API requests (protected)
       if (path.startsWith('/api/sparks')) {
         return requireAuth(request, env, async (req, env, session) => {
+          req.ctx = { ...req.ctx, session };
           return handleSparkData(req, env);
         });
       }
@@ -141,6 +142,7 @@ export default {
       // Route Templates API requests (protected)
       if (path.startsWith('/api/templates')) {
         return requireAuth(request, env, async (req, env, session) => {
+          req.ctx = { ...req.ctx, session };
           return handleTemplateData(req, env);
         });
       }
@@ -148,6 +150,7 @@ export default {
       // Route Shopify Stores API requests (protected)
       if (path.startsWith('/api/shopify-stores')) {
         return requireAuth(request, env, async (req, env, session) => {
+          req.ctx = { ...req.ctx, session };
           return handleShopifyStoresData(req, env);
         });
       }
@@ -159,7 +162,14 @@ export default {
           return handleCampaignsAPI(request, env, path);
         }
         // All other campaign endpoints require auth
-        return requireAuth(request, env, async (req, env) => {
+        return requireAuth(request, env, async (req, env, session) => {
+          // Add session to request context for campaigns handler
+          req.ctx = { ...req.ctx, session };
+          console.log('[Index] Setting session context for campaigns:', {
+            hasSession: !!session,
+            userId: session?.user_id || session?.user?.id,
+            isVirtualAssistant: session?.user?.isVirtualAssistant
+          });
           return handleCampaignsAPI(req, env, path);
         });
       }
@@ -185,7 +195,8 @@ export default {
           }
         }
         // All other log endpoints require auth
-        return requireAuth(request, env, async (req, env) => {
+        return requireAuth(request, env, async (req, env, session) => {
+          req.ctx = { ...req.ctx, session };
           return handleLogsData(req, env);
         });
       }

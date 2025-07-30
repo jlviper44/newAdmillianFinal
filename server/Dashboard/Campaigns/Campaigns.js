@@ -166,6 +166,26 @@ async function checkCampaignAccess(db, env, campaignId, userId, teamId) {
  */
 async function getUserInfoFromSession(request, env) {
   try {
+    // Check if session is passed in request context (from requireAuth middleware)
+    if (request.ctx && request.ctx.session) {
+      const session = request.ctx.session;
+      const userId = session.user_id || session.user?.id;
+      if (!userId) {
+        throw new Error('No user ID found in session');
+      }
+      const teamId = await getUserTeamId(env, userId);
+      console.log('[Campaigns] Using session from context for userId:', userId);
+      console.log('[Campaigns] Session has virtual assistant flag:', !!session.user?.isVirtualAssistant);
+      console.log('[Campaigns] Session user data:', { 
+        id: session.user?.id, 
+        email: session.user?.email,
+        isVirtualAssistant: session.user?.isVirtualAssistant 
+      });
+      return { userId, teamId };
+    }
+    
+    // Fallback to cookie-based session extraction
+    console.log('[Campaigns] No session in context, falling back to cookie-based extraction');
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
       throw new Error('No session cookie found');
@@ -289,7 +309,13 @@ async function listCampaigns(db, request, env) {
     `;
     params.push(limit, offset);
     
+    console.log('[Campaigns Debug] Executing query:', query);
+    console.log('[Campaigns Debug] Query params:', params);
+    
     const result = await db.prepare(query).bind(...params).all();
+    console.log('[Campaigns Debug] Raw query result:', result);
+    console.log('[Campaigns Debug] Number of campaigns found:', result.results?.length || 0);
+    
     let campaigns = (result.results || []).map(campaign => ({
       ...campaign,
       regions: JSON.parse(campaign.regions || '[]'),
@@ -1508,11 +1534,20 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
     }
     
     // Get user's region from Cloudflare headers
+    // In development or when headers are missing, default to US
     const country = request.headers.get('CF-IPCountry') || 'US';
     const region = request.headers.get('CF-Region') || null;
     const city = request.headers.get('CF-City') || null;
     const timezone = request.headers.get('CF-Timezone') || null;
     const continent = request.headers.get('CF-Continent') || null;
+    
+    console.log('Geo detection for campaign client:', {
+      campaignId,
+      launchNumber,
+      country,
+      region,
+      city
+    });
     
     // Parse regions and affiliate links
     const regions = JSON.parse(campaign.regions || '[]');

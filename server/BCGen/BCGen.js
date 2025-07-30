@@ -162,11 +162,14 @@ export default class BCGen {
 
   async createOrder(data, userId, session) {
     try {
-      const { country, quantity } = data;
+      const { country, quantity, assistedUserId } = data;
 
       if (!country || !quantity || quantity <= 0) {
         return { error: 'Invalid order parameters' };
       }
+      
+      const targetUserId = userId;
+      const targetSession = session;
 
       // Check if we have a valid sheet name for this country
       const sheetName = this.COUNTRY_SHEETS[country.toLowerCase()];
@@ -198,7 +201,7 @@ export default class BCGen {
       // Create order record
       const orderData = {
         orderId,
-        userId,
+        userId: targetUserId,
         country,
         quantity,
         totalPrice: totalCredits,
@@ -213,7 +216,7 @@ export default class BCGen {
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
       `).bind(
         orderId,
-        userId,
+        targetUserId,
         country,
         quantity,
         totalCredits,
@@ -223,8 +226,8 @@ export default class BCGen {
       ).run();
 
       // Fetch accounts from SheetDB immediately (synchronously for better UX)
-      const userEmail = session?.user?.email || '';
-      const fulfillmentResult = await this.fulfillOrderFromSheetDB(orderId, country, quantity, sheetName, userId, userEmail);
+      const userEmail = targetSession?.user?.email || '';
+      const fulfillmentResult = await this.fulfillOrderFromSheetDB(orderId, country, quantity, sheetName, targetUserId, userEmail);
 
       if (!fulfillmentResult.success) {
         // If fulfillment failed, mark order as failed
@@ -242,7 +245,7 @@ export default class BCGen {
 
       // Deduct credits after successful fulfillment
       try {
-        const creditDeductionResult = await this.deductUserCredits(session, totalCredits);
+        const creditDeductionResult = await this.deductUserCredits(targetSession, totalCredits, assistedUserId);
         if (creditDeductionResult.success) {
           console.log(`Successfully deducted ${totalCredits} BC Gen credits for order ${orderId}`);
         } else {
@@ -402,14 +405,14 @@ export default class BCGen {
   }
 
   // Deduct credits from user's BC Gen memberships
-  async deductUserCredits(session, credits) {
+  async deductUserCredits(session, credits, assistedUserId = null) {
     try {
       if (!session || !session.access_token) {
         return { error: 'No valid session for credit deduction' };
       }
 
-      // Check if user is an admin - admins don't need to deduct credits
-      if (session.user && session.user.email && isAdminUser(session.user.email)) {
+      // Check if user is an admin - admins don't need to deduct credits (unless using virtual assistant)
+      if (session.user && session.user.email && isAdminUser(session.user.email) && !assistedUserId) {
         console.log(`Admin user ${session.user.email} - skipping credit deduction`);
         return { success: true };
       }

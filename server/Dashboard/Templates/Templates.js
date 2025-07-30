@@ -195,6 +195,17 @@ async function getUserInfo(env, userId) {
  */
 async function getUserInfoFromSession(request, env) {
   try {
+    // First check if session is available in request context (for virtual assistant support)
+    if (request.ctx && request.ctx.session) {
+      const session = request.ctx.session;
+      const userId = session.user_id || session.user?.id;
+      if (userId) {
+        const teamId = await getUserTeamId(env, userId);
+        return { userId, teamId };
+      }
+    }
+    
+    // Fallback to cookie-based session extraction
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
       throw new Error('No session cookie found');

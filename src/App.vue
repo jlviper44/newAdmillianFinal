@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useTheme } from 'vuetify';
 import { useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
+import { usersApi } from '@/services/api';
 import UserMenu from '@/components/UserMenu.vue';
 
 const router = useRouter();
@@ -16,7 +17,7 @@ const mobileActiveTab = ref('dashboard');
 const activePopupMenu = ref(null);
 
 // Authentication
-const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, signOut } = useAuth();
+const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, signOut, isAssistingUser, getTargetUserId } = useAuth();
 
 
 // All routes
@@ -49,8 +50,7 @@ const allRoutes = [
     title: 'Settings', 
     icon: 'mdi-cog', 
     path: '/settings',
-    requiresSubscription: null,
-    requiresAdmin: true
+    requiresAdmin: true // Only show for admin users
   },
 ];
 
@@ -69,6 +69,10 @@ const visibleRoutes = computed(() => {
     if (route.requiresSubscription === 'comment_bot') return hasCommentBotAccess.value;
     if (route.requiresSubscription === 'bc_gen') return hasBcGenAccess.value;
     if (route.requiresSubscription === 'dashboard') return hasDashboardAccess.value;
+    if (route.requiresSubscription === 'any') {
+      // Show if user has any subscription or is admin
+      return hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value || user.value?.isAdmin;
+    }
     
     return false;
   });
@@ -94,6 +98,23 @@ const toggleDrawer = () => {
   drawer.value = !drawer.value;
 };
 
+// Stop assisting
+const stopAssisting = async () => {
+  console.log('[VA] Banner stopAssisting called')
+  try {
+    console.log('[VA] Calling endVirtualAssistantMode API from banner...')
+    const response = await usersApi.endVirtualAssistantMode()
+    console.log('[VA] Virtual assistant mode ended from banner:', response)
+    
+    // Reload the page to refresh all data with the normal session context
+    console.log('[VA] Reloading page from banner...')
+    window.location.reload()
+  } catch (error) {
+    console.error('[VA] Failed to exit virtual assistant mode from banner:', error)
+    alert('Failed to exit virtual assistant mode. Please try again.')
+  }
+};
+
 // List group opened state
 const opened = ref([]);
 
@@ -115,6 +136,9 @@ const updateOpenedGroups = () => {
   }
   if (path.includes('/bc-gen')) {
     newOpened.push('bcgen');
+  }
+  if (path.includes('/virtual-assistants')) {
+    newOpened.push('virtual-assistants');
   }
   if (path.includes('/settings')) {
     newOpened.push('settings');
@@ -166,9 +190,9 @@ const handleSettingsClick = () => {
     togglePopupMenu('settings');
   } else {
     // If not on settings, navigate to default settings tab
-    // Check if user has any subscription
+    // Check if user has any subscription and is not assisting
     const hasAnySubscription = hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value;
-    const defaultTab = hasAnySubscription ? 'virtual-assistants' : 'teams';
+    const defaultTab = (hasAnySubscription && !isAssistingUser.value) ? 'virtual-assistants' : 'teams';
     router.push(`/settings?tab=${defaultTab}`);
   }
 };
@@ -203,6 +227,7 @@ const getCurrentPageTitle = () => {
   
   if (path === '/comments') return 'Comment Bot';
   if (path === '/bc-gen') return 'BC Gen';
+  if (path === '/virtual-assistants') return 'Virtual Assistants';
   if (path === '/profile') return 'Profile';
   if (path === '/settings') return 'Settings';
   
@@ -531,10 +556,10 @@ onUnmounted(() => {
               </v-list-item-title>
             </v-list-item>
           </v-list>
-          <!-- Settings Menu - Hidden for now -->
-          <!-- <v-list v-if="activePopupMenu === 'settings'" density="comfortable">
+          <!-- Settings Menu -->
+          <v-list v-if="activePopupMenu === 'settings'" density="comfortable">
             <v-list-item
-              v-if="hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess"
+              v-if="(hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess) && !isAssistingUser"
               @click="navigateToAndClose('/settings?tab=virtual-assistants')"
               prepend-icon="mdi-assistant"
               title="Virtual Assistants"
@@ -554,7 +579,7 @@ onUnmounted(() => {
                 </v-chip>
               </v-list-item-title>
             </v-list-item>
-          </v-list> -->
+          </v-list>
           <!-- More Menu -->
           <v-list v-if="activePopupMenu === 'more'" density="comfortable">
             <v-list-item
@@ -563,8 +588,21 @@ onUnmounted(() => {
               title="Profile"
               class="mobile-popup-item"
             ></v-list-item>
-            <!-- Settings - Hidden for now -->
-            <!-- <v-list-item
+            <!-- Virtual Assistants -->
+            <v-list-item
+              v-if="(hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess) && !isAssistingUser"
+              @click="activePopupMenu = 'virtual-assistants'"
+              prepend-icon="mdi-robot"
+              class="mobile-popup-item"
+            >
+              <v-list-item-title class="d-flex align-center justify-space-between">
+                Virtual Assistants
+                <v-icon size="small">mdi-chevron-right</v-icon>
+              </v-list-item-title>
+            </v-list-item>
+            <!-- Settings -->
+            <v-list-item
+              v-if="user?.isAdmin"
               @click="activePopupMenu = 'settings'"
               prepend-icon="mdi-cog"
               class="mobile-popup-item"
@@ -573,13 +611,28 @@ onUnmounted(() => {
                 Settings
                 <v-icon size="small">mdi-chevron-right</v-icon>
               </v-list-item-title>
-            </v-list-item> -->
+            </v-list-item>
             <v-divider class="my-2"></v-divider>
             <v-list-item
               @click="handleLogout"
               prepend-icon="mdi-logout"
               title="Sign Out"
               class="mobile-popup-item text-error"
+            ></v-list-item>
+          </v-list>
+          <!-- Virtual Assistants Menu -->
+          <v-list v-if="activePopupMenu === 'virtual-assistants'" density="comfortable">
+            <v-list-item
+              @click="navigateToAndClose('/virtual-assistants?tab=configure')"
+              prepend-icon="mdi-cog"
+              title="Configure"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/virtual-assistants?tab=credits')"
+              prepend-icon="mdi-wallet"
+              title="Credits"
+              class="mobile-popup-item"
             ></v-list-item>
           </v-list>
         </v-card>
@@ -623,6 +676,44 @@ onUnmounted(() => {
         </v-card>
       </transition>
     </v-overlay>
+    
+    <!-- Virtual Assistant Mode Banner -->
+    <v-banner
+      v-if="isAssistingUser"
+      class="virtual-assistant-banner"
+      :style="{
+        position: 'fixed',
+        top: isAuthenticated && $vuetify.display.mdAndUp ? '70px' : '56px',
+        left: $vuetify.display.mdAndUp ? (drawer ? '256px' : '56px') : '0',
+        right: 0,
+        zIndex: 1998,
+        background: 'linear-gradient(90deg, #4CAF50 0%, #45a049 100%)',
+        color: 'white',
+        padding: '8px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        transition: 'left 0.2s'
+      }"
+    >
+      <div class="d-flex align-center">
+        <v-icon class="mr-2">mdi-account-eye</v-icon>
+        <span class="font-weight-medium">
+          You are currently assisting: {{ user?.assistingFor || user?.email || `User #${getTargetUserId()}` }}
+        </span>
+      </div>
+      <v-btn
+        variant="outlined"
+        size="small"
+        color="white"
+        @click="stopAssisting"
+        class="ml-4"
+      >
+        <v-icon start small>mdi-close</v-icon>
+        Stop Assisting
+      </v-btn>
+    </v-banner>
     
     <!-- Desktop Navigation Drawer -->
     <v-navigation-drawer
@@ -799,6 +890,37 @@ onUnmounted(() => {
           </v-list-item>
         </v-list-group>
 
+        <!-- Virtual Assistants -->
+        <v-list-group v-if="(hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess) && !isAssistingUser" value="virtual-assistants" :value="opened.includes('virtual-assistants')">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-robot"
+              title="Virtual Assistants"
+              :active="activeRoute.includes('/virtual-assistants')"
+              rounded="lg"
+            ></v-list-item>
+          </template>
+          
+          <v-list-item
+            to="/virtual-assistants?tab=configure"
+            prepend-icon="mdi-cog"
+            title="Configure"
+            :active="isTabActive('/virtual-assistants', 'configure')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/virtual-assistants?tab=credits"
+            prepend-icon="mdi-wallet"
+            title="Credits"
+            :active="isTabActive('/virtual-assistants', 'credits')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+        </v-list-group>
+
         <!-- Profile -->
         <v-list-item
           to="/profile"
@@ -808,8 +930,11 @@ onUnmounted(() => {
           rounded="lg"
         ></v-list-item>
 
-        <!-- Settings - Hidden for now -->
-        <!-- <v-list-group value="settings" :value="opened.includes('settings')">
+        <!-- Settings -->
+        <v-list-group 
+          v-if="user?.isAdmin"
+          value="settings" 
+          :value="opened.includes('settings')">
           <template v-slot:activator="{ props }">
             <v-list-item
               v-bind="props"
@@ -822,16 +947,6 @@ onUnmounted(() => {
               </v-list-item-title>
             </v-list-item>
           </template>
-          
-          <v-list-item
-            v-if="hasCommentBotAccess || hasBcGenAccess || hasDashboardAccess"
-            to="/settings?tab=virtual-assistants"
-            prepend-icon="mdi-assistant"
-            title="Virtual Assistants"
-            :active="isTabActive('/settings', 'virtual-assistants')"
-            class="ml-2"
-            rounded="lg"
-          ></v-list-item>
           
           <v-list-item
             v-if="user?.isAdmin"
@@ -850,13 +965,13 @@ onUnmounted(() => {
             </v-list-item-title>
           </v-list-item>
           
-        </v-list-group> -->
+        </v-list-group>
       </v-list>
     </v-navigation-drawer>
     
     <!-- Main Content - Router View with improved padding -->
     <v-main class="main-content">
-      <v-container fluid :class="isAuthenticated ? 'pa-6' : 'pa-0'">
+      <v-container fluid :class="isAuthenticated ? 'pa-6' : 'pa-0'" :style="{ paddingTop: isAssistingUser ? '48px' : '0' }">
         <router-view />
       </v-container>
     </v-main>
@@ -1014,6 +1129,16 @@ onUnmounted(() => {
     padding-top: 56px !important;
     padding-bottom: 56px !important;
   }
+}
+
+/* Virtual Assistant Banner specific styles */
+.virtual-assistant-banner {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* Adjust main content when banner is shown */
+.v-main .v-container[style*="paddingTop"] {
+  transition: padding-top 0.3s ease;
 }
 
 /* Hide desktop drawer on mobile */

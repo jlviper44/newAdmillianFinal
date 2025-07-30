@@ -1,9 +1,9 @@
 // API service with authentication support
-
 const API_BASE = '/api'
 
 // Helper function for API requests
 async function apiRequest(url, options = {}) {
+  
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
@@ -94,7 +94,18 @@ export const usersApi = {
   createCheckout: (data) => api.post('/auth/create-checkout', data),
   useCredits: (data) => api.post('/auth/use-credits', data),
   getCheckoutLink: () => api.get('/auth/checkout-link'),
-  getPricing: () => api.get('/auth/pricing')
+  getPricing: () => api.get('/auth/pricing'),
+  
+  // Virtual Assistants
+  getVirtualAssistants: () => api.get('/auth/virtual-assistants'),
+  addVirtualAssistant: (email) => api.post('/auth/virtual-assistants', { email }),
+  extendVirtualAssistant: (assistantId) => api.post('/auth/virtual-assistants/extend', { assistantId }),
+  editVirtualAssistant: (assistantId, newEmail) => api.put('/auth/virtual-assistants/edit', { assistantId, newEmail }),
+  removeVirtualAssistant: (id) => api.delete(`/auth/virtual-assistants/${id}`),
+  
+  // Virtual Assistant Mode
+  startVirtualAssistantMode: (targetUserId) => api.post('/auth/virtual-assistant/start', { targetUserId }),
+  endVirtualAssistantMode: () => api.post('/auth/virtual-assistant/end'),
 }
 
 // CommentBot specific API methods
@@ -132,10 +143,7 @@ export const bcgenApi = {
   getAvailability: () => api.get('/bcgen/availability'),
   
   // Create a new order
-  createOrder: (country, quantity) => api.post('/bcgen/create-order', {
-    country,
-    quantity
-  }),
+  createOrder: (country, quantity) => api.post('/bcgen/create-order', { country, quantity }),
   
   // Get user's orders
   getUserOrders: () => api.get('/bcgen/user-orders'),

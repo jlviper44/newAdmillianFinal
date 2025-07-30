@@ -4,10 +4,11 @@
  */
 
 // Configuration
+// Configuration - this should be updated when deploying
 const CONFIG = {
   MAIN_APP_URL: 'https://cranads.com',
   LOG_ENDPOINT: 'https://cranads.com/api/logs/public',
-  CAMPAIGN_WORKER_URL: 'https://admillianfinalversion.millianfreakyads.workers.dev'
+  CAMPAIGN_WORKER_URL: 'https://cloaker.millianfreakyads.workers.dev' // This should be the cloaker's own URL
 };
 
 /**
@@ -351,6 +352,8 @@ function generateAffiliateLinksScript(affiliateLinks) {
     ttclid: ttclid
   });
   
+  console.log('Available affiliate links:', Object.keys(affiliateLinks));
+  
   // Affiliate links data
   const affiliateLinks = ${JSON.stringify(affiliateLinks)};
   
@@ -404,26 +407,58 @@ function generateAffiliateLinksScript(affiliateLinks) {
   
   // Helper function to select the best matching affiliate link
   function selectAffiliateLink(links, geo, os) {
-    return links[geo + '_' + os] || 
-           links[geo] || 
-           links['US'] ||
-           Object.values(links)[0];
+    // Log the selection process for debugging
+    console.log('Selecting affiliate link for:', { geo, os });
+    console.log('Checking for:', geo + '_' + os);
+    
+    // Try exact match first (e.g., US_ios)
+    if (links[geo + '_' + os]) {
+      console.log('Found exact match:', geo + '_' + os);
+      return links[geo + '_' + os];
+    }
+    
+    // Try country-only match (e.g., US)
+    if (links[geo]) {
+      console.log('Found country match:', geo);
+      return links[geo];
+    }
+    
+    // Try US as default fallback
+    if (links['US']) {
+      console.log('Using US fallback');
+      return links['US'];
+    }
+    
+    // Last resort - first available link
+    const firstLink = Object.values(links)[0];
+    if (firstLink) {
+      console.log('Using first available link');
+      return firstLink;
+    }
+    
+    console.error('No affiliate links available!');
+    return null;
   }
   
   // Simplified: Only add s1, s2, and s3 parameters
   function buildFinalAffiliateUrl(baseUrl, params) {
-    const url = new URL(baseUrl);
-    
-    // Add only the essential tracking parameters
-    if (params.s1) url.searchParams.set('s1', params.s1); // Campaign ID
-    if (params.s2) url.searchParams.set('s2', params.s2); // Launch Number
-    if (params.s3) url.searchParams.set('s3', params.s3); // ttclid
-    
-    // Optionally add geo for affiliate's reference (not as s-parameter)
-    url.searchParams.set('geo', geo);
-    if (region) url.searchParams.set('region', region);
+    try {
+      const url = new URL(baseUrl);
+      
+      // Add only the essential tracking parameters
+      if (params.s1) url.searchParams.set('s1', params.s1); // Campaign ID
+      if (params.s2) url.searchParams.set('s2', params.s2); // Launch Number
+      if (params.s3) url.searchParams.set('s3', params.s3); // ttclid
+      
+      // Optionally add geo for affiliate's reference (not as s-parameter)
+      url.searchParams.set('geo', geo);
+      if (region) url.searchParams.set('region', region);
 
-    return url.href;
+      return url.href;
+    } catch (error) {
+      console.error('Error building affiliate URL:', error, 'Base URL:', baseUrl);
+      return baseUrl; // Return original URL if parsing fails
+    }
   }
   
   // Helper function to replace all affiliate link placeholders
@@ -1056,11 +1091,39 @@ export default {
         });
       }
       
+      // Test endpoint for geo detection
+      if (path === '/test-geo' && request.method === 'GET') {
+        const geoData = {
+          ip: request.headers.get('CF-Connecting-IP') || 'unknown',
+          country: request.headers.get('CF-IPCountry') || 'unknown',
+          region: request.headers.get('CF-Region') || null,
+          city: request.headers.get('CF-City') || null,
+          timezone: request.headers.get('CF-Timezone') || null,
+          continent: request.headers.get('CF-Continent') || null,
+          latitude: request.headers.get('CF-Latitude') || null,
+          longitude: request.headers.get('CF-Longitude') || null,
+          postalCode: request.headers.get('CF-PostalCode') || null,
+          metroCode: request.headers.get('CF-MetroCode') || null,
+          headers: Object.fromEntries(request.headers.entries())
+        };
+        
+        return new Response(
+          JSON.stringify({
+            message: 'Geo detection test',
+            geoData: geoData,
+            userAgent: request.headers.get('User-Agent')
+          }),
+          { 
+            headers: { 'Content-Type': 'application/json', ...corsHeaders } 
+          }
+        );
+      }
+      
       // Default response
       return new Response(
         JSON.stringify({ 
           error: 'Not found',
-          message: 'Cloaker Worker API - Available endpoints: POST /generate-pages, GET /api/campaigns/client/:id/:launch, POST /log'
+          message: 'Cloaker Worker API - Available endpoints: POST /generate-pages, GET /api/campaigns/client/:id/:launch, POST /log, GET /test-geo'
         }),
         { 
           status: 404, 

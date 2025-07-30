@@ -54,12 +54,10 @@
               :items="[
                 { title: 'All Regions', value: 'all' },
                 { title: 'United States', value: 'US' },
-                { title: 'USA', value: 'USA' },
                 { title: 'United Kingdom', value: 'UK' },
                 { title: 'Canada', value: 'CA' },
                 { title: 'Germany', value: 'DE' },
                 { title: 'Australia', value: 'AU' },
-                { title: 'AUS', value: 'AUS' },
                 { title: 'New Zealand', value: 'NZ' },
                 { title: 'Czech Republic', value: 'CZ' },
                 { title: 'Slovakia', value: 'SK' }
@@ -335,7 +333,7 @@
                       label
                       class="mr-1 mb-1"
                     >
-                      {{ region }}
+                      {{ getRegionDisplayName(region) }}
                     </v-chip>
                   </div>
                   <div v-else class="text-caption text-medium-emphasis">
@@ -1064,16 +1062,31 @@ const linkFormData = ref({
 // Available regions
 const availableRegions = [
   { title: 'United States', value: 'US' },
-  { title: 'USA', value: 'USA' },
   { title: 'United Kingdom', value: 'UK' },
   { title: 'Canada', value: 'CA' },
   { title: 'Germany', value: 'DE' },
   { title: 'Australia', value: 'AU' },
-  { title: 'AUS', value: 'AUS' },
   { title: 'New Zealand', value: 'NZ' },
   { title: 'Czech Republic', value: 'CZ' },
   { title: 'Slovakia', value: 'SK' }
 ];
+
+// Region code to full name mapping
+const regionNameMap = {
+  'US': 'United States',
+  'UK': 'United Kingdom',
+  'CA': 'Canada',
+  'DE': 'Germany',
+  'AU': 'Australia',
+  'NZ': 'New Zealand',
+  'CZ': 'Czech Republic',
+  'SK': 'Slovakia'
+};
+
+// Function to get region display name
+const getRegionDisplayName = (regionCode) => {
+  return regionNameMap[regionCode] || regionCode;
+};
 
 // Status options for select
 const statusOptions = [

@@ -13,19 +13,15 @@ const hasAnySubscription = computed(() => {
 const route = useRoute();
 // Set default tab based on what's available
 const getDefaultTab = () => {
-  if (hasAnySubscription.value) return 'virtual-assistants';
   if (user.value?.isAdmin) return 'teams';
-  // If no subscription and not admin, still default to virtual-assistants
-  // but it won't show anything
-  return 'virtual-assistants';
+  return 'teams'; // Default to teams
 };
 
 const selectedTab = ref(getDefaultTab());
 
 // Tab titles mapping
 const tabTitles = {
-  teams: 'Team Management',
-  'virtual-assistants': 'Virtual Assistants'
+  teams: 'Team Management'
 };
 
 // Computed property for current tab title
@@ -51,7 +47,25 @@ onMounted(() => {
 </script>
 
 <template>
-  <v-container fluid :class="{ 'pa-2': $vuetify.display.smAndDown }">
+  <!-- Show access denied if user doesn't have admin access -->
+  <v-container v-if="!user?.isAdmin" fluid>
+    <v-row justify="center" class="mt-10">
+      <v-col cols="12" md="6">
+        <v-card>
+          <v-card-text class="text-center py-10">
+            <v-icon size="80" color="grey-lighten-1" class="mb-4">mdi-lock</v-icon>
+            <h2 class="text-h5 mb-4">Admin Access Required</h2>
+            <p class="text-body-1 text-grey-darken-1">
+              Only administrators can access Settings.
+            </p>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+  </v-container>
+
+  <!-- Normal settings content -->
+  <v-container v-else fluid :class="{ 'pa-2': $vuetify.display.smAndDown }">
     <!-- Mobile Header -->
     <v-row v-if="$vuetify.display.smAndDown">
       <v-col cols="12" class="pb-2">
@@ -80,31 +94,6 @@ onMounted(() => {
     <v-row>
       <!-- Content Area -->
       <v-col cols="12">
-        <!-- Virtual Assistants Tab -->
-        <div v-if="selectedTab === 'virtual-assistants' && hasAnySubscription">
-          <v-card>
-            <v-card-title class="text-h5 font-weight-bold">
-              <v-icon icon="mdi-assistant" size="small" class="mr-2"></v-icon>
-              Virtual Assistants
-            </v-card-title>
-            <v-card-text>
-              <v-row>
-                <v-col cols="12">
-                  <p class="text-body-1 text-grey-darken-1 mb-4">Manage your AI-powered virtual assistants.</p>
-                  <!-- Virtual Assistants content will go here -->
-                  <v-alert
-                    type="info"
-                    variant="tonal"
-                    class="mb-4"
-                  >
-                    Virtual Assistants feature coming soon.
-                  </v-alert>
-                </v-col>
-              </v-row>
-            </v-card-text>
-          </v-card>
-        </div>
-        
         <!-- Teams Tab -->
         <div v-if="selectedTab === 'teams' && user?.isAdmin">
           <Teams />

@@ -5,7 +5,9 @@ import { useRouter, useRoute } from 'vue-router'
 const user = ref(null)
 const loading = ref(true)
 const subscriptions = ref(null)
+const virtualAssistantFor = ref([])
 const showAuthModal = ref(false)
+const isAssistingUser = ref(false) // True when accessing as virtual assistant
 
 // Set up global auth expired listener
 let authExpiredHandler = null
@@ -16,6 +18,13 @@ if (typeof window !== 'undefined') {
     showAuthModal.value = true
   }
   window.addEventListener('auth:expired', authExpiredHandler)
+}
+
+// Helper to get target user ID from session (for backward compatibility)
+function getTargetUserId() {
+  // This function is now used only for display purposes
+  // The actual virtual assistant context is managed by the session
+  return user.value?.assistingFor || null
 }
 
 export function useAuth() {
@@ -32,6 +41,14 @@ export function useAuth() {
   const hasBcGenAccess = computed(() => subscriptions.value?.bc_gen?.isActive || false)
   const hasDashboardAccess = computed(() => subscriptions.value?.dashboard?.isActive || false)
   const hasAnyAccess = computed(() => hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value)
+  
+  // Credit-specific computed properties
+  const virtualAssistantCredits = computed(() => subscriptions.value?.virtual_assistant?.totalCredits || 0)
+  const hasVirtualAssistantCredits = computed(() => virtualAssistantCredits.value > 0)
+  
+  // Virtual assistant computed properties
+  const isVirtualAssistant = computed(() => virtualAssistantFor.value && virtualAssistantFor.value.length > 0)
+  const virtualAssistantAccounts = computed(() => virtualAssistantFor.value || [])
 
   // Check authentication status
   const checkAuth = async () => {
@@ -62,7 +79,10 @@ export function useAuth() {
   // Check access (membership validation)
   const checkAccess = async () => {
     try {
-      const response = await fetch('/api/auth/check-access', {
+      // Check access - virtual assistant mode is now handled by session
+      const url = '/api/auth/check-access'
+      
+      const response = await fetch(url, {
         credentials: 'include'
       })
       
@@ -70,15 +90,23 @@ export function useAuth() {
         const data = await response.json()
         if (data.user) {
           user.value = data.user
+          // Check if this is a virtual assistant access
+          isAssistingUser.value = data.user.isVirtualAssistant || false
         }
         if (data.subscriptions) {
           subscriptions.value = data.subscriptions
+          console.log('[VA Debug] Subscriptions loaded:', data.subscriptions)
+          console.log('[VA Debug] Dashboard access:', data.subscriptions?.dashboard?.isActive)
+        }
+        if (data.virtualAssistantFor) {
+          virtualAssistantFor.value = data.virtualAssistantFor
         }
         return true
       }
     } catch (error) {
     }
     subscriptions.value = null
+    virtualAssistantFor.value = []
     return false
   }
 
@@ -193,9 +221,12 @@ export function useAuth() {
     } finally {
       user.value = null
       subscriptions.value = null
+      virtualAssistantFor.value = []
       router?.push('/')
     }
   }
+
+
 
   // Initialize auth on app load
   const initAuth = async () => {
@@ -234,12 +265,13 @@ export function useAuth() {
     }
     
     await checkAuth()
-    // Only check access if we have a valid authenticated user
+    // Check access if we're authenticated
     if (user.value && user.value.id) {
       await checkAccess()
     } else {
       // Ensure subscriptions are null when not authenticated
       subscriptions.value = null
+      virtualAssistantFor.value = []
     }
     
     // Check if we should show auth modal from query parameter
@@ -254,16 +286,23 @@ export function useAuth() {
     user,
     loading,
     subscriptions,
+    virtualAssistantFor,
+    isAssistingUser,
     isAuthenticated,
     hasCommentBotAccess,
     hasBcGenAccess,
     hasDashboardAccess,
     hasAnyAccess,
+    virtualAssistantCredits,
+    hasVirtualAssistantCredits,
+    isVirtualAssistant,
+    virtualAssistantAccounts,
     showAuthModal,
     checkAuth,
     checkAccess,
     signIn,
     signOut,
-    initAuth
+    initAuth,
+    getTargetUserId
   }
 }
