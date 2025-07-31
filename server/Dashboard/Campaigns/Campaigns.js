@@ -2040,61 +2040,78 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
   // Get query parameters
   var urlParams = new URLSearchParams(window.location.search);
   var ttclid = urlParams.get('ttclid');
+  var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  // Get server data
-  fetch('https://cranads.com/api/campaigns/get-data-for-client?campaignId=' + campaignId + '&launch=' + launchNumber)
-    .then(function(response) { 
-      console.log('Server response status:', response.status);
-      return response.json(); 
+  // Simple log data without needing server data first
+  var logData = {
+    campaignId: campaignId,
+    launchNumber: launchNumber,
+    type: 'validation',
+    decision: 'whitehat',
+    ip: 'pending',
+    country: 'unknown',
+    region: null,
+    city: null,
+    timezone: null,
+    continent: null,
+    userAgent: navigator.userAgent,
+    referer: document.referrer,
+    url: window.location.href,
+    os: null,
+    params: {
+      ttclid: ttclid,
+      from: urlParams.get('from'),
+      mobile: isMobile,
+      failureReason: 'Launch disabled'
+    }
+  };
+  
+  console.log('Sending disabled launch log:', logData);
+  
+  // First try to get server data for better tracking info
+  fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber)
+    .then(function(response) {
+      console.log('Server data response:', response.status);
+      return response.json();
     })
     .then(function(data) {
-      console.log('Server data received:', data);
-      var serverData = data.serverData || {};
-      var geoData = serverData.geoData || {};
-      
-      // Log disabled page visit
-      var logData = {
-        campaignId: campaignId,
-        launchNumber: launchNumber,
-        type: 'validation',
-        decision: 'whitehat',
-        ip: serverData.clientIP || 'unknown',
-        country: geoData.country || 'unknown',
-        region: geoData.region || null,
-        city: geoData.city || null,
-        timezone: geoData.timezone || null,
-        continent: geoData.continent || null,
-        userAgent: navigator.userAgent,
-        referer: document.referrer,
-        url: window.location.href,
-        os: serverData.os || null,
-        params: {
-          ttclid: ttclid,
-          from: urlParams.get('from'),
-          mobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
-          failureReason: 'Launch disabled'
-        }
-      };
-      
-      console.log('Sending disabled launch log:', logData);
-      
-      // Send log
-      return fetch('https://cranads.com/api/logs/public', {
+      // Update log data with server info if available
+      if (data && data.clientIP) {
+        logData.ip = data.clientIP;
+      }
+      if (data && data.geoData) {
+        logData.country = data.geoData.country || 'unknown';
+        logData.region = data.geoData.region || null;
+        logData.city = data.geoData.city || null;
+        logData.timezone = data.geoData.timezone || null;
+        logData.continent = data.geoData.continent || null;
+      }
+      if (data && data.os) {
+        logData.os = data.os;
+      }
+    })
+    .catch(function(error) {
+      console.log('Could not fetch server data:', error);
+    })
+    .finally(function() {
+      // Send log regardless of whether we got server data
+      console.log('Sending log with data:', logData);
+      fetch('https://cranads.com/api/logs/public', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData),
         keepalive: true
+      })
+      .then(function(response) {
+        console.log('Log sent, status:', response.status);
+        return response.text();
+      })
+      .then(function(responseText) {
+        console.log('Log response:', responseText);
+      })
+      .catch(function(error) {
+        console.error('Failed to send log:', error);
       });
-    })
-    .then(function(response) {
-      console.log('Log response status:', response.status);
-      return response.text();
-    })
-    .then(function(responseText) {
-      console.log('Log response:', responseText);
-    })
-    .catch(function(error) {
-      console.error('Tracking error:', error);
     });
 })();
 </script>
