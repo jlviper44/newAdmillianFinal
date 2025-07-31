@@ -26,6 +26,8 @@ async function initializeCampaignsTable(db) {
         status TEXT DEFAULT 'active', -- 'active', 'paused', 'completed'
         is_active BOOLEAN DEFAULT 1,
         traffic INTEGER DEFAULT 0,
+        traffic_passed INTEGER DEFAULT 0, -- Blackhat/redirected traffic
+        traffic_blocked INTEGER DEFAULT 0, -- Whitehat/blocked traffic
         launches TEXT DEFAULT '{}', -- JSON object of launches
         max_launch_number INTEGER DEFAULT 0,
         total_launches INTEGER DEFAULT 1,
@@ -55,6 +57,20 @@ async function initializeCampaignsTable(db) {
       if (!hasTeamIdColumn) {
         await db.prepare(`ALTER TABLE campaigns ADD COLUMN team_id TEXT`).run();
         console.log('Added team_id column to campaigns table');
+      }
+      
+      // Check if traffic_passed column exists
+      const hasTrafficPassedColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'traffic_passed');
+      if (!hasTrafficPassedColumn) {
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN traffic_passed INTEGER DEFAULT 0`).run();
+        console.log('Added traffic_passed column to campaigns table');
+      }
+      
+      // Check if traffic_blocked column exists
+      const hasTrafficBlockedColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'traffic_blocked');
+      if (!hasTrafficBlockedColumn) {
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN traffic_blocked INTEGER DEFAULT 0`).run();
+        console.log('Added traffic_blocked column to campaigns table');
       }
     } catch (error) {
       console.error('Error handling user_id/team_id columns:', error);
@@ -303,6 +319,9 @@ async function listCampaigns(db, request, env) {
       affiliateLinks: campaign.affiliate_link ? JSON.parse(campaign.affiliate_link) : {},
       maxLaunchNumber: campaign.max_launch_number,
       totalLaunches: campaign.total_launches,
+      traffic: campaign.traffic || 0,
+      trafficPassed: campaign.traffic_passed || 0,
+      trafficBlocked: campaign.traffic_blocked || 0,
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     }));
@@ -440,6 +459,9 @@ async function getCampaign(db, campaignId, request, env) {
       affiliateLinks: campaign.affiliate_link ? JSON.parse(campaign.affiliate_link) : {},
       maxLaunchNumber: campaign.max_launch_number,
       totalLaunches: campaign.total_launches,
+      traffic: campaign.traffic || 0,
+      trafficPassed: campaign.traffic_passed || 0,
+      trafficBlocked: campaign.traffic_blocked || 0,
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     };
@@ -566,7 +588,7 @@ async function createCampaign(db, request, env) {
     
     // Initialize launches
     const launches = campaignData.launches || {
-      "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null }
+      "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null, trafficPassed: 0, trafficBlocked: 0 }
     };
     
     // Insert campaign
@@ -574,8 +596,8 @@ async function createCampaign(db, request, env) {
       INSERT INTO campaigns (
         id, user_id, team_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
-        status, is_active, traffic, launches, max_launch_number, total_launches
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, is_active, traffic, traffic_passed, traffic_blocked, launches, max_launch_number, total_launches
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
       userId,
@@ -592,6 +614,8 @@ async function createCampaign(db, request, env) {
       campaignData.status || 'active',
       campaignData.isActive !== false ? 1 : 0,
       0, // traffic starts at 0
+      0, // traffic_passed starts at 0
+      0, // traffic_blocked starts at 0
       JSON.stringify(launches),
       0, // maxLaunchNumber
       1  // totalLaunches
@@ -615,6 +639,9 @@ async function createCampaign(db, request, env) {
       affiliateLinks: created.affiliate_link ? JSON.parse(created.affiliate_link) : {},
       maxLaunchNumber: created.max_launch_number,
       totalLaunches: created.total_launches,
+      traffic: created.traffic || 0,
+      trafficPassed: created.traffic_passed || 0,
+      trafficBlocked: created.traffic_blocked || 0,
       createdAt: created.created_at,
       updatedAt: created.updated_at
     };
@@ -764,6 +791,9 @@ async function updateCampaign(db, campaignId, request, env) {
       affiliateLinks: updated.affiliate_link ? JSON.parse(updated.affiliate_link) : {},
       maxLaunchNumber: updated.max_launch_number,
       totalLaunches: updated.total_launches,
+      traffic: updated.traffic || 0,
+      trafficPassed: updated.traffic_passed || 0,
+      trafficBlocked: updated.traffic_blocked || 0,
       createdAt: updated.created_at,
       updatedAt: updated.updated_at
     };
@@ -997,6 +1027,9 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
       affiliateLinks: updated.affiliate_link ? JSON.parse(updated.affiliate_link) : {},
       maxLaunchNumber: updated.max_launch_number,
       totalLaunches: updated.total_launches,
+      traffic: updated.traffic || 0,
+      trafficPassed: updated.traffic_passed || 0,
+      trafficBlocked: updated.traffic_blocked || 0,
       createdAt: updated.created_at,
       updatedAt: updated.updated_at
     };
@@ -1075,7 +1108,9 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
         launches[newLaunchNumber] = {
           isActive: true,
           createdAt: new Date().toISOString(),
-          generatedAt: null
+          generatedAt: null,
+          trafficPassed: 0,
+          trafficBlocked: 0
         };
         maxLaunchNumber = newLaunchNumber;
         
@@ -1095,6 +1130,46 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
             launchNumber: launchNum,
             isActive: launches[launchNum].isActive
           };
+          
+          // Update the TikTok store page when toggling
+          try {
+            // Get TikTok store details
+            const tiktokStore = await db.prepare(
+              'SELECT * FROM shopify_stores WHERE id = ?'
+            ).bind(campaign.tiktok_store_id).first();
+            
+            if (tiktokStore && tiktokStore.access_token) {
+              console.log(`Updating TikTok store page for launch ${launchNum} - isActive: ${launches[launchNum].isActive}`);
+              
+              const pageHandle = `cloak-${campaignId}-${launchNum}`;
+              
+              // Parse campaign data for page update
+              const campaignData = {
+                ...campaign,
+                regions: JSON.parse(campaign.regions || '[]'),
+                affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
+                redirectType: campaign.redirect_type,
+                customRedirectUrl: campaign.custom_redirect_link
+              };
+              
+              // Update the TikTok store page
+              await updateTikTokPageContent(
+                tiktokStore,
+                campaignData,
+                campaignId,
+                launchNum,
+                pageHandle,
+                launches[launchNum].isActive
+              );
+              
+              console.log(`TikTok store page updated successfully for launch ${launchNum}`);
+            } else {
+              console.warn('TikTok store not found or missing access token - cannot update page');
+            }
+          } catch (updateError) {
+            console.error('Error updating TikTok store page:', updateError);
+            // Don't fail the whole operation if page update fails
+          }
         } else {
           throw new Error(`Launch ${launchNum} not found`);
         }
@@ -1241,13 +1316,35 @@ function generatePageContent(campaign, campaignId, launchNumber) {
   });
   
   // First, fetch campaign data to get server information
+  console.log('Fetching campaign data from:', 'https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber);
   fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber)
     .then(function(response) { 
+      console.log('Campaign data response status:', response.status);
+      if (!response.ok) {
+        throw new Error('Failed to fetch campaign data: ' + response.status);
+      }
       return response.json(); 
     })
     .then(function(data) {
+      console.log('Campaign data received:', data);
       // Store the server data
       serverData = data;
+      
+      // Check if campaign/launch is active
+      if (data.error) {
+        console.error('API Error:', data.error);
+        throw new Error(data.error);
+      }
+      
+      if (!data.isActive) {
+        console.log('Campaign is not active');
+        throw new Error('Campaign is not active');
+      }
+      
+      if (data.launch && !data.launch.isActive) {
+        console.log('Launch is disabled');
+        throw new Error('Launch is disabled');
+      }
       
       // Check validations
       if (!isMobile || !hasTtclid || !isTikTokReferrer) {
@@ -1443,7 +1540,13 @@ function generatePageContent(campaign, campaignId, launchNumber) {
     })
     .catch(function(error) {
       console.error('Redirect error:', error);
+      console.error('Error details:', error.message, error.stack);
+      // Hide loading and show normal page
       document.getElementById('loading-container').style.display = 'none';
+      document.querySelectorAll('.shopify-section, header, footer, .header, .footer').forEach(function(el) {
+        el.style.display = '';
+      });
+      document.body.style.overflow = '';
     });
 })();
 </script>
@@ -1882,6 +1985,87 @@ ${affiliateLinksScript}
 }
 
 /**
+ * Update TikTok page content based on launch status
+ */
+async function updateTikTokPageContent(store, campaign, campaignId, launchNumber, pageHandle, isActive) {
+  try {
+    // Ensure domain format is correct
+    let apiDomain = store.store_url.replace(/^https?:\/\//, '');
+    if (!apiDomain.includes('.myshopify.com')) {
+      apiDomain = `${apiDomain}.myshopify.com`;
+    }
+    
+    // Check if page exists
+    const checkUrl = `https://${apiDomain}/admin/api/2024-01/pages.json?handle=${pageHandle}`;
+    console.log('Checking for existing TikTok page:', checkUrl);
+    
+    const checkResponse = await fetch(checkUrl, {
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!checkResponse.ok) {
+      throw new Error(`Failed to check page existence: ${checkResponse.status}`);
+    }
+    
+    const data = await checkResponse.json();
+    if (!data.pages || data.pages.length === 0) {
+      console.log(`Page ${pageHandle} not found, cannot update`);
+      return { error: 'Page not found' };
+    }
+    
+    const pageId = data.pages[0].id;
+    
+    // Generate appropriate content based on active status
+    let pageContent;
+    if (isActive) {
+      // Generate full redirect content
+      pageContent = generatePageContent(campaign, campaignId, launchNumber);
+    } else {
+      // Generate empty content to disable redirect
+      pageContent = `
+<!-- Campaign Launch Disabled -->
+<!-- This page has been temporarily disabled -->
+<!-- No redirect code will be executed -->
+`;
+    }
+    
+    // Update the page
+    const updateData = {
+      page: {
+        body_html: pageContent
+      }
+    };
+    
+    console.log(`Updating page ${pageHandle} (ID: ${pageId}) - Active: ${isActive}`);
+    
+    const updateResponse = await fetch(`https://${apiDomain}/admin/api/2024-01/pages/${pageId}.json`, {
+      method: 'PUT',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      throw new Error(`Failed to update page: ${updateResponse.status} - ${errorText}`);
+    }
+    
+    const result = await updateResponse.json();
+    console.log(`Page updated successfully: ${pageHandle}`);
+    return result;
+    
+  } catch (error) {
+    console.error('Error updating TikTok page content:', error);
+    throw error;
+  }
+}
+
+/**
  * Create or update TikTok validation page on Shopify
  */
 async function createTikTokValidationPage(store, campaign, campaignId, launchNumber, pageHandle) {
@@ -2169,7 +2353,9 @@ async function generateCampaignLink(db, request, env) {
     if (!launches[launch.toString()]) {
       launches[launch.toString()] = {
         isActive: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        trafficPassed: 0,
+        trafficBlocked: 0
       };
     }
     
@@ -2251,14 +2437,31 @@ async function generateCampaignLink(db, request, env) {
         customRedirectUrl: campaign.custom_redirect_link
       };
       
-      const tiktokPageResult = await createTikTokValidationPage(
-        tiktokStore, 
-        campaignData, 
-        campaignId, 
-        launch, 
-        pageHandle
-      );
-      console.log('TikTok store page created/updated:', tiktokPageResult);
+      // Check if launch is active
+      const isLaunchActive = launches[launch.toString()] && launches[launch.toString()].isActive;
+      
+      if (isLaunchActive) {
+        // Create/update page with full redirect content
+        const tiktokPageResult = await createTikTokValidationPage(
+          tiktokStore, 
+          campaignData, 
+          campaignId, 
+          launch, 
+          pageHandle
+        );
+        console.log('TikTok store page created/updated:', tiktokPageResult);
+      } else {
+        // Update page with disabled content
+        const updateResult = await updateTikTokPageContent(
+          tiktokStore,
+          campaignData,
+          campaignId,
+          launch,
+          pageHandle,
+          false
+        );
+        console.log('TikTok store page updated with disabled content:', updateResult);
+      }
       
       // Step 2: If not using custom redirect, ALWAYS create/update the offer page on redirect store
       if (campaign.redirect_type !== 'custom' && campaign.redirect_store_id) {
@@ -2316,6 +2519,86 @@ async function generateCampaignLink(db, request, env) {
 }
 
 /**
+ * Update campaign traffic counts
+ * This is called when logging clicks to update the traffic counters
+ */
+async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber = null) {
+  try {
+    // Update campaign-level traffic
+    let updateQuery;
+    
+    if (trafficType === 'passed' || trafficType === 'blackhat') {
+      // Update passed traffic (successful redirects)
+      updateQuery = `
+        UPDATE campaigns 
+        SET traffic_passed = traffic_passed + 1,
+            traffic = traffic + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+    } else if (trafficType === 'blocked' || trafficType === 'whitehat') {
+      // Update blocked traffic (validation failures)
+      updateQuery = `
+        UPDATE campaigns 
+        SET traffic_blocked = traffic_blocked + 1,
+            traffic = traffic + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+    } else {
+      // Just update total traffic
+      updateQuery = `
+        UPDATE campaigns 
+        SET traffic = traffic + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+    }
+    
+    await db.prepare(updateQuery).bind(campaignId).run();
+    
+    // Update per-launch traffic if launch number is provided
+    if (launchNumber !== null) {
+      // Get current launches data
+      const campaign = await db.prepare('SELECT launches FROM campaigns WHERE id = ?').bind(campaignId).first();
+      if (campaign) {
+        const launches = JSON.parse(campaign.launches || '{}');
+        const launchKey = launchNumber.toString();
+        
+        // Initialize launch if it doesn't exist
+        if (!launches[launchKey]) {
+          launches[launchKey] = {
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            trafficPassed: 0,
+            trafficBlocked: 0
+          };
+        }
+        
+        // Update traffic counts
+        if (trafficType === 'passed' || trafficType === 'blackhat') {
+          launches[launchKey].trafficPassed = (launches[launchKey].trafficPassed || 0) + 1;
+        } else if (trafficType === 'blocked' || trafficType === 'whitehat') {
+          launches[launchKey].trafficBlocked = (launches[launchKey].trafficBlocked || 0) + 1;
+        }
+        
+        // Save updated launches data
+        await db.prepare('UPDATE campaigns SET launches = ? WHERE id = ?')
+          .bind(JSON.stringify(launches), campaignId)
+          .run();
+      }
+    }
+    
+    console.log(`Updated traffic for campaign ${campaignId}, launch ${launchNumber}: ${trafficType}`);
+    return { success: true };
+    
+  } catch (error) {
+    console.error('Error updating campaign traffic:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Get campaign data for client-side tracking
  * This endpoint doesn't require authentication
  */
@@ -2357,6 +2640,12 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
       }
     }
     
+    // Get client IP from Cloudflare headers
+    const clientIP = request.headers.get('CF-Connecting-IP') || 
+                    request.headers.get('X-Forwarded-For') || 
+                    request.headers.get('X-Real-IP') || 
+                    'unknown';
+    
     // Get user's region from Cloudflare headers
     const country = request.headers.get('CF-IPCountry') || 'US';
     const region = request.headers.get('CF-Region') || null;
@@ -2382,6 +2671,7 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
         number: parseInt(launchNumber),
         isActive: launches[launchNumber.toString()].isActive
       },
+      clientIP: clientIP,
       geoData: {
         country: country,
         region: region,
@@ -2409,8 +2699,86 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
 }
 
 /**
+ * Get campaign traffic statistics
+ */
+async function getCampaignTrafficStats(db, campaignId, request, env) {
+  try {
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    
+    // Fetch campaign with permission check
+    let campaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        campaign = await db.prepare(
+          `SELECT id, name, traffic, traffic_passed, traffic_blocked FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        campaign = await db.prepare(
+          'SELECT id, name, traffic, traffic_passed, traffic_blocked FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      campaign = await db.prepare(
+        'SELECT id, name, traffic, traffic_passed, traffic_blocked FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
+    
+    if (!campaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Calculate percentages
+    const total = campaign.traffic || 0;
+    const passed = campaign.traffic_passed || 0;
+    const blocked = campaign.traffic_blocked || 0;
+    
+    const stats = {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      traffic: {
+        total: total,
+        passed: passed,
+        blocked: blocked,
+        passedPercentage: total > 0 ? ((passed / total) * 100).toFixed(2) : '0.00',
+        blockedPercentage: total > 0 ? ((blocked / total) * 100).toFixed(2) : '0.00'
+      }
+    };
+    
+    return new Response(JSON.stringify(stats), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error getting campaign traffic stats:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to get traffic statistics',
+        message: error.message 
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
  * Main handler function for campaign endpoints
  */
+// Export the traffic update function for use by logs module
+export { updateCampaignTraffic };
+
 export default async function handleCampaignsAPI(request, env, path) {
   const db = env.DASHBOARD_DB;
   
@@ -2485,6 +2853,10 @@ export default async function handleCampaignsAPI(request, env, path) {
       // Manage launches
       case subPath === 'launches' && request.method === 'POST':
         return await manageCampaignLaunches(db, campaignId, request, env);
+      
+      // Get traffic statistics
+      case subPath === 'traffic-stats' && request.method === 'GET':
+        return await getCampaignTrafficStats(db, campaignId, request, env);
       
       // Client endpoint for tracking - /api/campaigns/client/{campaignId}/{launchNumber}
       case pathParts[2] === 'client' && pathParts.length === 5 && request.method === 'GET':

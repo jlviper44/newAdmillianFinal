@@ -358,26 +358,33 @@
               <!-- Stats Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="stats-section">
-                  <div class="stat-item mb-2">
-                    <div class="text-center">
-                      <div class="stat-value d-flex align-center justify-center gap-1">
-                        <v-icon size="small" color="primary">mdi-web</v-icon>
-                        <span>{{ campaign.traffic || 0 }}</span>
-                        <v-btn
-                          icon
-                          size="x-small"
-                          variant="text"
-                          :loading="refreshingTraffic === campaign.id"
-                          @click.stop="refreshCampaignTraffic(campaign)"
-                          title="Refresh traffic"
-                          class="ml-1"
-                        >
-                          <v-icon size="small">mdi-refresh</v-icon>
-                        </v-btn>
-                      </div>
-                      <div class="stat-label">Traffic</div>
+                  <!-- Compact Traffic Indicators -->
+                  <div class="traffic-row d-flex align-center gap-2 mb-2">
+                    <div class="traffic-indicator passed-traffic d-flex align-center gap-1 px-2 py-1">
+                      <v-icon size="x-small" color="success">mdi-check</v-icon>
+                      <span class="text-caption">Passed</span>
+                      <span class="font-weight-medium ml-1">{{ campaign.trafficPassed || 0 }}</span>
                     </div>
+                    
+                    <div class="traffic-indicator blocked-traffic d-flex align-center gap-1 px-2 py-1">
+                      <v-icon size="x-small" color="error">mdi-close</v-icon>
+                      <span class="text-caption">Blocked</span>
+                      <span class="font-weight-medium ml-1">{{ campaign.trafficBlocked || 0 }}</span>
+                    </div>
+                    
+                    <v-btn
+                      icon
+                      size="x-small"
+                      variant="text"
+                      :loading="refreshingTraffic === campaign.id"
+                      @click.stop="refreshCampaignTraffic(campaign)"
+                      title="Refresh traffic"
+                      class="ml-auto"
+                    >
+                      <v-icon size="x-small">mdi-refresh</v-icon>
+                    </v-btn>
                   </div>
+                  
                   <div class="stat-item">
                     <v-btn
                       color="purple"
@@ -861,15 +868,6 @@
                         >
                           {{ launch.isActive ? 'Active' : 'Disabled' }}
                         </v-chip>
-                        
-                        <v-chip
-                          color="blue"
-                          variant="tonal"
-                          size="x-small"
-                          prepend-icon="mdi-web"
-                        >
-                          {{ launch.traffic || 0 }} clicks
-                        </v-chip>
                       </div>
                       
                       <div class="text-caption" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-1' : 'text-grey-darken-1'" style="word-break: break-word;">
@@ -893,8 +891,21 @@
                       </div>
                     </div>
 
-                    <!-- Action buttons -->
+                    <!-- Action buttons and traffic stats -->
                     <div class="d-flex align-center gap-3 flex-shrink-0">
+                      <!-- Traffic stats -->
+                      <div class="launch-traffic-stats d-flex align-center gap-2 mr-2">
+                        <div class="d-flex align-center gap-1">
+                          <v-icon size="x-small" color="success">mdi-check</v-icon>
+                          <span class="text-caption font-weight-medium">{{ launch.trafficPassed || 0 }}</span>
+                        </div>
+                        <v-divider vertical class="mx-1" style="height: 16px;"></v-divider>
+                        <div class="d-flex align-center gap-1">
+                          <v-icon size="x-small" color="error">mdi-close</v-icon>
+                          <span class="text-caption font-weight-medium">{{ launch.trafficBlocked || 0 }}</span>
+                        </div>
+                      </div>
+                      
                       <v-btn
                         :color="launch.generatedAt ? 'purple' : 'purple'"
                         :variant="launch.generatedAt ? 'tonal' : 'flat'"
@@ -1702,6 +1713,18 @@ const getTotalLaunches = (campaign) => {
   return Object.keys(campaign.launches).length;
 };
 
+const getTrafficPercentage = (campaign, type) => {
+  const total = campaign.traffic || 0;
+  if (total === 0) return 0;
+  
+  if (type === 'passed') {
+    return ((campaign.trafficPassed || 0) / total * 100).toFixed(1);
+  } else if (type === 'blocked') {
+    return ((campaign.trafficBlocked || 0) / total * 100).toFixed(1);
+  }
+  return 0;
+};
+
 const getTemplateName = (templateId) => {
   if (!templateId) return null;
   const template = templates.value.find(t => t.id === templateId);
@@ -1985,6 +2008,56 @@ onMounted(() => {
 
 .v-theme--dark .stat-label {
   color: rgba(255, 255, 255, 0.6);
+}
+
+/* Compact Traffic Indicators */
+.traffic-row {
+  min-height: 32px;
+}
+
+.traffic-indicator {
+  border-radius: 6px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.traffic-indicator.passed-traffic {
+  background: rgba(76, 175, 80, 0.1);
+  color: #2e7d32;
+}
+
+.v-theme--dark .traffic-indicator.passed-traffic {
+  background: rgba(76, 175, 80, 0.15);
+  color: #66bb6a;
+}
+
+.traffic-indicator.blocked-traffic {
+  background: rgba(244, 67, 54, 0.1);
+  color: #c62828;
+}
+
+.v-theme--dark .traffic-indicator.blocked-traffic {
+  background: rgba(244, 67, 54, 0.15);
+  color: #ef5350;
+}
+
+@media (max-width: 600px) {
+  .traffic-indicator {
+    font-size: 0.75rem;
+  }
+}
+
+/* Launch Traffic Stats */
+.launch-traffic-stats {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: rgba(0, 0, 0, 0.04);
+  font-size: 0.75rem;
+}
+
+.v-theme--dark .launch-traffic-stats {
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .launches-btn {

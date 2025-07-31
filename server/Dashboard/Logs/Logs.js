@@ -235,6 +235,21 @@ async function createLog(request, env) {
       }
     }
     
+    // Update campaign traffic counts
+    if (env.DASHBOARD_DB && logData.campaignId && logData.type === 'click') {
+      try {
+        const { updateCampaignTraffic } = await import('../Dashboard/Campaigns/Campaigns.js');
+        await updateCampaignTraffic(
+          env.DASHBOARD_DB, 
+          logData.campaignId, 
+          logData.decision === 'blackhat' ? 'passed' : 'blocked',
+          logData.launchNumber || 0
+        );
+      } catch (trafficError) {
+        console.error('Failed to update campaign traffic:', trafficError);
+      }
+    }
+    
     console.log('Log created successfully:', result.meta.last_row_id);
     return new Response(
       JSON.stringify({ success: true, id: result.meta.last_row_id }),
