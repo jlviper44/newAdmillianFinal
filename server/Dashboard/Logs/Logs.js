@@ -78,6 +78,10 @@ export async function handleLogsData(request, env) {
       return getLogsByType(request, env);
     }
     
+    if (method === 'GET' && path === '/api/logs/traffic-by-launch') {
+      return getTrafficByLaunch(request, env);
+    }
+    
     if (method === 'GET' && path.match(/^\/api\/logs\/[^\/]+$/)) {
       const id = path.split('/').pop();
       return getLogById(request, env, id);
@@ -479,6 +483,60 @@ async function getLogsByCampaign(request, env) {
     console.error('Error getting logs by campaign:', error);
     return new Response(
       JSON.stringify({ error: 'Failed to get logs by campaign', message: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Get traffic count by campaign and launch
+ */
+async function getTrafficByLaunch(request, env) {
+  if (!env.LOGS_DB) {
+    return new Response(
+      JSON.stringify({ traffic: {} }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  try {
+    const url = new URL(request.url);
+    const campaignId = url.searchParams.get('campaignId');
+    
+    if (!campaignId) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign ID is required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Get traffic count for each launch
+    const result = await env.LOGS_DB.prepare(`
+      SELECT 
+        launchNumber,
+        COUNT(*) as traffic
+      FROM logs
+      WHERE campaignId = ? 
+        AND type = 'click' 
+        AND decision = 'blackhat'
+      GROUP BY launchNumber
+      ORDER BY launchNumber ASC
+    `).bind(campaignId).all();
+    
+    // Convert to object format for easy lookup
+    const traffic = {};
+    (result.results || []).forEach(row => {
+      traffic[row.launchNumber] = row.traffic;
+    });
+    
+    return new Response(
+      JSON.stringify({ traffic }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error getting traffic by launch:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to get traffic by launch', message: error.message }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }

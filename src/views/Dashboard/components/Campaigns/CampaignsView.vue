@@ -359,11 +359,24 @@
               <v-col cols="12" sm="6" md="3">
                 <div class="stats-section">
                   <div class="stat-item mb-2">
-                    <div class="stat-value">
-                      <v-icon size="small" color="primary" class="mr-1">mdi-web</v-icon>
-                      {{ campaign.traffic || 0 }}
+                    <div class="text-center">
+                      <div class="stat-value d-flex align-center justify-center gap-1">
+                        <v-icon size="small" color="primary">mdi-web</v-icon>
+                        <span>{{ campaign.traffic || 0 }}</span>
+                        <v-btn
+                          icon
+                          size="x-small"
+                          variant="text"
+                          :loading="refreshingTraffic === campaign.id"
+                          @click.stop="refreshCampaignTraffic(campaign)"
+                          title="Refresh traffic"
+                          class="ml-1"
+                        >
+                          <v-icon size="small">mdi-refresh</v-icon>
+                        </v-btn>
+                      </div>
+                      <div class="stat-label">Traffic</div>
                     </div>
-                    <div class="stat-label">Traffic</div>
                   </div>
                   <div class="stat-item">
                     <v-btn
@@ -712,18 +725,31 @@
     >
       <v-card>
         <v-card-title :class="['border-b', $vuetify.display.smAndDown ? 'pa-3' : 'px-4 py-3']">
-          <v-btn 
-            icon 
-            variant="text" 
-            :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
-            @click="showLaunchesModal = false" 
-            class="mr-3"
-          >
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-          <div class="d-flex align-center">
-            <v-icon color="purple" :class="$vuetify.display.smAndDown ? 'mr-1' : 'mr-2'" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-rocket-launch</v-icon>
-            <span :class="$vuetify.display.smAndDown ? 'text-body-2' : ''">Manage Launches</span>
+          <div class="d-flex justify-space-between align-center w-100">
+            <div class="d-flex align-center">
+              <v-icon color="purple" :class="$vuetify.display.smAndDown ? 'mr-1' : 'mr-2'" :size="$vuetify.display.smAndDown ? 'small' : 'default'">mdi-rocket-launch</v-icon>
+              <span :class="$vuetify.display.smAndDown ? 'text-body-2' : ''">Manage Launches</span>
+            </div>
+            <div class="d-flex align-center gap-1">
+              <v-btn 
+                icon 
+                variant="text" 
+                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
+                @click="refreshCampaignTraffic(currentCampaign)"
+                :loading="refreshingTraffic === currentCampaign?.id"
+                title="Refresh traffic data"
+              >
+                <v-icon>mdi-refresh</v-icon>
+              </v-btn>
+              <v-btn 
+                icon 
+                variant="text" 
+                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
+                @click="showLaunchesModal = false" 
+              >
+                <v-icon>mdi-close</v-icon>
+              </v-btn>
+            </div>
           </div>
         </v-card-title>
         
@@ -834,6 +860,15 @@
                           size="x-small"
                         >
                           {{ launch.isActive ? 'Active' : 'Disabled' }}
+                        </v-chip>
+                        
+                        <v-chip
+                          color="blue"
+                          variant="tonal"
+                          size="x-small"
+                          prepend-icon="mdi-web"
+                        >
+                          {{ launch.traffic || 0 }} clicks
                         </v-chip>
                       </div>
                       
@@ -972,6 +1007,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { campaignsApi, shopifyApi, templatesApi, sparksApi } from '@/services/api';
+import logsAPI from '@/services/logsAPI';
 
 // Snackbar state
 const showSnackbar = ref(false);
@@ -1033,6 +1069,7 @@ const newLaunchCount = ref(1);
 const addingLaunches = ref(false);
 const generatingLinkFor = ref(null);
 const togglingLaunch = ref(null);
+const refreshingTraffic = ref(null);
 
 // Forms
 const campaignForm = ref(null);
@@ -1124,6 +1161,35 @@ const fetchCampaigns = async () => {
     const data = await campaignsApi.listCampaigns(params);
     campaigns.value = data.campaigns || [];
     totalPages.value = data.totalPages || 1;
+    
+    // Fetch traffic data for all campaigns
+    try {
+      const trafficPromises = campaigns.value.map(async (campaign) => {
+        try {
+          const trafficResponse = await logsAPI.getTrafficByLaunch(campaign.id);
+          const trafficData = trafficResponse.traffic || {};
+          // Calculate total traffic for the campaign
+          const totalTraffic = Object.values(trafficData).reduce((sum, count) => sum + count, 0);
+          return { campaignId: campaign.id, traffic: totalTraffic };
+        } catch (error) {
+          console.error(`Failed to fetch traffic for campaign ${campaign.id}:`, error);
+          return { campaignId: campaign.id, traffic: 0 };
+        }
+      });
+      
+      const trafficResults = await Promise.all(trafficPromises);
+      
+      // Update campaigns with traffic data
+      trafficResults.forEach(({ campaignId, traffic }) => {
+        const campaign = campaigns.value.find(c => c.id === campaignId);
+        if (campaign) {
+          campaign.traffic = traffic;
+        }
+      });
+    } catch (error) {
+      console.error('Failed to fetch traffic data:', error);
+      // Continue without traffic data
+    }
     
     // Reset selections when fetching new data
     selectAllCheckbox.value = false;
@@ -1397,12 +1463,23 @@ const openLaunchesModal = async (campaign) => {
     const data = await campaignsApi.getCampaign(campaign.id);
     currentCampaign.value = data;
     
+    // Fetch traffic data for this campaign
+    let trafficData = {};
+    try {
+      const trafficResponse = await logsAPI.getTrafficByLaunch(campaign.id);
+      trafficData = trafficResponse.traffic || {};
+    } catch (error) {
+      console.error('Failed to fetch traffic data:', error);
+      // Continue without traffic data
+    }
+    
     // Convert launches object to array and sort by number
     if (data.launches && Object.keys(data.launches).length > 0) {
       const launchesArray = Object.entries(data.launches)
         .map(([num, launch]) => ({
           ...launch,
-          number: parseInt(num)
+          number: parseInt(num),
+          traffic: trafficData[num] || 0  // Add traffic count from logs
         }))
         .sort((a, b) => a.number - b.number);
       currentLaunches.value = launchesArray;
@@ -1412,7 +1489,8 @@ const openLaunchesModal = async (campaign) => {
         number: 0,
         isActive: true,
         createdAt: new Date().toISOString(),
-        generatedAt: null
+        generatedAt: null,
+        traffic: trafficData[0] || 0
       }];
     }
     
@@ -1453,6 +1531,38 @@ const addNewLaunches = async () => {
     showError('Failed to add launches: ' + error.message);
   } finally {
     addingLaunches.value = false;
+  }
+};
+
+const refreshCampaignTraffic = async (campaign) => {
+  refreshingTraffic.value = campaign.id;
+  try {
+    // Fetch latest traffic data for this campaign
+    const trafficResponse = await logsAPI.getTrafficByLaunch(campaign.id);
+    const trafficData = trafficResponse.traffic || {};
+    
+    // Calculate total traffic
+    const totalTraffic = Object.values(trafficData).reduce((sum, count) => sum + count, 0);
+    
+    // Update the campaign's traffic in the campaigns array
+    const campaignIndex = campaigns.value.findIndex(c => c.id === campaign.id);
+    if (campaignIndex !== -1) {
+      campaigns.value[campaignIndex].traffic = totalTraffic;
+    }
+    
+    // If the launches modal is open for this campaign, update the launches too
+    if (showLaunchesModal.value && currentCampaign.value?.id === campaign.id) {
+      currentLaunches.value.forEach(launch => {
+        launch.traffic = trafficData[launch.number] || 0;
+      });
+    }
+    
+    showSuccess('Traffic data refreshed');
+  } catch (error) {
+    console.error('Failed to refresh traffic:', error);
+    showError('Failed to refresh traffic data');
+  } finally {
+    refreshingTraffic.value = null;
   }
 };
 
@@ -1512,10 +1622,13 @@ const generateLaunchLink = async (launchNumber) => {
         currentLaunches.value[launchIndex].generatedAt = new Date().toISOString();
       }
       
-      // Refresh the modal to show updated timestamp
+      // Refresh the modal to show updated timestamp and traffic
       setTimeout(() => {
         openLaunchesModal(currentCampaign.value);
       }, 1000);
+      
+      // Also refresh the main campaigns list to update traffic count
+      fetchCampaigns();
     }
   } catch (error) {
     let errorMessage = 'Error generating link: ' + error.message;

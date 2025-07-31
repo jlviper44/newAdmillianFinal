@@ -197,6 +197,29 @@ async function fixFirst10Tags(campaignId = null) {
   return response.json();
 }
 
+/**
+ * Get traffic count by campaign and launch
+ */
+async function getTrafficByLaunch(campaignId) {
+  if (!campaignId) {
+    throw new Error('Campaign ID is required');
+  }
+  
+  const response = await fetch(`${API_BASE}/traffic-by-launch?campaignId=${campaignId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include'
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch traffic by launch: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
 export default {
   getLogs,
   getLog,
@@ -206,5 +229,6 @@ export default {
   getCampaignsList,
   createLog,
   clearOldLogs,
-  fixFirst10Tags
+  fixFirst10Tags,
+  getTrafficByLaunch
 };
