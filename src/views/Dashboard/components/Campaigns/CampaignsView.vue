@@ -1169,8 +1169,12 @@ const headers = [
 ];
 
 // Methods
-const fetchCampaigns = async () => {
-  isLoading.value = true;
+const fetchCampaigns = async (isInitialLoad = false) => {
+  // Only show loading on initial load or manual refresh
+  if (isInitialLoad) {
+    isLoading.value = true;
+  }
+  
   try {
     const params = {
       search: searchQuery.value,
@@ -1181,16 +1185,29 @@ const fetchCampaigns = async () => {
     };
     
     const data = await campaignsApi.listCampaigns(params);
-    campaigns.value = data.campaigns || [];
+    
+    // Update campaigns without clearing them first to prevent flicker
+    if (data.campaigns) {
+      campaigns.value = data.campaigns;
+    }
     totalPages.value = data.totalPages || 1;
     
-    // Reset selections when fetching new data
-    selectAllCheckbox.value = false;
-    selectedCampaigns.value = [];
+    // Only reset selections on initial load or manual refresh
+    if (isInitialLoad) {
+      selectAllCheckbox.value = false;
+      selectedCampaigns.value = [];
+    }
   } catch (error) {
-    showError('Failed to load campaigns');
+    // Only show error on initial load or manual refresh
+    if (isInitialLoad) {
+      showError('Failed to load campaigns');
+    } else {
+      console.error('Failed to refresh campaigns:', error);
+    }
   } finally {
-    isLoading.value = false;
+    if (isInitialLoad) {
+      isLoading.value = false;
+    }
   }
 };
 
@@ -1223,7 +1240,7 @@ const fetchSparks = async () => {
 };
 
 const searchCampaigns = () => {
-  fetchCampaigns();
+  fetchCampaigns(true);
 };
 
 const openCreateModal = () => {
@@ -1318,7 +1335,7 @@ const saveCampaign = async () => {
     
     showSuccess(editingCampaign.value ? 'Campaign updated successfully' : 'Campaign created successfully');
     closeModal();
-    fetchCampaigns();
+    fetchCampaigns(true);
   } catch (error) {
     showError(editingCampaign.value ? 'Failed to update campaign' : 'Failed to create campaign');
   } finally {
@@ -1340,7 +1357,7 @@ const deleteCampaign = async () => {
     await campaignsApi.deleteCampaign(deletingCampaign.value.id);
     showSuccess('Campaign deleted successfully');
     showDeleteDialog.value = false;
-    fetchCampaigns();
+    fetchCampaigns(true);
   } catch (error) {
     showError('Failed to delete campaign');
   } finally {
@@ -1360,7 +1377,7 @@ const bulkDelete = async () => {
     );
     showSuccess(`${selectedCampaigns.value.length} campaigns deleted`);
     selectedCampaigns.value = [];
-    fetchCampaigns();
+    fetchCampaigns(true);
   } catch (error) {
     showError('Failed to delete some campaigns');
   }
@@ -1375,7 +1392,7 @@ const bulkUpdateStatus = async (status) => {
     );
     showSuccess(`${selectedCampaigns.value.length} campaigns updated to ${status}`);
     selectedCampaigns.value = [];
-    fetchCampaigns();
+    fetchCampaigns(true);
   } catch (error) {
     showError('Failed to update some campaigns');
   }
@@ -1399,7 +1416,7 @@ const duplicateCampaign = async (campaign) => {
     
     await campaignsApi.createCampaign(newCampaign);
     showSuccess('Campaign duplicated successfully');
-    fetchCampaigns();
+    fetchCampaigns(true);
   } catch (error) {
     showError('Failed to duplicate campaign');
   }
@@ -1446,7 +1463,7 @@ const updateCampaignStatus = async (campaignId, status) => {
   } catch (error) {
     showError('Failed to update status');
     // Refresh the list to revert the change
-    fetchCampaigns();
+    fetchCampaigns(true);
   }
 };
 
@@ -1516,7 +1533,7 @@ const addNewLaunches = async () => {
       await openLaunchesModal(currentCampaign.value);
       
       // Refresh main campaigns list
-      fetchCampaigns();
+      fetchCampaigns(true);
     } else {
       showError('Failed to add launches');
     }
@@ -1582,7 +1599,7 @@ const toggleLaunch = async (launchNumber) => {
       showSuccess('Launch status updated');
       
       // Refresh main campaigns list
-      fetchCampaigns();
+      fetchCampaigns(true);
     }
   } catch (error) {
     showError('Failed to update launch status');
@@ -1626,7 +1643,7 @@ const generateLaunchLink = async (launchNumber) => {
       }, 1000);
       
       // Also refresh the main campaigns list to update traffic count
-      fetchCampaigns();
+      fetchCampaigns(true);
     }
   } catch (error) {
     let errorMessage = 'Error generating link: ' + error.message;
@@ -1784,7 +1801,7 @@ const clearSelection = () => {
 
 const changePage = (page) => {
   currentPage.value = page;
-  fetchCampaigns();
+  fetchCampaigns(true);
 };
 
 // Launch count controls
@@ -1818,7 +1835,7 @@ let refreshInterval = null;
 const startAutoRefresh = () => {
   // Refresh every 30 seconds
   refreshInterval = setInterval(() => {
-    fetchCampaigns();
+    fetchCampaigns(false); // Background refresh without loading indicator
   }, 30000);
 };
 
@@ -1831,7 +1848,7 @@ const stopAutoRefresh = () => {
 
 // Lifecycle
 onMounted(() => {
-  fetchCampaigns();
+  fetchCampaigns(true); // Initial load
   startAutoRefresh();
   fetchStores();
   fetchTemplates();

@@ -545,6 +545,7 @@ const typeOptions = [
   { value: 'all', title: 'All Types' },
   { value: 'click', title: 'Successful Clicks' },
   { value: 'validation', title: 'Failed Validations' },
+  { value: 'disabled', title: 'Disabled Launches' },
   { value: 'pending', title: 'Initial Checks' }
 ];
 
@@ -565,9 +566,31 @@ const loadLogs = async () => {
   try {
     const params = {
       page: currentPage.value,
-      limit: itemsPerPage.value,
-      ...filters.value
+      limit: itemsPerPage.value
     };
+    
+    // Only add filters that are not 'all' or empty
+    if (filters.value.campaign && filters.value.campaign !== 'all') {
+      params.campaignId = filters.value.campaign;
+    }
+    if (filters.value.type && filters.value.type !== 'all') {
+      params.type = filters.value.type;
+    }
+    if (filters.value.decision && filters.value.decision !== 'all') {
+      params.decision = filters.value.decision;
+    }
+    if (filters.value.tag && filters.value.tag !== 'all') {
+      params.tag = filters.value.tag;
+    }
+    if (filters.value.startDate) {
+      params.startDate = filters.value.startDate;
+    }
+    if (filters.value.endDate) {
+      params.endDate = filters.value.endDate;
+    }
+    if (filters.value.search) {
+      params.search = filters.value.search;
+    }
     
     const response = await logsAPI.getLogs(params);
     logs.value = response.logs;
@@ -650,7 +673,31 @@ const refreshData = async () => {
 };
 
 const exportLogs = () => {
-  const params = new URLSearchParams(filters.value);
+  const params = new URLSearchParams();
+  
+  // Only add filters that are not 'all' or empty
+  if (filters.value.campaign && filters.value.campaign !== 'all') {
+    params.append('campaignId', filters.value.campaign);
+  }
+  if (filters.value.type && filters.value.type !== 'all') {
+    params.append('type', filters.value.type);
+  }
+  if (filters.value.decision && filters.value.decision !== 'all') {
+    params.append('decision', filters.value.decision);
+  }
+  if (filters.value.tag && filters.value.tag !== 'all') {
+    params.append('tag', filters.value.tag);
+  }
+  if (filters.value.startDate) {
+    params.append('startDate', filters.value.startDate);
+  }
+  if (filters.value.endDate) {
+    params.append('endDate', filters.value.endDate);
+  }
+  if (filters.value.search) {
+    params.append('search', filters.value.search);
+  }
+  
   window.open(`/api/logs/export?${params}`, '_blank');
 };
 
