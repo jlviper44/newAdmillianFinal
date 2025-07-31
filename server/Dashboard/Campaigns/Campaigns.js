@@ -166,26 +166,6 @@ async function checkCampaignAccess(db, env, campaignId, userId, teamId) {
  */
 async function getUserInfoFromSession(request, env) {
   try {
-    // Check if session is passed in request context (from requireAuth middleware)
-    if (request.ctx && request.ctx.session) {
-      const session = request.ctx.session;
-      const userId = session.user_id || session.user?.id;
-      if (!userId) {
-        throw new Error('No user ID found in session');
-      }
-      const teamId = await getUserTeamId(env, userId);
-      console.log('[Campaigns] Using session from context for userId:', userId);
-      console.log('[Campaigns] Session has virtual assistant flag:', !!session.user?.isVirtualAssistant);
-      console.log('[Campaigns] Session user data:', { 
-        id: session.user?.id, 
-        email: session.user?.email,
-        isVirtualAssistant: session.user?.isVirtualAssistant 
-      });
-      return { userId, teamId };
-    }
-    
-    // Fallback to cookie-based session extraction
-    console.log('[Campaigns] No session in context, falling back to cookie-based extraction');
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
       throw new Error('No session cookie found');
@@ -309,13 +289,7 @@ async function listCampaigns(db, request, env) {
     `;
     params.push(limit, offset);
     
-    console.log('[Campaigns Debug] Executing query:', query);
-    console.log('[Campaigns Debug] Query params:', params);
-    
     const result = await db.prepare(query).bind(...params).all();
-    console.log('[Campaigns Debug] Raw query result:', result);
-    console.log('[Campaigns Debug] Number of campaigns found:', result.results?.length || 0);
-    
     let campaigns = (result.results || []).map(campaign => ({
       ...campaign,
       regions: JSON.parse(campaign.regions || '[]'),
@@ -1166,19 +1140,317 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
   }
 }
 
-// Cloaking functionality has been moved to cloaker-worker.js
-// The following functions are now handled by the external cloaker service:
-// - generatePageContent
-// - getTemplateHTML  
-// - generateAffiliateLinksScript
-// - generateHideShopifyElementsCSS
-// - buildOfferPageContent
-// - createTikTokValidationPage
-// - createRedirectStoreOfferPage
+/**
+ * Generate page content for TikTok validation page
+ */
+function generatePageContent(campaign, campaignId, launchNumber) {
+  const loadingScreenHTML = `
+<div id="loading-container" style="
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: #f5f5f5;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+">
+  <div style="text-align: center;">
+    <div class="spinner" style="
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-left-color: #000;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    "></div>
+    <p style="
+      color: #666;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 16px;
+      margin: 0;
+    ">Loading...</p>
+  </div>
+</div>
 
+<style>
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .shopify-section, header, footer, .header, .footer {
+    display: none !important;
+  }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+</style>
+`;
 
+  const trackingScript = `
+<script>
+(function() {
+  // Extract campaign info from URL
+  const pathMatch = window.location.pathname.match(/\\/pages\\/cloak-([^-]+)-(\\d+)/);
+  if (!pathMatch) {
+    console.error('Invalid page URL format');
+    return;
+  }
+  
+  const campaignId = pathMatch[1];
+  const launchNumber = pathMatch[2];
+  
+  // Get URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const ttclid = urlParams.get('ttclid');
+  const testMode = urlParams.get('test') === 'true';
+  
+  // Store server-provided data
+  let serverData = null;
+  
+  // Validation checks
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const hasTtclid = ttclid && ttclid.length > 0;
+  
+  // Check referrer
+  let isTikTokReferrer = false;
+  if (testMode) {
+    isTikTokReferrer = true;
+    console.log('TEST MODE: Skipping referrer check');
+  } else {
+    isTikTokReferrer = document.referrer.includes('tiktok.com') || 
+                       document.referrer === '' || 
+                       document.referrer.includes('tiktokv.com') ||
+                       document.referrer.includes('tiktokcdn.com');
+  }
+  
+  console.log('Validation results:', { 
+    isMobile, 
+    hasTtclid, 
+    isTikTokReferrer,
+    referrer: document.referrer,
+    userAgent: navigator.userAgent,
+    testMode 
+  });
+  
+  // First, fetch campaign data to get server information
+  fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber)
+    .then(function(response) { 
+      return response.json(); 
+    })
+    .then(function(data) {
+      // Store the server data
+      serverData = data;
+      
+      // Check validations
+      if (!isMobile || !hasTtclid || !isTikTokReferrer) {
+        console.log('Validation failed, staying on page');
+        
+        // Log failed validation
+        const failureReason = !isMobile ? 'not_mobile' : !hasTtclid ? 'no_ttclid' : 'invalid_referrer';
+        
+        // Send log for failed validation
+        const logData = {
+          campaignId: campaignId,
+          launchNumber: launchNumber,
+          type: 'validation',
+          decision: 'whitehat',
+          ip: serverData.clientIP || 'unknown',
+          country: serverData.geoData?.country || 'unknown',
+          region: serverData.geoData?.region || null,
+          city: serverData.geoData?.city || null,
+          timezone: serverData.geoData?.timezone || null,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          referer: document.referrer,
+          url: window.location.href,
+          params: {
+            ttclid: ttclid,
+            test: testMode,
+            failureReason: failureReason
+          }
+        };
+        
+        // Send log to server - always use fetch for better debugging
+        console.log('Sending whitehat log:', logData);
+        fetch('https://cranads.com/api/logs/public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(logData),
+          keepalive: true
+        })
+        .then(function(response) {
+          console.log('Log response status:', response.status);
+          return response.text();
+        })
+        .then(function(text) {
+          console.log('Log response body:', text);
+          try {
+            const data = JSON.parse(text);
+            console.log('Log saved with ID:', data.id);
+          } catch (e) {
+            console.log('Response was not JSON:', text);
+          }
+        })
+        .catch(function(err) {
+          console.error('Failed to send log:', err);
+        });
+        
+        // Show default content
+        document.getElementById('loading-container').style.display = 'none';
+        document.querySelectorAll('.shopify-section, header, footer, .header, .footer').forEach(function(el) {
+          el.style.display = '';
+        });
+        document.body.style.overflow = '';
+        return;
+      }
+      
+      // Validation passed, continue with redirect
+      console.log('All validations passed, processing redirect...');
+      
+      if (data.error) {
+        console.error('Failed to fetch campaign data:', data.error);
+        document.getElementById('loading-container').style.display = 'none';
+        return;
+      }
+      
+      // Get GEO data from server response
+      const geoData = data.geoData || {};
+      const country = geoData.country || 'US';
+      const os = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'ios' : 'android';
+      
+      console.log('Server-detected GEO:', {
+        country: country,
+        region: geoData.region,
+        city: geoData.city,
+        timezone: geoData.timezone,
+        continent: geoData.continent
+      });
+      
+      let redirectUrl;
+      
+      // Check redirect type
+      if (data.redirectType === 'custom' && data.customRedirectLink) {
+        // Custom redirect
+        try {
+          redirectUrl = new URL(data.customRedirectLink);
+          console.log('Using custom redirect');
+        } catch (e) {
+          console.error('Invalid custom redirect URL:', data.customRedirectLink);
+          return;
+        }
+      } else if (data.redirectStoreDomain) {
+        // Template/Shopify redirect
+        const redirectPageHandle = 'offer-' + campaignId + '-' + launchNumber;
+        redirectUrl = new URL('https://' + data.redirectStoreDomain + '/pages/' + redirectPageHandle);
+        console.log('Redirecting to offer page on redirect store:', data.redirectStoreDomain);
+      } else {
+        console.error('No redirect store domain found');
+        document.getElementById('loading-container').style.display = 'none';
+        return;
+      }
+      
+      // Add tracking parameters (no more IP passing)
+      redirectUrl.searchParams.set('s1', campaignId);
+      redirectUrl.searchParams.set('s2', launchNumber);
+      
+      // Pass ttclid
+      if (ttclid) {
+        redirectUrl.searchParams.set('ttclid', ttclid);
+      }
+      
+      // For template redirects, pass additional data (but not IP)
+      if (data.redirectType !== 'custom') {
+        redirectUrl.searchParams.set('os', os);
+        redirectUrl.searchParams.set('geo', country);
+        
+        if (geoData.region) {
+          redirectUrl.searchParams.set('region', geoData.region);
+        }
+        if (geoData.city) {
+          redirectUrl.searchParams.set('city', geoData.city);
+        }
+        if (geoData.timezone) {
+          redirectUrl.searchParams.set('tz', encodeURIComponent(geoData.timezone));
+        }
+      }
+      
+      console.log('Redirecting to:', redirectUrl.href);
+      
+      // Log successful click before redirect
+      const successLogData = {
+        campaignId: campaignId,
+        launchNumber: launchNumber,
+        type: 'click',
+        decision: 'blackhat',
+        ip: serverData.clientIP || 'unknown',
+        country: country || 'unknown',
+        region: geoData.region || null,
+        city: geoData.city || null,
+        timezone: geoData.timezone || null,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        referer: document.referrer,
+        url: window.location.href,
+        redirectUrl: redirectUrl.href,
+        os: os,
+        params: {
+          ttclid: ttclid,
+          test: testMode,
+          redirectType: data.redirectType
+        }
+      };
+      
+      // Function to perform the redirect
+      function performRedirect() {
+        console.log('Performing redirect to:', redirectUrl.href);
+        window.location.href = redirectUrl.href;
+      }
+      
+      // Log and redirect - always use fetch for better debugging
+      console.log('Sending blackhat click log:', successLogData);
+      fetch('https://cranads.com/api/logs/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(successLogData),
+        keepalive: true
+      })
+      .then(function(response) {
+        console.log('Click log response status:', response.status);
+        return response.text();
+      })
+      .then(function(text) {
+        console.log('Click log response body:', text);
+        try {
+          const data = JSON.parse(text);
+          console.log('Click log saved with ID:', data.id);
+        } catch (e) {
+          console.log('Response was not JSON:', text);
+        }
+        performRedirect();
+      })
+      .catch(function(err) {
+        console.error('Failed to log click:', err);
+        performRedirect();
+      });
+    })
+    .catch(function(error) {
+      console.error('Redirect error:', error);
+      document.getElementById('loading-container').style.display = 'none';
+    });
+})();
+</script>
+`;
 
-// Configuration for cloaker service will be passed from env in the handler
+  return loadingScreenHTML + trackingScript;
+}
 
 /**
  * Get template HTML from database
@@ -1207,6 +1479,615 @@ async function getTemplateHTML(db, templateId) {
   }
   
   return templateHTML;
+}
+
+/**
+ * Generate affiliate links replacement script
+ */
+function generateAffiliateLinksScript(affiliateLinks) {
+  return `
+<script>
+(function() {
+  // Get URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const os = urlParams.get('os') || 'unknown';
+  const geo = urlParams.get('geo') || 'US';
+  const region = urlParams.get('region');
+  const city = urlParams.get('city');
+  const timezone = urlParams.get('tz');
+  const s1 = urlParams.get('s1'); // campaign ID
+  const s2 = urlParams.get('s2'); // launch number
+  const ttclid = urlParams.get('ttclid'); // TikTok Click ID - this is s3
+  
+  console.log('Offer page - Location data:', { 
+    geo: geo, 
+    region: region,
+    city: city,
+    timezone: timezone ? decodeURIComponent(timezone) : 'not provided',
+    os: os, 
+    s1: s1, 
+    s2: s2, 
+    ttclid: ttclid
+  });
+  
+  // Affiliate links data
+  const affiliateLinks = ${JSON.stringify(affiliateLinks)};
+  
+  // Select the best matching affiliate link
+  let affiliateLink = selectAffiliateLink(affiliateLinks, geo, os);
+  
+  console.log('Selected affiliate link:', affiliateLink);
+  console.log('Selection logic used:', getSelectionLogic(affiliateLinks, geo, os));
+  
+  if (affiliateLink) {
+    try {
+      // Build the final URL with only s1, s2, and s3 (ttclid)
+      const finalUrl = buildFinalAffiliateUrl(affiliateLink, { 
+        s1, 
+        s2, 
+        s3: ttclid
+      });
+      console.log('Final affiliate URL:', finalUrl);
+      
+      // Replace all {{AFFILIATE_LINK}} placeholders
+      replaceAffiliateLinkPlaceholders(finalUrl);
+      
+      // Track the redirect for analytics
+      trackRedirect(geo, os, region, city);
+      
+    } catch (error) {
+      console.error('Error processing affiliate link:', error);
+    }
+  } else {
+    console.error('No affiliate link found for geo:', geo, 'os:', os);
+    // Fallback to first available link
+    const fallbackLink = Object.values(affiliateLinks)[0];
+    if (fallbackLink) {
+      console.warn('Using fallback link:', fallbackLink);
+      const finalUrl = buildFinalAffiliateUrl(fallbackLink, { 
+        s1, 
+        s2, 
+        s3: ttclid
+      });
+      replaceAffiliateLinkPlaceholders(finalUrl);
+    }
+  }
+  
+  // Helper function to explain selection logic
+  function getSelectionLogic(links, geo, os) {
+    if (links[geo + '_' + os]) return 'Exact match: ' + geo + '_' + os;
+    if (links[geo]) return 'Country match: ' + geo;
+    if (links['US']) return 'Default US fallback';
+    return 'First available link';
+  }
+  
+  // Helper function to select the best matching affiliate link
+  function selectAffiliateLink(links, geo, os) {
+    return links[geo + '_' + os] || 
+           links[geo] || 
+           links['US'] ||
+           Object.values(links)[0];
+  }
+  
+  // Simplified: Only add s1, s2, and s3 parameters
+  function buildFinalAffiliateUrl(baseUrl, params) {
+    const url = new URL(baseUrl);
+    
+    // Add only the essential tracking parameters
+    if (params.s1) url.searchParams.set('s1', params.s1); // Campaign ID
+    if (params.s2) url.searchParams.set('s2', params.s2); // Launch Number
+    if (params.s3) url.searchParams.set('s3', params.s3); // ttclid
+    
+    // Optionally add geo for affiliate's reference (not as s-parameter)
+    url.searchParams.set('geo', geo);
+    if (region) url.searchParams.set('region', region);
+
+    return url.href;
+  }
+  
+  // Helper function to replace all affiliate link placeholders
+  function replaceAffiliateLinkPlaceholders(finalUrl) {
+    // Replace in text content
+    document.body.innerHTML = document.body.innerHTML.replace(/{{AFFILIATE_LINK}}/g, finalUrl);
+    
+    // Update direct links
+    document.querySelectorAll('a.affiliate-link, a[href*="{{AFFILIATE_LINK}}"]').forEach(link => {
+      link.href = finalUrl;
+    });
+    
+    // Update buttons with onclick events
+    document.querySelectorAll('button[onclick*="{{AFFILIATE_LINK}}"]').forEach(button => {
+      button.onclick = function() { 
+        window.location.href = finalUrl; 
+      };
+    });
+    
+    // Update any data attributes
+    document.querySelectorAll('[data-href*="{{AFFILIATE_LINK}}"]').forEach(element => {
+      element.dataset.href = finalUrl;
+    });
+  }
+  
+  // Track redirect for analytics (internal use only)
+  function trackRedirect(geo, os, region, city) {
+    console.log('Redirect tracked:', {
+      timestamp: new Date().toISOString(),
+      geo: geo,
+      os: os,
+      region: region,
+      city: city,
+      campaign: s1,
+      launch: s2,
+      ttclid: ttclid
+    });
+  }
+  
+  // Make functions available globally for the nuclear option
+  window.selectAffiliateLink = selectAffiliateLink;
+  window.buildFinalAffiliateUrl = buildFinalAffiliateUrl;
+  window.replaceAffiliateLinkPlaceholders = replaceAffiliateLinkPlaceholders;
+  window.affiliateLinks = affiliateLinks;
+})();
+</script>`;
+}
+
+/**
+ * Generate CSS to hide Shopify UI elements
+ */
+function generateHideShopifyElementsCSS() {
+  return `
+<!-- Initial hide everything -->
+<style id="initial-hide">
+  html { visibility: hidden !important; }
+</style>
+
+<script>
+(function() {
+  'use strict';
+  
+  // Function to completely replace page content
+  function nukeAndRebuild() {
+    console.log('Nuclear option: Replacing entire page content');
+    
+    // Get the offer content
+    const offerContent = document.getElementById('offer-content');
+    if (!offerContent) {
+      console.error('Offer content not found!');
+      return;
+    }
+    
+    // Clone the offer content to preserve it
+    const offerClone = offerContent.cloneNode(true);
+    
+    // Get the affiliate script if it exists
+    const affiliateScripts = [];
+    document.querySelectorAll('script').forEach(script => {
+      if (script.textContent.includes('affiliateLinks') || 
+          script.textContent.includes('AFFILIATE_LINK') ||
+          script.textContent.includes('selectAffiliateLink')) {
+        affiliateScripts.push(script.cloneNode(true));
+      }
+    });
+    
+    // Save the current page title
+    const pageTitle = document.title;
+    
+    // Complete nuclear option - rebuild the entire document
+    document.documentElement.innerHTML = \`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${pageTitle}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow-x: hidden;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #fff;
+    }
+    
+    #offer-content {
+      width: 100%;
+      min-height: 100vh;
+      display: block;
+    }
+    
+    /* Ensure images are responsive */
+    #offer-content img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    /* Basic responsive container */
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="offer-wrapper"></div>
+</body>
+</html>
+\`;
+    
+    // Wait for the new document to be ready
+    setTimeout(() => {
+      // Get the new wrapper
+      const wrapper = document.getElementById('offer-wrapper');
+      if (wrapper) {
+        // Append the cloned offer content
+        wrapper.appendChild(offerClone);
+        
+        // Re-add affiliate scripts
+        affiliateScripts.forEach(script => {
+          document.body.appendChild(script);
+        });
+        
+        // Re-run affiliate link replacement
+        if (window.selectAffiliateLink && window.buildFinalAffiliateUrl && window.replaceAffiliateLinkPlaceholders) {
+          // Get URL parameters again
+          const urlParams = new URLSearchParams(window.location.search);
+          const os = urlParams.get('os') || 'unknown';
+          const geo = urlParams.get('geo') || 'US';
+          const s1 = urlParams.get('s1');
+          const s2 = urlParams.get('s2');
+          const ttclid = urlParams.get('ttclid');
+          
+          // Re-run the affiliate link logic
+          if (window.affiliateLinks) {
+            const affiliateLink = window.selectAffiliateLink(window.affiliateLinks, geo, os);
+            if (affiliateLink) {
+              const finalUrl = window.buildFinalAffiliateUrl(affiliateLink, { s1, s2, s3: ttclid });
+              window.replaceAffiliateLinkPlaceholders(finalUrl);
+            }
+          }
+        }
+        
+        // Make the page visible
+        document.documentElement.style.visibility = 'visible';
+      }
+    }, 10);
+  }
+  
+  // Alternative approach - less nuclear but still aggressive
+  function aggressiveHide() {
+    console.log('Aggressive hide: Clearing all except offer content');
+    
+    // Get offer content
+    const offerContent = document.getElementById('offer-content');
+    if (!offerContent) {
+      console.error('Offer content not found!');
+      return;
+    }
+    
+    // Clone it
+    const offerClone = offerContent.cloneNode(true);
+    
+    // Clear the body
+    document.body.innerHTML = '';
+    
+    // Add back the offer content
+    document.body.appendChild(offerClone);
+    
+    // Re-run any scripts that were in the offer content
+    const scripts = offerClone.getElementsByTagName('script');
+    Array.from(scripts).forEach(oldScript => {
+      const newScript = document.createElement('script');
+      newScript.textContent = oldScript.textContent;
+      oldScript.parentNode.replaceChild(newScript, oldScript);
+    });
+    
+    // Apply clean styles
+    const cleanStyles = document.createElement('style');
+    cleanStyles.textContent = \`
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+      
+      #offer-content {
+        width: 100%;
+        min-height: 100vh;
+      }
+      
+      /* Remove any Shopify-injected styles */
+      body::before,
+      body::after {
+        display: none !important;
+      }
+    \`;
+    document.head.appendChild(cleanStyles);
+    
+    // Show the page
+    document.documentElement.style.visibility = 'visible';
+  }
+  
+  // Decide which approach to use based on the page structure
+  function initializeNuclearOption() {
+    // Wait a bit for the page to load
+    setTimeout(() => {
+      const offerContent = document.getElementById('offer-content');
+      
+      if (!offerContent) {
+        console.error('Cannot find offer content - aborting nuclear option');
+        document.documentElement.style.visibility = 'visible';
+        return;
+      }
+      
+      // Check if there are many Shopify elements
+      const shopifyElements = document.querySelectorAll(
+        '.shopify-section, .header, .footer, .announcement-bar, [id*="shopify-section"]'
+      );
+      
+      if (shopifyElements.length > 5) {
+        // Too many Shopify elements - use nuclear option
+        nukeAndRebuild();
+      } else {
+        // Fewer elements - use aggressive hide
+        aggressiveHide();
+      }
+    }, 100);
+  }
+  
+  // Start the process
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeNuclearOption);
+  } else {
+    initializeNuclearOption();
+  }
+})();
+</script>`;
+}
+
+/**
+ * Build offer page content with template and scripts
+ */
+function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumber }) {
+  const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
+  const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
+  
+  return `
+${hideShopifyElementsCSS}
+
+<!-- Offer Content Container -->
+<div id="offer-content">
+${templateHTML}
+</div>
+
+<!-- Affiliate Link Replacement Script -->
+<script>
+// Store affiliate links globally for the nuclear option
+window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
+</script>
+${affiliateLinksScript}
+`;
+}
+
+/**
+ * Create or update TikTok validation page on Shopify
+ */
+async function createTikTokValidationPage(store, campaign, campaignId, launchNumber, pageHandle) {
+  const pageContent = generatePageContent(campaign, campaignId, launchNumber);
+  
+  const pageData = {
+    page: {
+      title: `${campaign.name} - Launch ${launchNumber}`,
+      handle: pageHandle,
+      body_html: pageContent,
+      published: true,
+      template_suffix: null
+    }
+  };
+  
+  // Ensure domain format is correct
+  let apiDomain = store.store_url.replace(/^https?:\/\//, '');
+  if (!apiDomain.includes('.myshopify.com')) {
+    apiDomain = `${apiDomain}.myshopify.com`;
+  }
+  
+  // First check if page already exists
+  const checkUrl = `https://${apiDomain}/admin/api/2024-01/pages.json?handle=${pageHandle}`;
+  console.log('Checking for existing TikTok page:', checkUrl);
+  
+  const checkResponse = await fetch(checkUrl, {
+    headers: {
+      'X-Shopify-Access-Token': store.access_token,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  let existingPageId = null;
+  if (checkResponse.ok) {
+    const data = await checkResponse.json();
+    if (data.pages && data.pages.length > 0) {
+      existingPageId = data.pages[0].id;
+      console.log('Found existing TikTok page with ID:', existingPageId);
+    }
+  }
+  
+  if (existingPageId) {
+    // Update existing page
+    console.log('Updating existing TikTok page:', existingPageId);
+    const updateResponse = await fetch(`https://${apiDomain}/admin/api/2024-01/pages/${existingPageId}.json`, {
+      method: 'PUT',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(pageData)
+    });
+    
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      throw new Error(`Failed to update TikTok page: ${updateResponse.status} - ${errorText}`);
+    }
+    
+    return await updateResponse.json();
+  } else {
+    // Create new page
+    console.log('Creating new TikTok page');
+    const createResponse = await fetch(`https://${apiDomain}/admin/api/2024-01/pages.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(pageData)
+    });
+    
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(`Failed to create TikTok page: ${createResponse.status} - ${errorText}`);
+    }
+    
+    return await createResponse.json();
+  }
+}
+
+/**
+ * Create or update redirect store offer page on Shopify
+ */
+async function createRedirectStoreOfferPage(db, campaign, campaignId, launchNumber) {
+  try {
+    // Validate inputs
+    if (!campaign) {
+      throw new Error('Campaign object is required');
+    }
+    
+    if (!campaign.redirect_store_id) {
+      throw new Error('No redirect store configured for campaign');
+    }
+    
+    // Fetch redirect store details
+    const redirectStore = await db.prepare(
+      'SELECT * FROM shopify_stores WHERE id = ?'
+    ).bind(campaign.redirect_store_id).first();
+    
+    if (!redirectStore) {
+      throw new Error(`Redirect store not found: ${campaign.redirect_store_id}`);
+    }
+    
+    if (!redirectStore.access_token) {
+      throw new Error('Redirect store is missing Admin API token');
+    }
+    
+    console.log(`Creating offer page on redirect store: ${redirectStore.store_name || redirectStore.store_url}`);
+    
+    // Get the template HTML
+    const templateHTML = await getTemplateHTML(db, campaign.template_id);
+    
+    // Generate page handle for redirect store
+    const offerPageHandle = `offer-${campaignId}-${launchNumber}`;
+    
+    // Build the offer page content with template and hide CSS
+    const offerPageContent = buildOfferPageContent({
+      templateHTML,
+      campaign,
+      campaignId,
+      launchNumber
+    });
+    
+    // Create page data
+    const pageData = {
+      page: {
+        title: `${campaign.name} - Offer ${launchNumber}`,
+        handle: offerPageHandle,
+        body_html: offerPageContent,
+        published: true,
+        template_suffix: null
+      }
+    };
+    
+    // Ensure domain format is correct
+    let apiDomain = redirectStore.store_url.replace(/^https?:\/\//, '');
+    if (!apiDomain.includes('.myshopify.com')) {
+      apiDomain = `${apiDomain}.myshopify.com`;
+    }
+    
+    // Check if page already exists
+    const checkUrl = `https://${apiDomain}/admin/api/2024-01/pages.json?handle=${offerPageHandle}`;
+    console.log('Checking for existing redirect page:', checkUrl);
+    
+    const checkResponse = await fetch(checkUrl, {
+      headers: {
+        'X-Shopify-Access-Token': redirectStore.access_token,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    let existingPageId = null;
+    if (checkResponse.ok) {
+      const data = await checkResponse.json();
+      if (data.pages && data.pages.length > 0) {
+        existingPageId = data.pages[0].id;
+        console.log('Found existing redirect page with ID:', existingPageId);
+      }
+    }
+    
+    if (existingPageId) {
+      // Update existing page
+      console.log('Updating existing redirect page:', existingPageId);
+      const updateResponse = await fetch(`https://${apiDomain}/admin/api/2024-01/pages/${existingPageId}.json`, {
+        method: 'PUT',
+        headers: {
+          'X-Shopify-Access-Token': redirectStore.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(pageData)
+      });
+      
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`Failed to update redirect page: ${updateResponse.status} - ${errorText}`);
+      }
+      
+      const result = await updateResponse.json();
+      console.log(`Offer page updated successfully: ${offerPageHandle}`);
+      return result;
+    } else {
+      // Create new page
+      console.log('Creating new redirect page');
+      const createResponse = await fetch(`https://${apiDomain}/admin/api/2024-01/pages.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': redirectStore.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(pageData)
+      });
+      
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        throw new Error(`Failed to create redirect page: ${createResponse.status} - ${errorText}`);
+      }
+      
+      const result = await createResponse.json();
+      console.log(`Offer page created successfully: ${offerPageHandle}`);
+      return result;
+    }
+    
+  } catch (error) {
+    console.error('Error in createRedirectStoreOfferPage:', error);
+    throw error;
+  }
 }
 
 /**
@@ -1357,110 +2238,53 @@ async function generateCampaignLink(db, request, env) {
     const linkUrl = `https://${storeUrl}/pages/${pageHandle}`;
     
     try {
-      // Call the cloaker worker to create/update pages
-      console.log('Calling cloaker worker to generate pages...');
+      // Step 1: ALWAYS create/update the validation/redirect page on TikTok store
+      // This ensures any campaign changes (like affiliate links) are reflected
+      console.log('Creating/updating TikTok store validation page with latest campaign data...');
       
-      // Parse campaign data for the cloaker
+      // Parse campaign data for page creation
       const campaignData = {
         ...campaign,
-        name: campaign.name,
         regions: JSON.parse(campaign.regions || '[]'),
         affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
         redirectType: campaign.redirect_type,
         customRedirectUrl: campaign.custom_redirect_link
       };
       
-      // Get redirect store if needed
-      let redirectStore = null;
+      const tiktokPageResult = await createTikTokValidationPage(
+        tiktokStore, 
+        campaignData, 
+        campaignId, 
+        launch, 
+        pageHandle
+      );
+      console.log('TikTok store page created/updated:', tiktokPageResult);
+      
+      // Step 2: If not using custom redirect, ALWAYS create/update the offer page on redirect store
       if (campaign.redirect_type !== 'custom' && campaign.redirect_store_id) {
-        // Fetch redirect store with team permissions
-        if (teamId) {
-          const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
-          const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
-          
-          if (teamMembersResult.results && teamMembersResult.results.length > 0) {
-            const memberIds = teamMembersResult.results.map(m => m.user_id);
-            const placeholders = memberIds.map(() => '?').join(',');
-            redirectStore = await db.prepare(
-              `SELECT * FROM shopify_stores WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
-            ).bind(campaign.redirect_store_id, ...memberIds, teamId).first();
-          } else {
-            redirectStore = await db.prepare(
-              'SELECT * FROM shopify_stores WHERE id = ? AND team_id = ?'
-            ).bind(campaign.redirect_store_id, teamId).first();
-          }
-        } else {
-          redirectStore = await db.prepare(
-            'SELECT * FROM shopify_stores WHERE id = ? AND user_id = ?'
-          ).bind(campaign.redirect_store_id, userId).first();
-        }
-        
-        if (redirectStore) {
-          // Format redirect store data for cloaker
-          redirectStore = {
-            id: redirectStore.id,
-            storeName: redirectStore.store_name,
-            storeUrl: redirectStore.store_url,
-            accessToken: redirectStore.access_token
-          };
+        try {
+          console.log('Creating/updating redirect store offer page with latest campaign data...');
+          const redirectPageResult = await createRedirectStoreOfferPage(
+            db, 
+            campaignData, 
+            campaignId, 
+            launch
+          );
+          console.log('Redirect store offer page created/updated:', redirectPageResult);
+        } catch (offerError) {
+          console.error('Warning: Could not create/update offer page on redirect store:', offerError);
+          // Don't fail the whole operation if offer page creation fails
         }
       }
-      
-      // Get template HTML if needed
-      let templateHTML = null;
-      if (campaign.template_id) {
-        templateHTML = await getTemplateHTML(db, campaign.template_id);
-      }
-      
-      // Format TikTok store data for cloaker
-      const tiktokStoreData = {
-        id: tiktokStore.id,
-        storeName: tiktokStore.store_name,
-        storeUrl: tiktokStore.store_url,
-        accessToken: tiktokStore.access_token
-      };
-      
-      // Call cloaker API
-      const CLOAKER_WORKER_URL = env.CLOAKER_WORKER_URL || 'https://cloaker.maximillianfreakyads.workers.dev';
-      console.log('Calling cloaker at:', `${CLOAKER_WORKER_URL}/generate-pages`);
-      
-      const cloakerResponse = await fetch(`${CLOAKER_WORKER_URL}/generate-pages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          campaign: campaignData,
-          campaignId: campaignId,
-          launchNumber: launch,
-          tiktokStore: tiktokStoreData,
-          redirectStore: redirectStore,
-          templateHTML: templateHTML
-        })
-      });
-      
-      if (!cloakerResponse.ok) {
-        const errorText = await cloakerResponse.text();
-        console.error('Cloaker API error details:', {
-          status: cloakerResponse.status,
-          statusText: cloakerResponse.statusText,
-          url: `${CLOAKER_WORKER_URL}/generate-pages`,
-          errorText: errorText
-        });
-        throw new Error(`Cloaker API error: ${cloakerResponse.status} - ${errorText}`);
-      }
-      
-      const cloakerResult = await cloakerResponse.json();
-      console.log('Cloaker API response:', cloakerResult);
       
       return new Response(JSON.stringify({
         success: true,
         campaignId: campaignId,
         launchNumber: launch,
-        link: cloakerResult.link || linkUrl,
-        displayLink: cloakerResult.link || linkUrl,
+        link: linkUrl,
+        displayLink: linkUrl,
         message: 'Link generated and Shopify pages updated successfully',
-        pageHandle: cloakerResult.pageHandle || pageHandle,
+        pageHandle: pageHandle,
         refreshed: true,
         storeUrl: storeUrl
       }), {
@@ -1534,20 +2358,11 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
     }
     
     // Get user's region from Cloudflare headers
-    // In development or when headers are missing, default to US
     const country = request.headers.get('CF-IPCountry') || 'US';
     const region = request.headers.get('CF-Region') || null;
     const city = request.headers.get('CF-City') || null;
     const timezone = request.headers.get('CF-Timezone') || null;
     const continent = request.headers.get('CF-Continent') || null;
-    
-    console.log('Geo detection for campaign client:', {
-      campaignId,
-      launchNumber,
-      country,
-      region,
-      city
-    });
     
     // Parse regions and affiliate links
     const regions = JSON.parse(campaign.regions || '[]');
