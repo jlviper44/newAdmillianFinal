@@ -2035,15 +2035,22 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
   var campaignId = "${campaignId}";
   var launchNumber = ${launchNumber};
   
+  console.log('Disabled launch tracking - Campaign:', campaignId, 'Launch:', launchNumber);
+  
   // Get query parameters
   var urlParams = new URLSearchParams(window.location.search);
   var ttclid = urlParams.get('ttclid');
   
   // Get server data
   fetch('https://cranads.com/api/campaigns/get-data-for-client?campaignId=' + campaignId + '&launch=' + launchNumber)
-    .then(function(response) { return response.json(); })
+    .then(function(response) { 
+      console.log('Server response status:', response.status);
+      return response.json(); 
+    })
     .then(function(data) {
+      console.log('Server data received:', data);
       var serverData = data.serverData || {};
+      var geoData = serverData.geoData || {};
       
       // Log disabled page visit
       var logData = {
@@ -2052,11 +2059,11 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
         type: 'validation',
         decision: 'whitehat',
         ip: serverData.clientIP || 'unknown',
-        country: serverData.geoData?.country || 'unknown',
-        region: serverData.geoData?.region || null,
-        city: serverData.geoData?.city || null,
-        timezone: serverData.geoData?.timezone || null,
-        continent: serverData.geoData?.continent || null,
+        country: geoData.country || 'unknown',
+        region: geoData.region || null,
+        city: geoData.city || null,
+        timezone: geoData.timezone || null,
+        continent: geoData.continent || null,
         userAgent: navigator.userAgent,
         referer: document.referrer,
         url: window.location.href,
@@ -2069,13 +2076,22 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
         }
       };
       
+      console.log('Sending disabled launch log:', logData);
+      
       // Send log
-      fetch('https://cranads.com/api/logs/public', {
+      return fetch('https://cranads.com/api/logs/public', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData),
         keepalive: true
       });
+    })
+    .then(function(response) {
+      console.log('Log response status:', response.status);
+      return response.text();
+    })
+    .then(function(responseText) {
+      console.log('Log response:', responseText);
     })
     .catch(function(error) {
       console.error('Tracking error:', error);
@@ -2628,11 +2644,19 @@ async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber =
           };
         }
         
+        // Initialize traffic fields if they don't exist (for existing launches)
+        if (typeof launches[launchKey].trafficPassed === 'undefined') {
+          launches[launchKey].trafficPassed = 0;
+        }
+        if (typeof launches[launchKey].trafficBlocked === 'undefined') {
+          launches[launchKey].trafficBlocked = 0;
+        }
+        
         // Update traffic counts
         if (trafficType === 'passed' || trafficType === 'blackhat') {
-          launches[launchKey].trafficPassed = (launches[launchKey].trafficPassed || 0) + 1;
+          launches[launchKey].trafficPassed = launches[launchKey].trafficPassed + 1;
         } else if (trafficType === 'blocked' || trafficType === 'whitehat') {
-          launches[launchKey].trafficBlocked = (launches[launchKey].trafficBlocked || 0) + 1;
+          launches[launchKey].trafficBlocked = launches[launchKey].trafficBlocked + 1;
         }
         
         // Save updated launches data

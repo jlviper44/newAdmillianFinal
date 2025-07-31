@@ -1548,27 +1548,32 @@ const addNewLaunches = async () => {
 const refreshCampaignTraffic = async (campaign) => {
   refreshingTraffic.value = campaign.id;
   try {
-    // Fetch latest traffic data for this campaign
-    const trafficResponse = await logsAPI.getTrafficByLaunch(campaign.id);
-    const trafficData = trafficResponse.traffic || {};
+    // Fetch latest campaign data which includes traffic stats
+    const response = await campaignsApi.getCampaign(campaign.id);
     
-    // Calculate total traffic
-    const totalTraffic = Object.values(trafficData).reduce((sum, count) => sum + count, 0);
-    
-    // Update the campaign's traffic in the campaigns array
-    const campaignIndex = campaigns.value.findIndex(c => c.id === campaign.id);
-    if (campaignIndex !== -1) {
-      campaigns.value[campaignIndex].traffic = totalTraffic;
+    if (response.campaign) {
+      const updatedCampaign = response.campaign;
+      
+      // Update the campaign in the campaigns array
+      const campaignIndex = campaigns.value.findIndex(c => c.id === campaign.id);
+      if (campaignIndex !== -1) {
+        campaigns.value[campaignIndex] = updatedCampaign;
+      }
+      
+      // If the launches modal is open for this campaign, update it
+      if (showLaunchesModal.value && currentCampaign.value?.id === campaign.id) {
+        currentCampaign.value = updatedCampaign;
+        
+        // Update launches with the latest data
+        const launches = updatedCampaign.launches || {};
+        currentLaunches.value = Object.entries(launches).map(([num, launch]) => ({
+          number: parseInt(num),
+          ...launch
+        })).sort((a, b) => a.number - b.number);
+      }
+      
+      showSuccess('Traffic data refreshed');
     }
-    
-    // If the launches modal is open for this campaign, update the launches too
-    if (showLaunchesModal.value && currentCampaign.value?.id === campaign.id) {
-      currentLaunches.value.forEach(launch => {
-        launch.traffic = trafficData[launch.number] || 0;
-      });
-    }
-    
-    showSuccess('Traffic data refreshed');
   } catch (error) {
     console.error('Failed to refresh traffic:', error);
     showError('Failed to refresh traffic data');
