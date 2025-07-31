@@ -1027,7 +1027,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { campaignsApi, shopifyApi, templatesApi, sparksApi } from '@/services/api';
 import logsAPI from '@/services/logsAPI';
 
@@ -1183,35 +1183,6 @@ const fetchCampaigns = async () => {
     const data = await campaignsApi.listCampaigns(params);
     campaigns.value = data.campaigns || [];
     totalPages.value = data.totalPages || 1;
-    
-    // Fetch traffic data for all campaigns
-    try {
-      const trafficPromises = campaigns.value.map(async (campaign) => {
-        try {
-          const trafficResponse = await logsAPI.getTrafficByLaunch(campaign.id);
-          const trafficData = trafficResponse.traffic || {};
-          // Calculate total traffic for the campaign
-          const totalTraffic = Object.values(trafficData).reduce((sum, count) => sum + count, 0);
-          return { campaignId: campaign.id, traffic: totalTraffic };
-        } catch (error) {
-          console.error(`Failed to fetch traffic for campaign ${campaign.id}:`, error);
-          return { campaignId: campaign.id, traffic: 0 };
-        }
-      });
-      
-      const trafficResults = await Promise.all(trafficPromises);
-      
-      // Update campaigns with traffic data
-      trafficResults.forEach(({ campaignId, traffic }) => {
-        const campaign = campaigns.value.find(c => c.id === campaignId);
-        if (campaign) {
-          campaign.traffic = traffic;
-        }
-      });
-    } catch (error) {
-      console.error('Failed to fetch traffic data:', error);
-      // Continue without traffic data
-    }
     
     // Reset selections when fetching new data
     selectAllCheckbox.value = false;
@@ -1842,12 +1813,33 @@ watch(() => formData.value.regions, (newRegions) => {
   expandedPanels.value = newRegions;
 });
 
+// Auto-refresh functionality
+let refreshInterval = null;
+const startAutoRefresh = () => {
+  // Refresh every 30 seconds
+  refreshInterval = setInterval(() => {
+    fetchCampaigns();
+  }, 30000);
+};
+
+const stopAutoRefresh = () => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+};
+
 // Lifecycle
 onMounted(() => {
   fetchCampaigns();
+  startAutoRefresh();
   fetchStores();
   fetchTemplates();
   fetchSparks();
+});
+
+onUnmounted(() => {
+  stopAutoRefresh();
 });
 </script>
 
