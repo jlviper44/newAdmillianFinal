@@ -11,7 +11,7 @@ const ADMIN_EMAILS = [
 // Pricing constants (price per credit)
 const COMMENT_BOT_CREDIT_PRICE = 3.00; // $2 per credit
 const BC_GEN_CREDIT_PRICE = 2.00; // $2 per credit
-const VIRTUAL_ASSISTANT_CREDIT_PRICE = 1.0; // $50 per credit
+const VIRTUAL_ASSISTANT_CREDIT_PRICE = 50.00; // $50 per credit
 
 // Helper function to check if a user is an admin by email
 function isAdminUser(userEmail) {
@@ -822,12 +822,14 @@ async function handleCheckAccess(request, env) {
             checkoutLink: null
           },
           virtual_assistant: {
-            // Virtual assistants use real credits for testing
             isActive: false,
             expiresIn: 0,
             checkoutLink: null,
-            totalCredits: virtualAssistantTotalCredits,
-            creditMemberships: virtualAssistantCredits
+            totalCredits: 999999, // Admin unlimited credits
+            creditMemberships: [{
+              id: 'admin_bypass',
+              metadata: { Quantity: 999999, ProductType: 'virtual_assistant' }
+            }]
           }
         },
         virtualAssistantFor: await getVirtualAssistantAccounts(env, session.user?.email)
@@ -880,8 +882,11 @@ async function handleCheckAccess(request, env) {
             isActive: false,
             expiresIn: 0,
             checkoutLink: null,
-            totalCredits: 0,
-            creditMemberships: []
+            totalCredits: 999999, // Admin unlimited credits
+            creditMemberships: [{
+              id: 'admin_bypass',
+              metadata: { Quantity: 999999, ProductType: 'virtual_assistant' }
+            }]
           }
         },
         virtualAssistantFor: []
