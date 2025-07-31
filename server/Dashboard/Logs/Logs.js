@@ -238,7 +238,7 @@ async function createLog(request, env) {
     // Update campaign traffic counts
     if (env.DASHBOARD_DB && logData.campaignId && logData.type === 'click') {
       try {
-        const { updateCampaignTraffic } = await import('../Dashboard/Campaigns/Campaigns.js');
+        const { updateCampaignTraffic } = await import('../Campaigns/Campaigns.js');
         await updateCampaignTraffic(
           env.DASHBOARD_DB, 
           logData.campaignId, 
