@@ -2024,11 +2024,64 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
       // Generate full redirect content
       pageContent = generatePageContent(campaign, campaignId, launchNumber);
     } else {
-      // Generate empty content to disable redirect
+      // Generate minimal tracking content without redirect
       pageContent = `
 <!-- Campaign Launch Disabled -->
 <!-- This page has been temporarily disabled -->
-<!-- No redirect code will be executed -->
+<!-- Only tracking code will be executed -->
+<script>
+(function() {
+  // Basic tracking for disabled launch
+  var campaignId = "${campaignId}";
+  var launchNumber = ${launchNumber};
+  
+  // Get query parameters
+  var urlParams = new URLSearchParams(window.location.search);
+  var ttclid = urlParams.get('ttclid');
+  
+  // Get server data
+  fetch('https://cranads.com/api/campaigns/get-data-for-client?campaignId=' + campaignId + '&launch=' + launchNumber)
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      var serverData = data.serverData || {};
+      
+      // Log disabled page visit
+      var logData = {
+        campaignId: campaignId,
+        launchNumber: launchNumber,
+        type: 'validation',
+        decision: 'whitehat',
+        ip: serverData.clientIP || 'unknown',
+        country: serverData.geoData?.country || 'unknown',
+        region: serverData.geoData?.region || null,
+        city: serverData.geoData?.city || null,
+        timezone: serverData.geoData?.timezone || null,
+        continent: serverData.geoData?.continent || null,
+        userAgent: navigator.userAgent,
+        referer: document.referrer,
+        url: window.location.href,
+        os: serverData.os || null,
+        params: {
+          ttclid: ttclid,
+          from: urlParams.get('from'),
+          mobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+          failureReason: 'Launch disabled'
+        }
+      };
+      
+      // Send log
+      fetch('https://cranads.com/api/logs/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logData),
+        keepalive: true
+      });
+    })
+    .catch(function(error) {
+      console.error('Tracking error:', error);
+    });
+})();
+</script>
 `;
     }
     
