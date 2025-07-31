@@ -267,6 +267,24 @@ export async function handleCommentBotData(request, env, session) {
           return await getAccountCheckStatus(accountType);
         }
         
+        // Handle GET requests for logs (admin only)
+        if (request.method === 'GET' && url.pathname === '/api/commentbot/logs') {
+          // Check if user is admin
+          if (!session?.user?.isAdmin) {
+            return jsonResponse({ error: 'Unauthorized - Admin access required' }, 403);
+          }
+          return await getCommentBotLogs(request, env);
+        }
+        
+        // Handle GET requests for exporting logs (admin only)
+        if (request.method === 'GET' && url.pathname === '/api/commentbot/logs/export') {
+          // Check if user is admin
+          if (!session?.user?.isAdmin) {
+            return jsonResponse({ error: 'Unauthorized - Admin access required' }, 403);
+          }
+          return await exportCommentBotLogs(request, env);
+        }
+        
         // If no specific type is requested, return error
         return jsonResponse({ error: 'Invalid request type or method' }, 400);
     }
@@ -1402,6 +1420,265 @@ async function getOrderStatus(orderId, env = null, userId = null, teamId = null)
     console.error('Error getting order status:', error);
     return jsonResponse({ 
       error: 'Failed to get order status', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Get Comment Bot logs for admin users
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ */
+async function getCommentBotLogs(request, env) {
+  try {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const search = url.searchParams.get('search') || '';
+    const status = url.searchParams.get('status') || '';
+    const startDate = url.searchParams.get('startDate') || '';
+    const endDate = url.searchParams.get('endDate') || '';
+    const offset = (page - 1) * limit;
+    
+    // Build query conditions
+    let whereConditions = [];
+    let params = [];
+    
+    if (search) {
+      whereConditions.push(`(o.order_id LIKE ? OR o.post_id LIKE ? OR o.user_id LIKE ?)`);
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+    
+    if (status && status !== 'all') {
+      whereConditions.push('o.status = ?');
+      params.push(status);
+    }
+    
+    if (startDate) {
+      whereConditions.push('o.created_at >= ?');
+      params.push(startDate + ' 00:00:00');
+    }
+    
+    if (endDate) {
+      whereConditions.push('o.created_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM orders o
+      LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+      ${whereClause}
+    `;
+    
+    const countResult = await executeQuery(env.COMMENT_BOT_DB, countQuery, params);
+    const total = countResult.success && countResult.data.length > 0 ? countResult.data[0].total : 0;
+    
+    // Get logs with pagination
+    const logsQuery = `
+      SELECT 
+        o.*,
+        cg.name as comment_group_name
+      FROM orders o
+      LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+      ${whereClause}
+      ORDER BY o.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    params.push(limit, offset);
+    const logsResult = await executeQuery(env.COMMENT_BOT_DB, logsQuery, params);
+    
+    // Get user emails from USERS_DB for the logs
+    if (logsResult.success && logsResult.data.length > 0) {
+      const userIds = [...new Set(logsResult.data.map(log => log.user_id))];
+      const userEmailsQuery = `
+        SELECT user_id, user_email
+        FROM team_members
+        WHERE user_id IN (${userIds.map(() => '?').join(',')})
+      `;
+      
+      const userEmailsResult = await executeQuery(env.USERS_DB, userEmailsQuery, userIds);
+      const userEmailMap = {};
+      
+      if (userEmailsResult.success) {
+        userEmailsResult.data.forEach(user => {
+          userEmailMap[user.user_id] = user.user_email;
+        });
+      }
+      
+      // Add user emails to logs
+      logsResult.data.forEach(log => {
+        log.user_email = userEmailMap[log.user_id] || null;
+      });
+    }
+    
+    // Get stats
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as totalOrders,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completedOrders,
+        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failedOrders,
+        COUNT(CASE WHEN status IN ('processing', 'pending') THEN 1 END) as activeOrders
+      FROM orders
+    `;
+    
+    const statsResult = await executeQuery(env.COMMENT_BOT_DB, statsQuery, []);
+    const stats = statsResult.success && statsResult.data.length > 0 ? statsResult.data[0] : {
+      totalOrders: 0,
+      completedOrders: 0,
+      failedOrders: 0,
+      activeOrders: 0
+    };
+    
+    return jsonResponse({
+      success: true,
+      logs: logsResult.success ? logsResult.data : [],
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      },
+      stats
+    });
+  } catch (error) {
+    console.error('Error fetching comment bot logs:', error);
+    return jsonResponse({ 
+      error: 'Failed to fetch logs', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Export Comment Bot logs as CSV for admin users
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ */
+async function exportCommentBotLogs(request, env) {
+  try {
+    const url = new URL(request.url);
+    const search = url.searchParams.get('search') || '';
+    const status = url.searchParams.get('status') || '';
+    const startDate = url.searchParams.get('startDate') || '';
+    const endDate = url.searchParams.get('endDate') || '';
+    
+    // Build query conditions
+    let whereConditions = [];
+    let params = [];
+    
+    if (search) {
+      whereConditions.push(`(o.order_id LIKE ? OR o.post_id LIKE ? OR o.user_id LIKE ?)`);
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+    
+    if (status && status !== 'all') {
+      whereConditions.push('o.status = ?');
+      params.push(status);
+    }
+    
+    if (startDate) {
+      whereConditions.push('o.created_at >= ?');
+      params.push(startDate + ' 00:00:00');
+    }
+    
+    if (endDate) {
+      whereConditions.push('o.created_at <= ?');
+      params.push(endDate + ' 23:59:59');
+    }
+    
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    
+    // Get all logs for export
+    const logsQuery = `
+      SELECT 
+        o.*,
+        cg.name as comment_group_name
+      FROM orders o
+      LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+      ${whereClause}
+      ORDER BY o.created_at DESC
+    `;
+    
+    const logsResult = await executeQuery(env.COMMENT_BOT_DB, logsQuery, params);
+    
+    if (!logsResult.success || logsResult.data.length === 0) {
+      return jsonResponse({ error: 'No logs found to export' }, 404);
+    }
+    
+    // Get user emails from USERS_DB for the logs
+    const userIds = [...new Set(logsResult.data.map(log => log.user_id))];
+    const userEmailsQuery = `
+      SELECT user_id, user_email
+      FROM team_members
+      WHERE user_id IN (${userIds.map(() => '?').join(',')})
+    `;
+    
+    const userEmailsResult = await executeQuery(env.USERS_DB, userEmailsQuery, userIds);
+    const userEmailMap = {};
+    
+    if (userEmailsResult.success) {
+      userEmailsResult.data.forEach(user => {
+        userEmailMap[user.user_id] = user.user_email;
+      });
+    }
+    
+    // Add user emails to logs
+    logsResult.data.forEach(log => {
+      log.user_identifier = userEmailMap[log.user_id] || log.user_id;
+    });
+    
+    // Generate CSV
+    const csvHeaders = [
+      'Created At',
+      'Order ID',
+      'Post ID',
+      'User',
+      'Team ID',
+      'Status',
+      'Like Count',
+      'Save Count',
+      'Comment Group',
+      'Message'
+    ];
+    
+    const csvRows = [csvHeaders.join(',')];
+    
+    for (const log of logsResult.data) {
+      const row = [
+        log.created_at,
+        log.order_id,
+        log.post_id,
+        log.user_identifier,
+        log.team_id || '',
+        log.status,
+        log.like_count || 0,
+        log.save_count || 0,
+        log.comment_group_name || '',
+        log.message ? `"${log.message.replace(/"/g, '""')}"` : ''
+      ];
+      csvRows.push(row.join(','));
+    }
+    
+    const csv = csvRows.join('\n');
+    
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="commentbot-logs-${new Date().toISOString().split('T')[0]}.csv"`
+      }
+    });
+  } catch (error) {
+    console.error('Error exporting comment bot logs:', error);
+    return jsonResponse({ 
+      error: 'Failed to export logs', 
       details: error.message 
     }, 500);
   }

@@ -134,7 +134,10 @@ export const commentBotApi = {
   
   // Other endpoints
   checkAccounts: (type) => api.post(`/commentbot/check-accounts?type=${type}`),
-  getCommentGroupDetail: (id) => api.get(`/commentbot?type=comment-group-detail&id=${id}`)
+  getCommentGroupDetail: (id) => api.get(`/commentbot?type=comment-group-detail&id=${id}`),
+  
+  // Logs (Admin only)
+  getLogs: (params) => api.get('/commentbot/logs', { params })
 }
 
 // BCGen specific API methods

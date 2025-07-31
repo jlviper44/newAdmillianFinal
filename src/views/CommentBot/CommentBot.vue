@@ -13,6 +13,7 @@ import CommentGroupDetail from './components/CommentGroupDetail.vue';
 import CreateCommentGroup from './components/CreateCommentGroup.vue';
 import EditCommentGroup from './components/EditCommentGroup.vue';
 import CommentBotCredits from './components/CommentBotCredits.vue';
+import CommentBotLogs from './components/CommentBotLogs.vue';
 import { formatDateTime, getUserTimezone } from '@/utils/dateFormatter';
 
 // State management
@@ -65,7 +66,8 @@ const currentTab = ref('orders');
 // Tab titles mapping
 const tabTitles = {
   orders: 'Orders',
-  credits: 'Credits'
+  credits: 'Credits',
+  logs: 'Logs (Admin)'
 };
 
 // Computed property for current tab title
@@ -392,7 +394,12 @@ const deleteCommentGroup = async () => {
 
 // Watch for route query changes
 watch(() => route.query.tab, (newTab) => {
-  if (newTab && ['orders', 'credits'].includes(newTab)) {
+  const validTabs = ['orders', 'credits'];
+  // Add logs tab if user is admin
+  if (user.value?.isAdmin) {
+    validTabs.push('logs');
+  }
+  if (newTab && validTabs.includes(newTab)) {
     currentTab.value = newTab;
   }
 });
@@ -405,7 +412,12 @@ onMounted(() => {
   fetchCredits();
   
   // Set initial tab from query parameter
-  if (route.query.tab && ['orders', 'credits'].includes(route.query.tab)) {
+  const validTabs = ['orders', 'credits'];
+  // Add logs tab if user is admin
+  if (user.value?.isAdmin) {
+    validTabs.push('logs');
+  }
+  if (route.query.tab && validTabs.includes(route.query.tab)) {
     currentTab.value = route.query.tab;
   } else if (route.query.showCredits === 'true') {
     currentTab.value = 'credits';
@@ -549,6 +561,11 @@ onUnmounted(() => {
           <!-- Credits Tab -->
           <div v-if="currentTab === 'credits'">
             <CommentBotCredits />
+          </div>
+          
+          <!-- Logs Tab (Admin Only) -->
+          <div v-if="currentTab === 'logs' && user?.isAdmin">
+            <CommentBotLogs />
           </div>
         </v-col>
       </v-row>

@@ -19,6 +19,9 @@ const activePopupMenu = ref(null);
 // Authentication
 const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, signOut, isAssistingUser, getTargetUserId } = useAuth();
 
+// Computed property for admin status
+const isAdmin = computed(() => user.value?.isAdmin === true);
+
 
 // All routes
 const allRoutes = [
@@ -509,6 +512,21 @@ onUnmounted(() => {
               :active="isTabActive('/comments', 'credits')"
               class="mobile-popup-item"
             ></v-list-item>
+            <v-list-item
+              v-if="isAdmin"
+              @click="navigateToAndClose('/comments?tab=logs')"
+              prepend-icon="mdi-file-document-outline"
+              :active="isTabActive('/comments', 'logs')"
+              class="mobile-popup-item"
+            >
+              <v-list-item-title class="d-flex align-center">
+                Logs
+                <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                  <v-icon start size="x-small">mdi-crown</v-icon>
+                  Admin
+                </v-chip>
+              </v-list-item-title>
+            </v-list-item>
           </v-list>
 
           <!-- BC Gen Menu -->
@@ -822,6 +840,23 @@ onUnmounted(() => {
             class="ml-2"
             rounded="lg"
           ></v-list-item>
+          
+          <v-list-item
+            v-if="isAdmin"
+            to="/comments?tab=logs"
+            prepend-icon="mdi-file-document-outline"
+            :active="isTabActive('/comments', 'logs')"
+            class="ml-2"
+            rounded="lg"
+          >
+            <v-list-item-title class="d-flex align-center">
+              Logs
+              <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                <v-icon start size="x-small">mdi-crown</v-icon>
+                Admin
+              </v-chip>
+            </v-list-item-title>
+          </v-list-item>
         </v-list-group>
 
         <!-- BC Gen -->
