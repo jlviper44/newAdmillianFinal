@@ -28,6 +28,7 @@ async function initializeCampaignsTable(db) {
         traffic INTEGER DEFAULT 0,
         traffic_passed INTEGER DEFAULT 0, -- Blackhat/redirected traffic
         traffic_blocked INTEGER DEFAULT 0, -- Whitehat/blocked traffic
+        traffic_disabled INTEGER DEFAULT 0, -- Disabled launch visits
         launches TEXT DEFAULT '{}', -- JSON object of launches
         max_launch_number INTEGER DEFAULT 0,
         total_launches INTEGER DEFAULT 1,
@@ -71,6 +72,13 @@ async function initializeCampaignsTable(db) {
       if (!hasTrafficBlockedColumn) {
         await db.prepare(`ALTER TABLE campaigns ADD COLUMN traffic_blocked INTEGER DEFAULT 0`).run();
         console.log('Added traffic_blocked column to campaigns table');
+      }
+      
+      // Check if traffic_disabled column exists
+      const hasTrafficDisabledColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'traffic_disabled');
+      if (!hasTrafficDisabledColumn) {
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN traffic_disabled INTEGER DEFAULT 0`).run();
+        console.log('Added traffic_disabled column to campaigns table');
       }
     } catch (error) {
       console.error('Error handling user_id/team_id columns:', error);
@@ -322,6 +330,7 @@ async function listCampaigns(db, request, env) {
       traffic: campaign.traffic || 0,
       trafficPassed: campaign.traffic_passed || 0,
       trafficBlocked: campaign.traffic_blocked || 0,
+      trafficDisabled: campaign.traffic_disabled || 0,
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     }));
@@ -462,6 +471,7 @@ async function getCampaign(db, campaignId, request, env) {
       traffic: campaign.traffic || 0,
       trafficPassed: campaign.traffic_passed || 0,
       trafficBlocked: campaign.traffic_blocked || 0,
+      trafficDisabled: campaign.traffic_disabled || 0,
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     };
@@ -588,7 +598,7 @@ async function createCampaign(db, request, env) {
     
     // Initialize launches
     const launches = campaignData.launches || {
-      "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null, trafficPassed: 0, trafficBlocked: 0 }
+      "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null, trafficPassed: 0, trafficBlocked: 0, trafficDisabled: 0 }
     };
     
     // Insert campaign
@@ -596,7 +606,7 @@ async function createCampaign(db, request, env) {
       INSERT INTO campaigns (
         id, user_id, team_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
-        status, is_active, traffic, traffic_passed, traffic_blocked, launches, max_launch_number, total_launches
+        status, is_active, traffic, traffic_passed, traffic_blocked, traffic_disabled, launches, max_launch_number, total_launches
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
@@ -616,6 +626,7 @@ async function createCampaign(db, request, env) {
       0, // traffic starts at 0
       0, // traffic_passed starts at 0
       0, // traffic_blocked starts at 0
+      0, // traffic_disabled starts at 0
       JSON.stringify(launches),
       0, // maxLaunchNumber
       1  // totalLaunches
@@ -1110,7 +1121,8 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
           createdAt: new Date().toISOString(),
           generatedAt: null,
           trafficPassed: 0,
-          trafficBlocked: 0
+          trafficBlocked: 0,
+          trafficDisabled: 0
         };
         maxLaunchNumber = newLaunchNumber;
         
@@ -2046,7 +2058,7 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
   var logData = {
     campaignId: campaignId,
     launchNumber: launchNumber,
-    type: 'validation',
+    type: 'disabled',
     decision: 'whitehat',
     ip: 'pending',
     country: 'unknown',
@@ -2622,6 +2634,15 @@ async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber =
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `;
+    } else if (trafficType === 'disabled') {
+      // Update disabled traffic (disabled launch visits)
+      updateQuery = `
+        UPDATE campaigns 
+        SET traffic_disabled = traffic_disabled + 1,
+            traffic = traffic + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
     } else if (trafficType === 'blocked' || trafficType === 'whitehat') {
       // Update blocked traffic (validation failures)
       updateQuery = `
@@ -2668,10 +2689,15 @@ async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber =
         if (typeof launches[launchKey].trafficBlocked === 'undefined') {
           launches[launchKey].trafficBlocked = 0;
         }
+        if (typeof launches[launchKey].trafficDisabled === 'undefined') {
+          launches[launchKey].trafficDisabled = 0;
+        }
         
         // Update traffic counts
         if (trafficType === 'passed' || trafficType === 'blackhat') {
           launches[launchKey].trafficPassed = launches[launchKey].trafficPassed + 1;
+        } else if (trafficType === 'disabled') {
+          launches[launchKey].trafficDisabled = launches[launchKey].trafficDisabled + 1;
         } else if (trafficType === 'blocked' || trafficType === 'whitehat') {
           launches[launchKey].trafficBlocked = launches[launchKey].trafficBlocked + 1;
         }
@@ -2811,16 +2837,16 @@ async function getCampaignTrafficStats(db, campaignId, request, env) {
         const memberIds = teamMembersResult.results.map(m => m.user_id);
         const placeholders = memberIds.map(() => '?').join(',');
         campaign = await db.prepare(
-          `SELECT id, name, traffic, traffic_passed, traffic_blocked FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+          `SELECT id, name, traffic, traffic_passed, traffic_blocked, traffic_disabled FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
         ).bind(campaignId, ...memberIds, teamId).first();
       } else {
         campaign = await db.prepare(
-          'SELECT id, name, traffic, traffic_passed, traffic_blocked FROM campaigns WHERE id = ? AND team_id = ?'
+          'SELECT id, name, traffic, traffic_passed, traffic_blocked, traffic_disabled FROM campaigns WHERE id = ? AND team_id = ?'
         ).bind(campaignId, teamId).first();
       }
     } else {
       campaign = await db.prepare(
-        'SELECT id, name, traffic, traffic_passed, traffic_blocked FROM campaigns WHERE id = ? AND user_id = ?'
+        'SELECT id, name, traffic, traffic_passed, traffic_blocked, traffic_disabled FROM campaigns WHERE id = ? AND user_id = ?'
       ).bind(campaignId, userId).first();
     }
     
@@ -2835,6 +2861,7 @@ async function getCampaignTrafficStats(db, campaignId, request, env) {
     const total = campaign.traffic || 0;
     const passed = campaign.traffic_passed || 0;
     const blocked = campaign.traffic_blocked || 0;
+    const disabled = campaign.traffic_disabled || 0;
     
     const stats = {
       campaignId: campaign.id,
@@ -2843,8 +2870,10 @@ async function getCampaignTrafficStats(db, campaignId, request, env) {
         total: total,
         passed: passed,
         blocked: blocked,
+        disabled: disabled,
         passedPercentage: total > 0 ? ((passed / total) * 100).toFixed(2) : '0.00',
-        blockedPercentage: total > 0 ? ((blocked / total) * 100).toFixed(2) : '0.00'
+        blockedPercentage: total > 0 ? ((blocked / total) * 100).toFixed(2) : '0.00',
+        disabledPercentage: total > 0 ? ((disabled / total) * 100).toFixed(2) : '0.00'
       }
     };
     

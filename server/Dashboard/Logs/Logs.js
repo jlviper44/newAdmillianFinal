@@ -236,7 +236,7 @@ async function createLog(request, env) {
     }
     
     // Update campaign traffic counts
-    if (env.DASHBOARD_DB && logData.campaignId && (logData.type === 'click' || logData.type === 'validation')) {
+    if (env.DASHBOARD_DB && logData.campaignId && (logData.type === 'click' || logData.type === 'validation' || logData.type === 'disabled')) {
       try {
         console.log('Updating campaign traffic:', {
           campaignId: logData.campaignId,
@@ -245,10 +245,19 @@ async function createLog(request, env) {
           launchNumber: logData.launchNumber
         });
         const { updateCampaignTraffic } = await import('../Campaigns/Campaigns.js');
+        
+        // Determine traffic type based on log type and decision
+        let trafficType;
+        if (logData.type === 'disabled') {
+          trafficType = 'disabled'; // Disabled launches have their own category
+        } else {
+          trafficType = logData.decision === 'blackhat' ? 'passed' : 'blocked';
+        }
+        
         await updateCampaignTraffic(
           env.DASHBOARD_DB, 
           logData.campaignId, 
-          logData.decision === 'blackhat' ? 'passed' : 'blocked',
+          trafficType,
           logData.launchNumber || 0
         );
       } catch (trafficError) {

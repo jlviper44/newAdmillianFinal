@@ -359,7 +359,13 @@
               <v-col cols="12" sm="6" md="3">
                 <div class="stats-section">
                   <!-- Compact Traffic Indicators -->
-                  <div class="traffic-row d-flex align-center gap-2 mb-2">
+                  <div class="traffic-row d-flex align-center gap-2 mb-2 flex-wrap">
+                    <div class="traffic-indicator disabled-traffic d-flex align-center gap-1 px-2 py-1">
+                      <v-icon size="x-small" color="grey">mdi-pause</v-icon>
+                      <span class="text-caption">Disabled</span>
+                      <span class="font-weight-medium ml-1">{{ campaign.trafficDisabled || 0 }}</span>
+                    </div>
+                    
                     <div class="traffic-indicator passed-traffic d-flex align-center gap-1 px-2 py-1">
                       <v-icon size="x-small" color="success">mdi-check</v-icon>
                       <span class="text-caption">Passed</span>
@@ -374,14 +380,14 @@
                     
                     <v-btn
                       icon
-                      size="x-small"
+                      size="small"
                       variant="text"
                       :loading="refreshingTraffic === campaign.id"
                       @click.stop="refreshCampaignTraffic(campaign)"
                       title="Refresh traffic"
                       class="ml-auto"
                     >
-                      <v-icon size="x-small">mdi-refresh</v-icon>
+                      <v-icon size="small">mdi-refresh</v-icon>
                     </v-btn>
                   </div>
                   
@@ -896,6 +902,11 @@
                       <!-- Traffic stats -->
                       <div class="launch-traffic-stats d-flex align-center gap-2 mr-2">
                         <div class="d-flex align-center gap-1">
+                          <v-icon size="x-small" color="grey">mdi-pause</v-icon>
+                          <span class="text-caption font-weight-medium">{{ launch.trafficDisabled || 0 }}</span>
+                        </div>
+                        <v-divider vertical class="mx-1" style="height: 16px;"></v-divider>
+                        <div class="d-flex align-center gap-1">
                           <v-icon size="x-small" color="success">mdi-check</v-icon>
                           <span class="text-caption font-weight-medium">{{ launch.trafficPassed || 0 }}</span>
                         </div>
@@ -907,8 +918,8 @@
                       </div>
                       
                       <v-btn
-                        :color="launch.generatedAt ? 'purple' : 'purple'"
-                        :variant="launch.generatedAt ? 'tonal' : 'flat'"
+                        color="purple"
+                        variant="flat"
                         size="small"
                         @click="generateLaunchLink(index)"
                         :loading="generatingLinkFor === index"
@@ -920,7 +931,7 @@
                       
                       <v-btn
                         :color="launch.isActive ? 'grey' : 'green'"
-                        variant="tonal"
+                        variant="flat"
                         size="small"
                         @click="toggleLaunch(index)"
                         :loading="togglingLaunch === index"
@@ -2045,6 +2056,16 @@ onMounted(() => {
 .v-theme--dark .traffic-indicator.blocked-traffic {
   background: rgba(244, 67, 54, 0.15);
   color: #ef5350;
+}
+
+.traffic-indicator.disabled-traffic {
+  background: rgba(158, 158, 158, 0.1);
+  color: #616161;
+}
+
+.v-theme--dark .traffic-indicator.disabled-traffic {
+  background: rgba(158, 158, 158, 0.15);
+  color: #9e9e9e;
 }
 
 @media (max-width: 600px) {
