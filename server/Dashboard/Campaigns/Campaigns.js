@@ -1989,6 +1989,7 @@ function generateHideShopifyElementsCSS() {
 function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumber }) {
   // DISABLED: Affiliate link routing temporarily disabled
   // const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
+  const affiliateLinksScript = ''; // Empty string to prevent undefined error
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
   return `
@@ -2287,9 +2288,11 @@ async function createRedirectStoreOfferPage(db, campaign, campaignId, launchNumb
     }
     
     console.log(`Creating offer page on redirect store: ${redirectStore.store_name || redirectStore.store_url}`);
+    console.log('Campaign template_id:', campaign.template_id);
     
     // Get the template HTML
     const templateHTML = await getTemplateHTML(db, campaign.template_id);
+    console.log('Template HTML length:', templateHTML ? templateHTML.length : 0);
     
     // Generate page handle for redirect store
     const offerPageHandle = `offer-${campaignId}-${launchNumber}`;
@@ -2301,6 +2304,15 @@ async function createRedirectStoreOfferPage(db, campaign, campaignId, launchNumb
       campaignId,
       launchNumber
     });
+    
+    // Validate content is not empty
+    if (!offerPageContent || offerPageContent.trim() === '') {
+      console.error('Error: Offer page content is empty');
+      throw new Error('Failed to generate offer page content');
+    }
+    
+    console.log('Offer page content length:', offerPageContent.length);
+    console.log('Offer page content preview:', offerPageContent.substring(0, 200) + '...');
     
     // Create page data
     const pageData = {
