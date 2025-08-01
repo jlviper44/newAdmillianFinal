@@ -2626,8 +2626,10 @@ async function generateCampaignLink(db, request, env) {
       console.log('Creating/updating TikTok store validation page with latest campaign data...');
       
       // Parse campaign data for page creation
+      // IMPORTANT: Use the updated launches object, not the original campaign.launches
       const campaignData = {
         ...campaign,
+        launches: JSON.stringify(launches), // Use the updated launches
         regions: JSON.parse(campaign.regions || '[]'),
         affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
         redirectType: campaign.redirect_type,

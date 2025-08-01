@@ -1653,10 +1653,18 @@ const toggleLaunch = async (launchNumber) => {
         currentLaunches.value[launchIndex].isActive = result.result?.isActive || !currentLaunches.value[launchIndex].isActive;
       }
       
+      // Update the currentCampaign launches data as well
+      if (currentCampaign.value.launches && currentCampaign.value.launches[launchNumber]) {
+        currentCampaign.value.launches[launchNumber].isActive = result.result?.isActive;
+      }
+      
       showSuccess('Launch status updated');
       
       // Refresh main campaigns list
       fetchCampaigns(true);
+      
+      // Small delay to ensure database transaction is committed
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Automatically generate/refresh and copy the link after toggling
       togglingLaunch.value = null; // Clear the loading state first
