@@ -1987,7 +1987,8 @@ function generateHideShopifyElementsCSS() {
  * Build offer page content with template and scripts
  */
 function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumber }) {
-  const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
+  // DISABLED: Affiliate link routing temporarily disabled
+  // const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
   return `
@@ -1999,11 +2000,14 @@ ${templateHTML}
 </div>
 
 <!-- Affiliate Link Replacement Script -->
+<!-- DISABLED: Affiliate link routing temporarily disabled -->
+<!--
 <script>
 // Store affiliate links globally for the nuclear option
 window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
 </script>
 ${affiliateLinksScript}
+-->
 `;
 }
 
