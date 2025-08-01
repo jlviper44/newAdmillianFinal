@@ -1548,11 +1548,9 @@ const refreshCampaignTraffic = async (campaign) => {
   refreshingTraffic.value = campaign.id;
   try {
     // Fetch latest campaign data which includes traffic stats
-    const response = await campaignsApi.getCampaign(campaign.id);
+    const updatedCampaign = await campaignsApi.getCampaign(campaign.id);
     
-    if (response.campaign) {
-      const updatedCampaign = response.campaign;
-      
+    if (updatedCampaign) {
       // Update the campaign in the campaigns array
       const campaignIndex = campaigns.value.findIndex(c => c.id === campaign.id);
       if (campaignIndex !== -1) {
