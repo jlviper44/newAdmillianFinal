@@ -32,6 +32,7 @@ async function initializeCampaignsTable(db) {
         launches TEXT DEFAULT '{}', -- JSON object of launches
         max_launch_number INTEGER DEFAULT 0,
         total_launches INTEGER DEFAULT 1,
+        disabled_clicks_threshold INTEGER DEFAULT 10, -- Auto-enable after X disabled clicks
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -79,6 +80,13 @@ async function initializeCampaignsTable(db) {
       if (!hasTrafficDisabledColumn) {
         await db.prepare(`ALTER TABLE campaigns ADD COLUMN traffic_disabled INTEGER DEFAULT 0`).run();
         console.log('Added traffic_disabled column to campaigns table');
+      }
+      
+      // Check if disabledClicksThreshold column exists
+      const hasDisabledClicksThresholdColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'disabled_clicks_threshold');
+      if (!hasDisabledClicksThresholdColumn) {
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN disabled_clicks_threshold INTEGER DEFAULT 10`).run();
+        console.log('Added disabled_clicks_threshold column to campaigns table');
       }
     } catch (error) {
       console.error('Error handling user_id/team_id columns:', error);
@@ -342,6 +350,7 @@ async function listCampaigns(db, request, env) {
       trafficPassed: campaign.traffic_passed || 0,
       trafficBlocked: campaign.traffic_blocked || 0,
       trafficDisabled: campaign.traffic_disabled || 0,
+      disabledClicksThreshold: campaign.disabled_clicks_threshold !== undefined ? campaign.disabled_clicks_threshold : 10,
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     }));
@@ -483,6 +492,7 @@ async function getCampaign(db, campaignId, request, env) {
       trafficPassed: campaign.traffic_passed || 0,
       trafficBlocked: campaign.traffic_blocked || 0,
       trafficDisabled: campaign.traffic_disabled || 0,
+      disabledClicksThreshold: campaign.disabled_clicks_threshold !== undefined ? campaign.disabled_clicks_threshold : 10,
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at
     };
@@ -617,8 +627,8 @@ async function createCampaign(db, request, env) {
       INSERT INTO campaigns (
         id, user_id, team_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
-        status, is_active, traffic, traffic_passed, traffic_blocked, traffic_disabled, launches, max_launch_number, total_launches
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, is_active, traffic, traffic_passed, traffic_blocked, traffic_disabled, launches, max_launch_number, total_launches, disabled_clicks_threshold
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
       userId,
@@ -640,7 +650,8 @@ async function createCampaign(db, request, env) {
       0, // traffic_disabled starts at 0
       JSON.stringify(launches),
       0, // maxLaunchNumber
-      1  // totalLaunches
+      1,  // totalLaunches
+      10  // disabled_clicks_threshold defaults to 10
     ).run();
     
     // Fetch and return the created campaign
@@ -727,15 +738,27 @@ async function updateCampaign(db, campaignId, request, env) {
     
     const campaignData = await request.json();
     
-    // Validate required fields
-    if (!campaignData.name || !campaignData.regions || campaignData.regions.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+    // For partial updates, use existing values if not provided
+    if (campaignData.name !== undefined || campaignData.regions !== undefined) {
+      // Only validate if these fields are being updated
+      if (campaignData.name !== undefined && !campaignData.name) {
+        return new Response(
+          JSON.stringify({ error: 'Name cannot be empty' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      if (campaignData.regions !== undefined && (!campaignData.regions || campaignData.regions.length === 0)) {
+        return new Response(
+          JSON.stringify({ error: 'At least one region is required' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
     }
     
     // Update campaign
@@ -755,23 +778,25 @@ async function updateCampaign(db, campaignId, request, env) {
         launches = ?,
         max_launch_number = ?,
         total_launches = ?,
+        disabled_clicks_threshold = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
-      campaignData.name,
-      campaignData.description || null,
-      JSON.stringify(campaignData.regions),
-      campaignData.tiktokStoreId || existingCampaign.tiktok_store_id,
-      campaignData.redirectStoreId || null,
-      campaignData.templateId || null,
-      campaignData.redirectType || 'template',
-      campaignData.customRedirectLink || null,
-      campaignData.affiliateLinks ? JSON.stringify(campaignData.affiliateLinks) : null,
-      campaignData.status || existingCampaign.status,
-      campaignData.isActive !== false ? 1 : 0,
+      campaignData.name !== undefined ? campaignData.name : existingCampaign.name,
+      campaignData.description !== undefined ? campaignData.description : existingCampaign.description,
+      campaignData.regions !== undefined ? JSON.stringify(campaignData.regions) : existingCampaign.regions,
+      campaignData.tiktokStoreId !== undefined ? campaignData.tiktokStoreId : existingCampaign.tiktok_store_id,
+      campaignData.redirectStoreId !== undefined ? campaignData.redirectStoreId : existingCampaign.redirect_store_id,
+      campaignData.templateId !== undefined ? campaignData.templateId : existingCampaign.template_id,
+      campaignData.redirectType !== undefined ? campaignData.redirectType : existingCampaign.redirect_type,
+      campaignData.customRedirectLink !== undefined ? campaignData.customRedirectLink : existingCampaign.custom_redirect_link,
+      campaignData.affiliateLinks !== undefined ? JSON.stringify(campaignData.affiliateLinks) : existingCampaign.affiliate_link,
+      campaignData.status !== undefined ? campaignData.status : existingCampaign.status,
+      campaignData.isActive !== undefined ? (campaignData.isActive ? 1 : 0) : existingCampaign.is_active,
       campaignData.launches ? JSON.stringify(campaignData.launches) : existingCampaign.launches,
       campaignData.maxLaunchNumber !== undefined ? campaignData.maxLaunchNumber : existingCampaign.max_launch_number,
       campaignData.totalLaunches !== undefined ? campaignData.totalLaunches : existingCampaign.total_launches,
+      campaignData.disabledClicksThreshold !== undefined ? campaignData.disabledClicksThreshold : (existingCampaign.disabled_clicks_threshold || 0),
       campaignId
     ).run();
     
@@ -2747,8 +2772,8 @@ async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber =
     
     // Update per-launch traffic if launch number is provided
     if (launchNumber !== null) {
-      // Get current launches data
-      const campaign = await db.prepare('SELECT launches FROM campaigns WHERE id = ?').bind(campaignId).first();
+      // Get current launches data and disabled clicks threshold
+      const campaign = await db.prepare('SELECT launches, disabled_clicks_threshold FROM campaigns WHERE id = ?').bind(campaignId).first();
       if (campaign) {
         const launches = JSON.parse(campaign.launches || '{}');
         const launchKey = launchNumber.toString();

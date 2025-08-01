@@ -788,6 +788,48 @@
             </v-card>
           </div>
 
+          <!-- Auto Enable Settings -->
+          <div class="px-4 pb-3">
+            <v-card variant="flat" class="pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
+              <div class="d-flex align-center justify-space-between">
+                <div class="flex-grow-1">
+                  <h4 class="text-body-2 font-weight-medium mb-2">Auto Enable Settings</h4>
+                  <div class="d-flex align-center gap-2">
+                    <v-text-field
+                      v-model.number="disabledClicksThreshold"
+                      label="Number of Disabled Clicks before Auto Enable"
+                      type="number"
+                      min="0"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      style="max-width: 350px;"
+                    >
+                      <template v-slot:append-inner>
+                        <v-tooltip location="top">
+                          <template v-slot:activator="{ props }">
+                            <v-icon v-bind="props" size="small">mdi-information-outline</v-icon>
+                          </template>
+                          <span>Launch will automatically enable after this many disabled clicks. Set to 0 to disable auto-enable.</span>
+                        </v-tooltip>
+                      </template>
+                    </v-text-field>
+                    <v-btn
+                      color="primary"
+                      variant="flat"
+                      size="small"
+                      @click="updateDisabledClicksThreshold"
+                      :loading="savingThreshold"
+                      prepend-icon="mdi-content-save"
+                    >
+                      Save
+                    </v-btn>
+                  </div>
+                </div>
+              </div>
+            </v-card>
+          </div>
+
           <!-- Add New Launches Section -->
           <div class="px-4 pb-3">
             <v-card variant="flat" class="pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
@@ -1104,6 +1146,8 @@ const addingLaunches = ref(false);
 const generatingLinkFor = ref(null);
 const togglingLaunch = ref(null);
 const refreshingTraffic = ref(null);
+const disabledClicksThreshold = ref(10);
+const savingThreshold = ref(false);
 
 // Forms
 const campaignForm = ref(null);
@@ -1485,6 +1529,9 @@ const openLaunchesModal = async (campaign) => {
     const data = await campaignsApi.getCampaign(campaign.id);
     currentCampaign.value = data;
     
+    // Load disabled clicks threshold
+    disabledClicksThreshold.value = data.disabledClicksThreshold !== undefined ? data.disabledClicksThreshold : 10;
+    
     // Fetch traffic data for this campaign
     let trafficData = {};
     try {
@@ -1864,6 +1911,30 @@ const validateLaunchCount = () => {
     newLaunchCount.value = 1;
   } else if (newLaunchCount.value > 10) {
     newLaunchCount.value = 10;
+  }
+};
+
+const updateDisabledClicksThreshold = async () => {
+  savingThreshold.value = true;
+  try {
+    // Update the campaign with the new threshold
+    await campaignsApi.updateCampaign(currentCampaign.value.id, {
+      disabledClicksThreshold: disabledClicksThreshold.value
+    });
+    
+    showSuccess('Auto-enable threshold updated');
+    
+    // Update the local campaign data
+    currentCampaign.value.disabledClicksThreshold = disabledClicksThreshold.value;
+    
+    // Refresh campaigns list to show updated data
+    fetchCampaigns(true);
+  } catch (error) {
+    showError('Failed to update auto-enable threshold');
+    // Reset to previous value on error
+    disabledClicksThreshold.value = currentCampaign.value.disabledClicksThreshold !== undefined ? currentCampaign.value.disabledClicksThreshold : 10;
+  } finally {
+    savingThreshold.value = false;
   }
 };
 

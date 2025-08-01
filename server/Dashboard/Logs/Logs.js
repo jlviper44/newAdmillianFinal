@@ -260,6 +260,49 @@ async function createLog(request, env) {
           trafficType,
           logData.launchNumber || 0
         );
+        
+        // Auto-enable logic for disabled launches
+        if (logData.type === 'disabled' && logData.launchNumber !== undefined) {
+          try {
+            // Get campaign data with launches and threshold
+            const campaign = await env.DASHBOARD_DB.prepare(
+              'SELECT launches, disabled_clicks_threshold FROM campaigns WHERE id = ?'
+            ).bind(logData.campaignId).first();
+            
+            if (campaign) {
+              const launches = JSON.parse(campaign.launches || '{}');
+              const launchKey = logData.launchNumber.toString();
+              const threshold = campaign.disabled_clicks_threshold !== undefined ? campaign.disabled_clicks_threshold : 10;
+              
+              // Check if this launch exists and is disabled
+              if (launches[launchKey] && !launches[launchKey].isActive && threshold > 0) {
+                const disabledClicks = launches[launchKey].trafficDisabled || 0;
+                
+                console.log(`Launch ${launchKey} has ${disabledClicks} disabled clicks, threshold is ${threshold}`);
+                
+                // If disabled clicks have reached or exceeded the threshold, auto-enable
+                if (disabledClicks >= threshold) {
+                  console.log(`Auto-enabling launch ${launchKey} after reaching ${disabledClicks} disabled clicks`);
+                  
+                  // Enable the launch
+                  launches[launchKey].isActive = true;
+                  launches[launchKey].autoEnabledAt = new Date().toISOString();
+                  launches[launchKey].autoEnabledAfterClicks = disabledClicks;
+                  
+                  // Update the campaign with the enabled launch
+                  await env.DASHBOARD_DB.prepare(
+                    'UPDATE campaigns SET launches = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                  ).bind(JSON.stringify(launches), logData.campaignId).run();
+                  
+                  console.log(`Successfully auto-enabled launch ${launchKey} for campaign ${logData.campaignId}`);
+                }
+              }
+            }
+          } catch (autoEnableError) {
+            console.error('Failed to check/perform auto-enable:', autoEnableError);
+            // Don't fail the whole request if auto-enable fails
+          }
+        }
       } catch (trafficError) {
         console.error('Failed to update campaign traffic:', trafficError);
       }
