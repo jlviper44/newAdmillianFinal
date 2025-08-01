@@ -2576,19 +2576,61 @@ async function generateCampaignLink(db, request, env) {
         );
         console.log('TikTok store page created/updated:', tiktokPageResult);
       } else {
-        // Update page with disabled content
-        const updateResult = await updateTikTokPageContent(
-          tiktokStore,
-          campaignData,
-          campaignId,
-          launch,
-          pageHandle,
-          false
-        );
-        if (updateResult.success) {
-          console.log('TikTok store page update completed:', updateResult.message || 'Page updated with disabled content');
-        } else if (updateResult.error) {
-          console.log('TikTok store page update skipped:', updateResult.error);
+        // For disabled launches, we need to create the page with disabled content
+        console.log('Creating/updating TikTok store page with disabled content...');
+        
+        // First check if page exists
+        const checkUrl = `https://${storeUrl}/admin/api/2024-01/pages.json?handle=${pageHandle}`;
+        const checkResponse = await fetch(checkUrl, {
+          method: 'GET',
+          headers: {
+            'X-Shopify-Access-Token': tiktokStore.access_token,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const checkData = await checkResponse.json();
+        const pageExists = checkData.pages && checkData.pages.length > 0;
+        
+        if (pageExists) {
+          // Page exists, update it with disabled content
+          const updateResult = await updateTikTokPageContent(
+            tiktokStore,
+            campaignData,
+            campaignId,
+            launch,
+            pageHandle,
+            false
+          );
+          console.log('Existing page updated with disabled content');
+        } else {
+          // Page doesn't exist, create it with disabled content
+          const disabledPageContent = generateDisabledPageContent(campaignId, launch);
+          const createPageData = {
+            page: {
+              title: `${campaign.name} - Launch ${launch}`,
+              handle: pageHandle,
+              body_html: disabledPageContent,
+              published: true,
+              template_suffix: null
+            }
+          };
+          
+          const createUrl = `https://${storeUrl}/admin/api/2024-01/pages.json`;
+          const createResponse = await fetch(createUrl, {
+            method: 'POST',
+            headers: {
+              'X-Shopify-Access-Token': tiktokStore.access_token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(createPageData)
+          });
+          
+          if (!createResponse.ok) {
+            throw new Error(`Failed to create disabled page: ${createResponse.status}`);
+          }
+          
+          console.log('New page created with disabled content');
         }
       }
       
