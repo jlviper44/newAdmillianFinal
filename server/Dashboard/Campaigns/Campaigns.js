@@ -1364,8 +1364,10 @@ function generatePageContent(campaign, campaignId, launchNumber) {
   });
   
   // First, fetch campaign data to get server information
-  console.log('Fetching campaign data from:', 'https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber);
-  fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber)
+  var timestamp = new Date().getTime();
+  var apiUrl = 'https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber + '?t=' + timestamp;
+  console.log('Fetching campaign data from:', apiUrl);
+  fetch(apiUrl)
     .then(function(response) { 
       console.log('Campaign data response status:', response.status);
       if (!response.ok) {
@@ -2085,7 +2087,8 @@ function generateDisabledPageContent(campaignId, launchNumber) {
   console.log('Sending disabled launch log:', logData);
   
   // First try to get server data for better tracking info
-  fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber)
+  var timestamp = new Date().getTime();
+  fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber + '?t=' + timestamp)
     .then(function(response) {
       console.log('Server data response:', response.status);
       return response.json();
