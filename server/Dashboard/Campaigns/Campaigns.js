@@ -1128,7 +1128,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
       case 'add':
         const newLaunchNumber = maxLaunchNumber + 1;
         launches[newLaunchNumber] = {
-          isActive: true,
+          isActive: false,
           createdAt: new Date().toISOString(),
           generatedAt: null,
           trafficPassed: 0,
