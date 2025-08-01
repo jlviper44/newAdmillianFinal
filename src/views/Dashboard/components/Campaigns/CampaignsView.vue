@@ -930,6 +930,18 @@
                       </v-btn>
                       
                       <v-btn
+                        color="blue"
+                        variant="tonal"
+                        size="small"
+                        @click="copyTestLink(index)"
+                        :disabled="!launch.generatedAt"
+                        prepend-icon="mdi-test-tube"
+                        class="mx-1 my-1"
+                      >
+                        Copy Test Link
+                      </v-btn>
+                      
+                      <v-btn
                         :color="launch.isActive ? 'grey' : 'green'"
                         variant="flat"
                         size="small"
@@ -1661,6 +1673,34 @@ const generateLaunchLink = async (launchNumber) => {
   }
 };
 
+const copyTestLink = async (launchNumber) => {
+  try {
+    // Generate the base link URL
+    const pageHandle = `cloak-${currentCampaign.value.id}-${launchNumber}`;
+    
+    // Get the TikTok store URL
+    const tiktokStore = stores.value.find(s => s.id === currentCampaign.value.tiktokStoreId);
+    if (!tiktokStore) {
+      showError('TikTok store not found');
+      return;
+    }
+    
+    // Format store URL
+    let storeUrl = tiktokStore.store_url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (!storeUrl.includes('.myshopify.com') && !storeUrl.includes('.')) {
+      storeUrl = `${storeUrl}.myshopify.com`;
+    }
+    
+    // Build test link with ttclid parameter
+    const testLink = `https://${storeUrl}/pages/${pageHandle}?ttclid=9999999`;
+    
+    // Copy to clipboard
+    await navigator.clipboard.writeText(testLink);
+    showSuccess('Test link copied to clipboard!');
+  } catch (error) {
+    showError('Failed to copy test link: ' + error.message);
+  }
+};
 
 const testStoreConnection = async (storeId, type) => {
   if (!storeId) return;

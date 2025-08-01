@@ -2106,54 +2106,6 @@ function generateDisabledPageContent(campaignId, launchNumber) {
     });
 })();
 </script>
-
-<style>
-body {
-  margin: 0;
-  padding: 20px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: #f8f9fa;
-  color: #212529;
-}
-
-.container {
-  max-width: 600px;
-  margin: 50px auto;
-  background: white;
-  padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  text-align: center;
-}
-
-h1 {
-  color: #6c757d;
-  font-size: 24px;
-  margin-bottom: 20px;
-}
-
-p {
-  color: #6c757d;
-  line-height: 1.6;
-}
-
-.status {
-  display: inline-block;
-  background: #ffc107;
-  color: #856404;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-weight: 500;
-  margin-top: 20px;
-}
-</style>
-
-<div class="container">
-  <h1>Campaign Temporarily Disabled</h1>
-  <p>This campaign launch is currently disabled. It will be available once it's activated.</p>
-  <p>If you believe this is an error, please contact support.</p>
-  <div class="status">Status: Disabled</div>
-</div>
 `;
 }
 
