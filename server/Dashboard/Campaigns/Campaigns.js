@@ -2162,8 +2162,44 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
     
     const data = await checkResponse.json();
     if (!data.pages || data.pages.length === 0) {
-      console.log(`Page ${pageHandle} not found - skipping update for disabled launch`);
-      return { success: true, message: 'Page does not exist, no update needed for disabled launch' };
+      if (!isActive) {
+        // For disabled launches, we don't need to update a non-existent page
+        console.log(`Page ${pageHandle} not found - skipping update for disabled launch`);
+        return { success: true, message: 'Page does not exist, no update needed for disabled launch' };
+      } else {
+        // For enabling a launch, we need to create the page
+        console.log(`Page ${pageHandle} not found - creating page for enabled launch`);
+        
+        const pageContent = generatePageContent(campaign, campaignId, launchNumber);
+        const createPageData = {
+          page: {
+            title: `${campaign.name} - Launch ${launchNumber}`,
+            handle: pageHandle,
+            body_html: pageContent,
+            published: true,
+            template_suffix: null
+          }
+        };
+        
+        const createUrl = `https://${apiDomain}/admin/api/2024-01/pages.json`;
+        const createResponse = await fetch(createUrl, {
+          method: 'POST',
+          headers: {
+            'X-Shopify-Access-Token': store.access_token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(createPageData)
+        });
+        
+        if (!createResponse.ok) {
+          const errorText = await createResponse.text();
+          throw new Error(`Failed to create page: ${createResponse.status} - ${errorText}`);
+        }
+        
+        const result = await createResponse.json();
+        console.log(`Page created successfully: ${pageHandle}`);
+        return result;
+      }
     }
     
     const pageId = data.pages[0].id;
