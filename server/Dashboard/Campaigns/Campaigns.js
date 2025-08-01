@@ -2040,8 +2040,8 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
     
     const data = await checkResponse.json();
     if (!data.pages || data.pages.length === 0) {
-      console.log(`Page ${pageHandle} not found, cannot update`);
-      return { error: 'Page not found' };
+      console.log(`Page ${pageHandle} not found - skipping update for disabled launch`);
+      return { success: true, message: 'Page does not exist, no update needed for disabled launch' };
     }
     
     const pageId = data.pages[0].id;
@@ -2585,7 +2585,11 @@ async function generateCampaignLink(db, request, env) {
           pageHandle,
           false
         );
-        console.log('TikTok store page updated with disabled content:', updateResult);
+        if (updateResult.success) {
+          console.log('TikTok store page update completed:', updateResult.message || 'Page updated with disabled content');
+        } else if (updateResult.error) {
+          console.log('TikTok store page update skipped:', updateResult.error);
+        }
       }
       
       // Step 2: If not using custom redirect, ALWAYS create/update the offer page on redirect store
