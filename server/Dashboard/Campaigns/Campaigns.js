@@ -609,7 +609,7 @@ async function createCampaign(db, request, env) {
     
     // Initialize launches
     const launches = campaignData.launches || {
-      "0": { isActive: true, createdAt: new Date().toISOString(), generatedAt: null, trafficPassed: 0, trafficBlocked: 0, trafficDisabled: 0 }
+      "0": { isActive: false, createdAt: new Date().toISOString(), generatedAt: null, trafficPassed: 0, trafficBlocked: 0, trafficDisabled: 0 }
     };
     
     // Insert campaign
@@ -2484,10 +2484,11 @@ async function generateCampaignLink(db, request, env) {
     // Update launch info
     if (!launches[launch.toString()]) {
       launches[launch.toString()] = {
-        isActive: true,
+        isActive: false,
         createdAt: new Date().toISOString(),
         trafficPassed: 0,
-        trafficBlocked: 0
+        trafficBlocked: 0,
+        trafficDisabled: 0
       };
     }
     

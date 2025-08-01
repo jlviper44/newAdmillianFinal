@@ -1610,6 +1610,10 @@ const toggleLaunch = async (launchNumber) => {
       
       // Refresh main campaigns list
       fetchCampaigns(true);
+      
+      // Automatically generate/refresh and copy the link after toggling
+      togglingLaunch.value = null; // Clear the loading state first
+      await generateLaunchLink(launchNumber);
     }
   } catch (error) {
     showError('Failed to update launch status');
