@@ -1387,13 +1387,13 @@ function generatePageContent(campaign, campaignId, launchNumber) {
       }
       
       if (!data.isActive) {
-        console.log('Campaign is not active');
-        throw new Error('Campaign is not active');
+        console.log('Campaign is not active (campaign level)');
+        throw new Error('Campaign is not active. Please activate the campaign first.');
       }
       
       if (data.launch && !data.launch.isActive) {
-        console.log('Launch is disabled');
-        throw new Error('Launch is disabled');
+        console.log('Launch is disabled (launch level)');
+        throw new Error('Launch is disabled. Please enable the launch.');
       }
       
       // Check validations
