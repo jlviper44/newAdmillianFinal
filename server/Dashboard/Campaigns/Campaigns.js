@@ -618,7 +618,7 @@ async function createCampaign(db, request, env) {
         id, user_id, team_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
         status, is_active, traffic, traffic_passed, traffic_blocked, traffic_disabled, launches, max_launch_number, total_launches
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
       userId,
