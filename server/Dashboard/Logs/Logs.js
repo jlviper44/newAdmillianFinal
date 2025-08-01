@@ -288,6 +288,8 @@ async function createLog(request, env) {
                   launches[launchKey].isActive = true;
                   launches[launchKey].autoEnabledAt = new Date().toISOString();
                   launches[launchKey].autoEnabledAfterClicks = disabledClicks;
+                  // Set generatedAt timestamp (equivalent to clicking "Refresh & Copy")
+                  launches[launchKey].generatedAt = new Date().toISOString();
                   
                   // Update the campaign with the enabled launch
                   await env.DASHBOARD_DB.prepare(
@@ -327,8 +329,16 @@ async function createLog(request, env) {
                         
                         const pageHandle = `cloak-${logData.campaignId}-${launchKey}`;
                         
+                        console.log('Calling updateTikTokPageContent with:', {
+                          storeUrl: tiktokStore.store_url,
+                          campaignId: logData.campaignId,
+                          launchKey: launchKey,
+                          pageHandle: pageHandle,
+                          isActive: true
+                        });
+                        
                         // Update the page with enabled content
-                        await updateTikTokPageContent(
+                        const updateResult = await updateTikTokPageContent(
                           tiktokStore,
                           campaignData,
                           logData.campaignId,
@@ -337,7 +347,26 @@ async function createLog(request, env) {
                           true // isActive = true
                         );
                         
+                        console.log('updateTikTokPageContent result:', updateResult);
                         console.log(`Shopify page updated for auto-enabled launch ${launchKey}`);
+                        
+                        // Also update redirect store page if needed
+                        if (fullCampaign.redirect_type !== 'custom' && fullCampaign.redirect_store_id) {
+                          try {
+                            console.log('Creating/updating redirect store offer page...');
+                            const { createRedirectStoreOfferPage } = await import('../Campaigns/Campaigns.js');
+                            
+                            const redirectPageResult = await createRedirectStoreOfferPage(
+                              env.DASHBOARD_DB,
+                              campaignData,
+                              logData.campaignId,
+                              parseInt(launchKey)
+                            );
+                            console.log('Redirect store offer page created/updated:', redirectPageResult);
+                          } catch (redirectError) {
+                            console.error('Failed to update redirect store page:', redirectError);
+                          }
+                        }
                       } else {
                         console.warn('TikTok store not found or missing access token - cannot update page');
                       }
