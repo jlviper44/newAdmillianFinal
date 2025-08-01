@@ -3046,8 +3046,8 @@ async function getCampaignTrafficStats(db, campaignId, request, env) {
 /**
  * Main handler function for campaign endpoints
  */
-// Export the traffic update function for use by logs module
-export { updateCampaignTraffic };
+// Export functions for use by other modules
+export { updateCampaignTraffic, updateTikTokPageContent };
 
 export default async function handleCampaignsAPI(request, env, path) {
   const db = env.DASHBOARD_DB;

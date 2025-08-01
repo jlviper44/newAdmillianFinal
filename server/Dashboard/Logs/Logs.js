@@ -295,6 +295,57 @@ async function createLog(request, env) {
                   ).bind(JSON.stringify(launches), logData.campaignId).run();
                   
                   console.log(`Successfully auto-enabled launch ${launchKey} for campaign ${logData.campaignId}`);
+                  
+                  // Update the Shopify page to reflect the enabled status
+                  try {
+                    console.log('Updating Shopify page for auto-enabled launch...');
+                    
+                    // Get the full campaign data
+                    const fullCampaign = await env.DASHBOARD_DB.prepare(
+                      'SELECT * FROM campaigns WHERE id = ?'
+                    ).bind(logData.campaignId).first();
+                    
+                    if (fullCampaign && fullCampaign.tiktok_store_id) {
+                      // Get TikTok store details
+                      const tiktokStore = await env.DASHBOARD_DB.prepare(
+                        'SELECT * FROM shopify_stores WHERE id = ?'
+                      ).bind(fullCampaign.tiktok_store_id).first();
+                      
+                      if (tiktokStore && tiktokStore.access_token) {
+                        // Import the necessary functions from Campaigns module
+                        const { updateTikTokPageContent } = await import('../Campaigns/Campaigns.js');
+                        
+                        // Parse campaign data for page update
+                        const campaignData = {
+                          ...fullCampaign,
+                          regions: JSON.parse(fullCampaign.regions || '[]'),
+                          affiliateLinks: JSON.parse(fullCampaign.affiliate_link || '{}'),
+                          redirectType: fullCampaign.redirect_type,
+                          customRedirectUrl: fullCampaign.custom_redirect_link,
+                          name: fullCampaign.name
+                        };
+                        
+                        const pageHandle = `cloak-${logData.campaignId}-${launchKey}`;
+                        
+                        // Update the page with enabled content
+                        await updateTikTokPageContent(
+                          tiktokStore,
+                          campaignData,
+                          logData.campaignId,
+                          parseInt(launchKey),
+                          pageHandle,
+                          true // isActive = true
+                        );
+                        
+                        console.log(`Shopify page updated for auto-enabled launch ${launchKey}`);
+                      } else {
+                        console.warn('TikTok store not found or missing access token - cannot update page');
+                      }
+                    }
+                  } catch (pageUpdateError) {
+                    console.error('Failed to update Shopify page after auto-enable:', pageUpdateError);
+                    // Don't fail the whole operation if page update fails
+                  }
                 }
               }
             }
