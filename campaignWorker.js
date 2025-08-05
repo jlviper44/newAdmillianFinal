@@ -995,6 +995,10 @@ function generateAffiliateLinksScript(affiliateLinks) {
   // Affiliate links data
   const affiliateLinks = ${JSON.stringify(affiliateLinks)};
   
+  // Debug: Log available affiliate links
+  console.log('Available affiliate links:', affiliateLinks);
+  console.log('Looking for geo:', geo, 'with OS:', os);
+  
   // Select the best matching affiliate link
   let affiliateLink = selectAffiliateLink(affiliateLinks, geo, os);
   
@@ -1037,18 +1041,33 @@ function generateAffiliateLinksScript(affiliateLinks) {
   
   // Helper function to explain selection logic
   function getSelectionLogic(links, geo, os) {
-    if (links[geo + '_' + os]) return 'Exact match: ' + geo + '_' + os;
-    if (links[geo]) return 'Country match: ' + geo;
+    const osLower = os ? os.toLowerCase() : 'unknown';
+    const geoUpper = geo ? geo.toUpperCase() : 'US';
+    
+    if (links[geoUpper + '_' + osLower]) return 'Exact match (normalized): ' + geoUpper + '_' + osLower;
+    if (links[geoUpper + '_' + os]) return 'Exact match (uppercase geo): ' + geoUpper + '_' + os;
+    if (links[geoUpper]) return 'Country match (uppercase): ' + geoUpper;
+    if (links[geo + '_' + osLower]) return 'Exact match (original case): ' + geo + '_' + osLower;
+    if (links[geo]) return 'Country match (original case): ' + geo;
     if (links['US']) return 'Default US fallback';
     return 'First available link';
   }
   
   // Helper function to select the best matching affiliate link
   function selectAffiliateLink(links, geo, os) {
-    return links[geo + '_' + os] || 
-           links[geo] || 
-           links['US'] ||
-           Object.values(links)[0];
+    // Normalize OS to lowercase for matching
+    const osLower = os ? os.toLowerCase() : 'unknown';
+    // Normalize geo to uppercase for matching
+    const geoUpper = geo ? geo.toUpperCase() : 'US';
+    
+    // Try different combinations in priority order
+    return links[geoUpper + '_' + osLower] ||     // e.g., US_ios
+           links[geoUpper + '_' + os] ||          // e.g., US_iOS (fallback for exact case)
+           links[geoUpper] ||                     // e.g., US (standard link)
+           links[geo + '_' + osLower] ||          // Original case with lowercase OS
+           links[geo] ||                          // Original case
+           links['US'] ||                         // Default to US
+           Object.values(links)[0];               // Any available link
   }
   
   // Simplified: Only add s1, s2, and s3 parameters

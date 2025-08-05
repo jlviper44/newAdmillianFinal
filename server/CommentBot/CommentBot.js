@@ -352,21 +352,33 @@ async function fetchAPI(path, options = {}) {
     // Make the fetch request
     const response = await fetch(apiUrl, fetchOptions);
     
-    // Log response status for debugging
-    // // console.log(`Response status: ${response.status}`);
+    // Log response details for debugging
+    console.log(`Response status: ${response.status}`);
+    console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+    
+    // Get response text first to log it
+    const responseText = await response.text();
+    console.log(`Response body: ${responseText}`);
+    
+    // Try to parse as JSON
+    let responseData;
+    try {
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch (e) {
+      console.error('Failed to parse response as JSON:', e);
+      if (!response.ok) {
+        throw new Error(`API error: Status ${response.status}, Body: ${responseText}`);
+      }
+      // If response is OK but not JSON, return the text
+      return responseText;
+    }
     
     if (!response.ok) {
-      let errorMessage;
-      try {
-        const errorData = await response.json();
-        errorMessage = JSON.stringify(errorData);
-      } catch (e) {
-        errorMessage = `Status ${response.status}`;
-      }
+      const errorMessage = responseData.error || responseData.message || JSON.stringify(responseData);
       throw new Error(`API error: ${errorMessage}`);
     }
     
-    return await response.json();
+    return responseData;
   } catch (error) {
     console.error(`API Fetch Error: ${error.message}`);
     throw error;
@@ -1129,6 +1141,9 @@ async function createOrder(request, env, userId, teamId) {
     
     // console.log(JSON.stringify(apiData));
 
+    // Log the API request for debugging
+    console.log('Creating order with data:', JSON.stringify(apiData, null, 2));
+    
     // Call API to create order
     const createdOrder = await fetchAPI(
       `/api/orders/create`, 
@@ -1137,6 +1152,8 @@ async function createOrder(request, env, userId, teamId) {
         body: JSON.stringify(apiData)
       }
     );
+    
+    console.log('API Response:', JSON.stringify(createdOrder, null, 2));
     
     // Save order to local database if API call was successful
     if (createdOrder && createdOrder.order_id) {
@@ -1161,21 +1178,24 @@ async function createOrder(request, env, userId, teamId) {
             targetUserId,
             targetTeamId,
             createdOrder.order_id,
-            createdOrder.post_id,
-            createdOrder.status,
+            createdOrder.post_id || orderData.post_id,
+            createdOrder.status || 'pending',
             orderData.like_count || 0,
             orderData.save_count || 0,
             orderData.comment_group_id || null,
             createdOrder.message || null,
-            createdOrder.created_at
+            createdOrder.created_at || new Date().toISOString()
           )
           .run();
           
-        // // console.log(`Order ${createdOrder.order_id} saved to database`);
+        console.log(`Order ${createdOrder.order_id} saved to database successfully`);
       } catch (dbError) {
         console.error('Failed to save order to database:', dbError);
+        console.error('Database error details:', dbError.message, dbError.cause);
         // Continue even if database save fails - API call was successful
       }
+    } else {
+      console.error('No order_id in API response:', createdOrder);
     }
     
     return jsonResponse({

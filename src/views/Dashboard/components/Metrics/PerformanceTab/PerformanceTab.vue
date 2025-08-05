@@ -161,6 +161,18 @@ const setLastMonth = () => {
   dateRange.value = [start, end]
 }
 
+const setYearToDate = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), 0, 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  
+  startDate.value = start
+  endDate.value = end
+  dateRange.value = [start, end]
+}
+
 // Date formatters
 const formatDateForDisplay = (date) => {
   if (!date) return ''
@@ -384,6 +396,7 @@ const subId2Options = computed(() => {
   return [...new Set([...clicksSubIds2, ...conversionSubIds2])].sort()
 })
 
+
 // Function to apply filters
 const applyFilters = () => {
   // Filters are automatically applied through computed properties
@@ -513,6 +526,14 @@ onMounted(() => {
               color="primary"
             >
               Last Month
+            </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setYearToDate"
+              color="primary"
+            >
+              Year to Date
             </v-btn>
           </div>
         </div>

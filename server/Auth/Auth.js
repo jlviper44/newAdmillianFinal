@@ -1319,7 +1319,7 @@ async function handleUseCredits(request, env) {
     });
   }
   
-  const { credits, productType = 'comment_bot' } = await request.json();
+  const { credits, productType = 'comment_bot', assistedUserId } = await request.json();
   
   // Check if user is an admin - admins don't need to use credits (except for virtual assistants)
   if (session.user && session.user.email && isAdminUser(session.user.email) && productType !== 'virtual_assistant' && !assistedUserId) {

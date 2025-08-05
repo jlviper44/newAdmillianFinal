@@ -39,6 +39,11 @@ const processedDays = ref(0)
 const totalDays = ref(0)
 const pendingRequests = ref(0) // Track pending requests
 
+// Filter state
+const filters = ref({
+  subId: null
+})
+
 // Define formatDate function internally instead of receiving as prop
 const formatDate = (dateString) => {
   if (!dateString) return ''
@@ -64,26 +69,38 @@ const availableSubIds = computed(() => {
   return subIds.sort()
 })
 
-// Computed property to get final data to display (either filtered or all)
-const displayData = computed(() => {
-  if (selectedSubId.value && filteredData.value.length > 0) {
-    return filteredData.value;
-  }
-  return combinedData.value;
+// Computed property to get unique Sub IDs from data (for the new filter)
+const availableFilterSubIds = computed(() => {
+  if (!combinedData.value || combinedData.value.length === 0) return []
+  
+  const subIds = combinedData.value
+    .map(item => item.sub_id)
+    .filter(id => id)
+  
+  return [...new Set(subIds)].sort()
 })
 
-// Filter data by Sub ID
-const filterBySubId = () => {
-  if (!selectedSubId.value) {
-    // If no Sub ID is selected, show all data
-    filteredData.value = [];
-    return;
+// Computed property to get final data to display (either filtered or all)
+const displayData = computed(() => {
+  let data = [...combinedData.value];
+  
+  // Apply existing Sub ID filter (from the autocomplete)
+  if (selectedSubId.value) {
+    data = data.filter(item => item.sub_id === selectedSubId.value);
   }
   
-  // Filter the combined data by the selected Sub ID
-  filteredData.value = [...combinedData.value.filter(item => 
-    item.sub_id === selectedSubId.value
-  )];
+  // Apply new Sub ID filter
+  if (filters.value.subId) {
+    data = data.filter(item => item.sub_id === filters.value.subId);
+  }
+  
+  return data;
+})
+
+// Filter data by Sub ID (kept for compatibility with template)
+const filterBySubId = () => {
+  // Filtering is now handled by the displayData computed property
+  // This function is kept to avoid breaking the template
 }
 
 // Watch for changes in the selected Sub ID
@@ -113,6 +130,10 @@ watch(
     }
   }
 )
+
+// Note: No need to watch filters for display updates since displayData computed property
+// automatically updates when filters change. The filters are applied client-side on the
+// already fetched data, so we don't need to re-fetch from the API.
 
 // Set default dates (today minus 7 days to today)
 onMounted(() => {
@@ -226,6 +247,17 @@ const setLastMonth = () => {
   endDateLocal.value = end
 }
 
+const setYearToDate = () => {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), 0, 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  
+  startDateLocal.value = start
+  endDateLocal.value = end
+}
+
 // Function to format date for API (YYYY-MM-DD HH:MM:SS)
 const formatDateForApi = (date, isEndDate = false) => {
   if (!date) return ''
@@ -281,13 +313,15 @@ const getRequestParams = (startDate, endDate) => {
     'date'
   ]
   
-  return {
+  const params = {
     api_key: props.apiKey,
     affiliate_id: props.affiliateId,
     start_date: formatDateForApi(startDate, false),
     end_date: formatDateForApi(endDate, true),
     fields: fields
   }
+  
+  return params
 }
 
 // Function to fetch data for a single day
@@ -352,10 +386,10 @@ const applyDateFilter = async () => {
   processedDays.value = 0
   pendingRequests.value = dateRange.length
   
-  // Clear previous data, filtered data, and error
+  // Clear previous data and error
   combinedData.value = []
-  filteredData.value = []
   selectedSubId.value = null
+  filters.value.subId = null
   localErrorState.value = null
   
   // Set loading state
@@ -512,6 +546,14 @@ const applyDateFilter = async () => {
             >
               Last Month
             </v-btn>
+            <v-btn 
+              variant="tonal" 
+              size="small" 
+              @click="setYearToDate"
+              color="primary"
+            >
+              Year to Date
+            </v-btn>
           </div>
         </div>
         
@@ -538,6 +580,7 @@ const applyDateFilter = async () => {
             </template>
           </v-autocomplete>
         </div>
+        
       </v-card-text>
     </v-card>
     

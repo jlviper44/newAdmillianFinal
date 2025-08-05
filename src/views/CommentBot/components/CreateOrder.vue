@@ -41,6 +41,8 @@ const orderCreationProgress = ref({
   total: 0,
   message: ''
 });
+const countdownSeconds = ref(0);
+const cancelOrderCreation = ref(false);
 
 // Computed properties
 const hasCommentGroups = computed(() => {
@@ -109,6 +111,10 @@ const isFormValid = computed(() => {
     !isCreatingOrders.value;
 });
 
+const handleCancelOrder = () => {
+  cancelOrderCreation.value = true;
+};
+
 const createOrder = async () => {
   if (isCreatingOrders.value) return;
   
@@ -123,6 +129,7 @@ const createOrder = async () => {
   
   // Set up progress tracking
   isCreatingOrders.value = true;
+  cancelOrderCreation.value = false;
   orderCreationProgress.value = {
     current: 0,
     total: limitedPostIds.length,
@@ -131,6 +138,11 @@ const createOrder = async () => {
   
   // Create orders for each post ID with 60 second delay between each
   for (let i = 0; i < limitedPostIds.length; i++) {
+    // Check if cancelled
+    if (cancelOrderCreation.value) {
+      orderCreationProgress.value.message = 'Order creation cancelled';
+      break;
+    }
     const postId = limitedPostIds[i];
     const orderData = {
       post_id: postId,
@@ -147,9 +159,36 @@ const createOrder = async () => {
     
     // Wait 60 seconds before creating the next order (except for the last one)
     if (i < limitedPostIds.length - 1) {
-      orderCreationProgress.value.message = `Waiting 60 seconds before creating next order...`;
+      // Start countdown from 60 seconds
+      countdownSeconds.value = 60;
+      orderCreationProgress.value.message = `Waiting ${countdownSeconds.value} seconds before creating next order...`;
+      
+      // Update countdown every second
+      const countdownInterval = setInterval(() => {
+        if (cancelOrderCreation.value) {
+          clearInterval(countdownInterval);
+          return;
+        }
+        countdownSeconds.value--;
+        if (countdownSeconds.value > 0) {
+          orderCreationProgress.value.message = `Waiting ${countdownSeconds.value} seconds before creating next order...`;
+        } else {
+          clearInterval(countdownInterval);
+        }
+      }, 1000);
+      
       console.log(`Waiting 60 seconds before creating next order...`);
-      await new Promise(resolve => setTimeout(resolve, 60000));
+      
+      // Wait with ability to cancel
+      let waitingTime = 0;
+      while (waitingTime < 60000 && !cancelOrderCreation.value) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        waitingTime += 100;
+      }
+      
+      // Clear interval in case it's still running
+      clearInterval(countdownInterval);
+      countdownSeconds.value = 0;
     }
   }
   
@@ -182,6 +221,20 @@ const createOrder = async () => {
         <v-alert type="info" variant="outlined">
           <v-icon slot="prepend">mdi-progress-clock</v-icon>
           <div>{{ orderCreationProgress.message }}</div>
+          
+          <!-- Show countdown timer visually when waiting -->
+          <div v-if="countdownSeconds > 0" class="text-center mt-3">
+            <v-progress-circular
+              :model-value="((60 - countdownSeconds) / 60) * 100"
+              :size="80"
+              :width="8"
+              color="primary"
+            >
+              <span class="text-h5">{{ countdownSeconds }}</span>
+            </v-progress-circular>
+            <div class="text-caption mt-2">seconds remaining</div>
+          </div>
+          
           <v-progress-linear
             v-if="orderCreationProgress.total > 0"
             :model-value="(orderCreationProgress.current / orderCreationProgress.total) * 100"
@@ -193,6 +246,19 @@ const createOrder = async () => {
           <div v-if="orderCreationProgress.total > 0" class="text-caption mt-1">
             Progress: {{ orderCreationProgress.current }} / {{ orderCreationProgress.total }} orders
           </div>
+          
+          <!-- Cancel button -->
+          <v-btn
+            v-if="countdownSeconds > 0"
+            color="error"
+            variant="outlined"
+            size="small"
+            class="mt-3"
+            @click="handleCancelOrder"
+          >
+            <v-icon start>mdi-close</v-icon>
+            Cancel Remaining Orders
+          </v-btn>
         </v-alert>
       </div>
       
