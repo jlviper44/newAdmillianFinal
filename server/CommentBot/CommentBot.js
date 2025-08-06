@@ -7,6 +7,8 @@
 
 // Import SQL functions
 import { executeQuery } from '../SQL/SQL.js';
+// Import admin check function from Auth
+import { isAdminUser } from '../Auth/Auth.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -269,8 +271,12 @@ export async function handleCommentBotData(request, env, session) {
         
         // Handle GET requests for logs (admin only)
         if (request.method === 'GET' && url.pathname === '/api/commentbot/logs') {
-          // Check if user is admin
-          if (!session?.user?.isAdmin) {
+          // Check if user is admin based on email and not a virtual assistant
+          const userEmail = session?.user?.email;
+          const isVirtualAssistant = session?.user?.isVirtualAssistant;
+          const isAdmin = userEmail && isAdminUser(userEmail) && !isVirtualAssistant;
+          
+          if (!isAdmin) {
             return jsonResponse({ error: 'Unauthorized - Admin access required' }, 403);
           }
           return await getCommentBotLogs(request, env);
@@ -278,8 +284,12 @@ export async function handleCommentBotData(request, env, session) {
         
         // Handle GET requests for exporting logs (admin only)
         if (request.method === 'GET' && url.pathname === '/api/commentbot/logs/export') {
-          // Check if user is admin
-          if (!session?.user?.isAdmin) {
+          // Check if user is admin based on email and not a virtual assistant
+          const userEmail = session?.user?.email;
+          const isVirtualAssistant = session?.user?.isVirtualAssistant;
+          const isAdmin = userEmail && isAdminUser(userEmail) && !isVirtualAssistant;
+          
+          if (!isAdmin) {
             return jsonResponse({ error: 'Unauthorized - Admin access required' }, 403);
           }
           return await exportCommentBotLogs(request, env);
@@ -1173,7 +1183,7 @@ async function createOrder(request, env, userId, teamId) {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         
-        await env.COMMENT_BOT_DB.prepare(insertOrderQuery)
+        const dbResult = await env.COMMENT_BOT_DB.prepare(insertOrderQuery)
           .bind(
             targetUserId,
             targetTeamId,
@@ -1189,6 +1199,12 @@ async function createOrder(request, env, userId, teamId) {
           .run();
           
         console.log(`Order ${createdOrder.order_id} saved to database successfully`);
+        console.log('Database insert result:', dbResult);
+        
+        // Verify the order was saved
+        const verifyQuery = 'SELECT * FROM orders WHERE order_id = ?';
+        const verifyResult = await env.COMMENT_BOT_DB.prepare(verifyQuery).bind(createdOrder.order_id).first();
+        console.log('Verification query result:', verifyResult);
       } catch (dbError) {
         console.error('Failed to save order to database:', dbError);
         console.error('Database error details:', dbError.message, dbError.cause);
@@ -1451,7 +1467,11 @@ async function getOrderStatus(orderId, env = null, userId = null, teamId = null)
  * @param {Object} env - Environment bindings
  */
 async function getCommentBotLogs(request, env) {
+  console.log('getCommentBotLogs called');
   try {
+    // Initialize tables if needed
+    await initializeCommentGroupTables(env);
+    
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '50');
@@ -1460,6 +1480,8 @@ async function getCommentBotLogs(request, env) {
     const startDate = url.searchParams.get('startDate') || '';
     const endDate = url.searchParams.get('endDate') || '';
     const offset = (page - 1) * limit;
+    
+    console.log('Logs request params:', { page, limit, search, status, startDate, endDate, offset });
     
     // Build query conditions
     let whereConditions = [];
@@ -1514,6 +1536,10 @@ async function getCommentBotLogs(request, env) {
     params.push(limit, offset);
     const logsResult = await executeQuery(env.COMMENT_BOT_DB, logsQuery, params);
     
+    console.log('Logs query:', logsQuery);
+    console.log('Logs params:', params);
+    console.log('Logs result count:', logsResult.data?.length || 0);
+    
     // Get user emails from USERS_DB for the logs
     if (logsResult.success && logsResult.data.length > 0) {
       const userIds = [...new Set(logsResult.data.map(log => log.user_id))];
@@ -1538,6 +1564,20 @@ async function getCommentBotLogs(request, env) {
       });
     }
     
+    // Debug: Check all orders
+    try {
+      const debugQuery = 'SELECT COUNT(*) as count FROM orders';
+      const debugResult = await executeQuery(env.COMMENT_BOT_DB, debugQuery, []);
+      console.log('Total orders in database:', debugResult);
+      
+      // Also try to get a sample order
+      const sampleQuery = 'SELECT * FROM orders LIMIT 1';
+      const sampleResult = await executeQuery(env.COMMENT_BOT_DB, sampleQuery, []);
+      console.log('Sample order:', sampleResult);
+    } catch (debugError) {
+      console.error('Debug query error:', debugError);
+    }
+    
     // Get stats
     const statsQuery = `
       SELECT 
@@ -1549,12 +1589,14 @@ async function getCommentBotLogs(request, env) {
     `;
     
     const statsResult = await executeQuery(env.COMMENT_BOT_DB, statsQuery, []);
+    console.log('Stats query result:', statsResult);
     const stats = statsResult.success && statsResult.data.length > 0 ? statsResult.data[0] : {
       totalOrders: 0,
       completedOrders: 0,
       failedOrders: 0,
       activeOrders: 0
     };
+    console.log('Stats:', stats);
     
     return jsonResponse({
       success: true,
@@ -1569,9 +1611,11 @@ async function getCommentBotLogs(request, env) {
     });
   } catch (error) {
     console.error('Error fetching comment bot logs:', error);
+    console.error('Error stack:', error.stack);
     return jsonResponse({ 
       error: 'Failed to fetch logs', 
-      details: error.message 
+      details: error.message,
+      stack: error.stack
     }, 500);
   }
 }

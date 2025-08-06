@@ -137,7 +137,16 @@ export const commentBotApi = {
   getCommentGroupDetail: (id) => api.get(`/commentbot?type=comment-group-detail&id=${id}`),
   
   // Logs (Admin only)
-  getLogs: (params) => api.get('/commentbot/logs', { params })
+  getLogs: (params) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.search) queryParams.append('search', params.search);
+    if (params.status) queryParams.append('status', params.status);
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    return api.get(`/commentbot/logs?${queryParams.toString()}`);
+  }
 }
 
 // BCGen specific API methods

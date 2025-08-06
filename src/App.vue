@@ -19,8 +19,13 @@ const activePopupMenu = ref(null);
 // Authentication
 const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess, user, signOut, isAssistingUser, getTargetUserId } = useAuth();
 
-// Computed property for admin status
-const isAdmin = computed(() => user.value?.isAdmin === true);
+// Computed property for admin status (excludes virtual assistants)
+const isAdmin = computed(() => {
+  const isAdminUser = user.value?.isAdmin === true;
+  const isVA = user.value?.isVirtualAssistant === true;
+  console.log('[Admin Check] isAdmin:', isAdminUser, 'isVirtualAssistant:', isVA, 'final:', isAdminUser && !isVA);
+  return isAdminUser && !isVA;
+});
 
 
 // All routes
@@ -62,8 +67,8 @@ const visibleRoutes = computed(() => {
   if (!isAuthenticated.value) return [];
   
   return allRoutes.filter(route => {
-    // Check if route requires admin access
-    if (route.requiresAdmin && !user.value?.isAdmin) return false;
+    // Check if route requires admin access (excluding virtual assistants)
+    if (route.requiresAdmin && !isAdmin.value) return false;
     
     // Always show routes without subscription requirements (unless they require admin)
     if (!route.requiresSubscription) return true;
@@ -182,7 +187,9 @@ const handleDashboardClick = () => {
     togglePopupMenu('dashboard');
   } else {
     // If not on dashboard, navigate to default dashboard tab
-    router.push('/dashboard?tab=metrics');
+    // Virtual assistants go to campaigns instead of metrics
+    const defaultTab = user.value?.isVirtualAssistant ? 'campaigns' : 'metrics';
+    router.push(`/dashboard?tab=${defaultTab}`);
   }
 };
 
@@ -459,6 +466,7 @@ onUnmounted(() => {
           <!-- Dashboard Menu -->
           <v-list v-if="activePopupMenu === 'dashboard'" density="comfortable">
             <v-list-item
+              v-if="!user?.isVirtualAssistant"
               @click="navigateToAndClose('/dashboard?tab=metrics')"
               prepend-icon="mdi-chart-areaspline"
               title="Metrics"
@@ -560,7 +568,7 @@ onUnmounted(() => {
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
-              v-if="user?.isAdmin"
+              v-if="isAdmin"
               @click="navigateToAndClose('/bc-gen?tab=bcgen-refunds')"
               prepend-icon="mdi-cash-refund"
               class="mobile-popup-item"
@@ -584,7 +592,7 @@ onUnmounted(() => {
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
-              v-if="user?.isAdmin"
+              v-if="isAdmin"
               @click="navigateToAndClose('/settings?tab=teams')"
               prepend-icon="mdi-account-group"
               class="mobile-popup-item"
@@ -620,7 +628,7 @@ onUnmounted(() => {
             </v-list-item>
             <!-- Settings -->
             <v-list-item
-              v-if="user?.isAdmin"
+              v-if="isAdmin"
               @click="activePopupMenu = 'settings'"
               prepend-icon="mdi-cog"
               class="mobile-popup-item"
@@ -757,6 +765,7 @@ onUnmounted(() => {
           </template>
           
           <v-list-item
+            v-if="!user?.isVirtualAssistant"
             to="/dashboard?tab=metrics"
             prepend-icon="mdi-chart-areaspline"
             title="Metrics"
@@ -908,7 +917,7 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
-            v-if="user?.isAdmin"
+            v-if="isAdmin"
             to="/bc-gen?tab=bcgen-refunds"
             prepend-icon="mdi-cash-refund"
             :active="isTabActive('/bc-gen', 'bcgen-refunds')"
@@ -967,7 +976,7 @@ onUnmounted(() => {
 
         <!-- Settings -->
         <v-list-group 
-          v-if="user?.isAdmin"
+          v-if="isAdmin"
           value="settings" 
           :value="opened.includes('settings')">
           <template v-slot:activator="{ props }">
@@ -984,7 +993,7 @@ onUnmounted(() => {
           </template>
           
           <v-list-item
-            v-if="user?.isAdmin"
+            v-if="isAdmin"
             to="/settings?tab=teams"
             prepend-icon="mdi-account-group"
             :active="isTabActive('/settings', 'teams')"

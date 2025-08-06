@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { commentBotApi, usersApi } from '@/services/api';
+import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 
 // Import components
@@ -15,6 +16,9 @@ import EditCommentGroup from './components/EditCommentGroup.vue';
 import CommentBotCredits from './components/CommentBotCredits.vue';
 import CommentBotLogs from './components/CommentBotLogs.vue';
 import { formatDateTime, getUserTimezone } from '@/utils/dateFormatter';
+
+// Get route
+const route = useRoute();
 
 // State management
 const loading = ref({
@@ -61,7 +65,8 @@ const user = ref(null);
 const showCreateGroupDialog = ref(false);
 const showEditGroupDialog = ref(false);
 const showGroupDetailDialog = ref(false);
-const currentTab = ref('orders');
+// Initialize currentTab from route query, default to 'orders' if not specified
+const currentTab = ref(route.query.tab || 'orders');
 
 // Tab titles mapping
 const tabTitles = {
@@ -74,9 +79,6 @@ const tabTitles = {
 const currentTabTitle = computed(() => {
   return tabTitles[currentTab.value] || 'Automated TikTok comments';
 });
-
-// Get route
-const route = useRoute();
 
 // Polling management
 const pollingIntervals = ref({});
@@ -395,14 +397,15 @@ const deleteCommentGroup = async () => {
 // Watch for route query changes
 watch(() => route.query.tab, (newTab) => {
   const validTabs = ['orders', 'credits'];
-  // Add logs tab if user is admin
-  if (user.value?.isAdmin) {
+  // Add logs tab if user is admin and not a virtual assistant
+  if (user.value?.isAdmin && !user.value?.isVirtualAssistant) {
     validTabs.push('logs');
   }
   if (newTab && validTabs.includes(newTab)) {
     currentTab.value = newTab;
   }
 });
+
 
 // Lifecycle hooks
 onMounted(() => {
@@ -413,8 +416,8 @@ onMounted(() => {
   
   // Set initial tab from query parameter
   const validTabs = ['orders', 'credits'];
-  // Add logs tab if user is admin
-  if (user.value?.isAdmin) {
+  // Add logs tab if user is admin and not a virtual assistant
+  if (user.value?.isAdmin && !user.value?.isVirtualAssistant) {
     validTabs.push('logs');
   }
   if (route.query.tab && validTabs.includes(route.query.tab)) {
@@ -563,8 +566,8 @@ onUnmounted(() => {
             <CommentBotCredits />
           </div>
           
-          <!-- Logs Tab (Admin Only) -->
-          <div v-if="currentTab === 'logs' && user?.isAdmin">
+          <!-- Logs Tab (Admin Only, not for Virtual Assistants) -->
+          <div v-if="currentTab === 'logs' && user?.isAdmin && !user?.isVirtualAssistant">
             <CommentBotLogs />
           </div>
         </v-col>

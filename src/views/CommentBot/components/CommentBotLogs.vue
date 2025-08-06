@@ -140,7 +140,14 @@
 
     <!-- Logs Table -->
     <v-card>
+      <v-card-text v-if="!loading && logs.length === 0" class="text-center py-8">
+        <v-icon size="64" color="grey-lighten-1">mdi-file-document-outline</v-icon>
+        <p class="text-h6 mt-4">No orders found</p>
+        <p class="text-subtitle-1 text-grey-darken-1">Orders will appear here once they are created</p>
+      </v-card-text>
+      
       <v-data-table
+        v-if="loading || logs.length > 0"
         :headers="headers"
         :items="logs"
         :loading="loading"
@@ -316,7 +323,10 @@ const loadLogs = async () => {
       params.endDate = filters.value.endDate;
     }
     
+    console.log('Fetching logs with params:', params);
     const response = await commentBotApi.getLogs(params);
+    console.log('Logs response:', response);
+    
     logs.value = response.logs || [];
     totalLogs.value = response.pagination?.total || 0;
     
@@ -324,8 +334,14 @@ const loadLogs = async () => {
     if (response.stats) {
       stats.value = response.stats;
     }
+    
+    console.log('Logs loaded:', logs.value.length, 'total:', totalLogs.value);
+    console.log('Stats:', stats.value);
   } catch (error) {
     console.error('Error loading comment bot logs:', error);
+    console.error('Full error:', error.response || error);
+    // Show error to user
+    alert(`Error loading logs: ${error.message || 'Unknown error'}`);
   } finally {
     loading.value = false;
   }
@@ -363,7 +379,7 @@ const exportLogs = () => {
     params.append('endDate', filters.value.endDate);
   }
   
-  window.open(`/api/comment-bot/logs/export?${params}`, '_blank');
+  window.open(`/api/commentbot/logs/export?${params}`, '_blank');
 };
 
 const viewLogDetail = (log) => {

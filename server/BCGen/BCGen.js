@@ -940,8 +940,9 @@ export default class BCGen {
     }
 
     if (path === '/api/bcgen/refund-requests' && request.method === 'GET') {
-      // Check if user is admin
-      if (!userEmail || !isAdminUser(userEmail)) {
+      // Check if user is admin and not a virtual assistant
+      const isVirtualAssistant = session.user?.isVirtualAssistant;
+      if (!userEmail || !isAdminUser(userEmail) || isVirtualAssistant) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' }
@@ -963,8 +964,9 @@ export default class BCGen {
     }
 
     if (path === '/api/bcgen/process-refund' && request.method === 'POST') {
-      // Check if user is admin
-      if (!userEmail || !isAdminUser(userEmail)) {
+      // Check if user is admin and not a virtual assistant
+      const isVirtualAssistant = session.user?.isVirtualAssistant;
+      if (!userEmail || !isAdminUser(userEmail) || isVirtualAssistant) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' }

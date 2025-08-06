@@ -17,7 +17,7 @@ const refundsViewRef = ref(null);
 // State management
 const currentTab = ref('orders');
 const route = useRoute();
-const { user } = useAuth();
+const { user, checkAccess } = useAuth();
 
 // Tab titles mapping
 const tabTitles = {
@@ -88,17 +88,33 @@ const handleRefundRequested = () => {
 
 // Watch for route query changes
 watch(() => route.query.tab, (newTab) => {
-  if (newTab && ['orders', 'my-orders', 'refunds', 'credits', 'bcgen-refunds'].includes(newTab)) {
+  const allowedTabs = ['orders', 'my-orders', 'refunds', 'credits'];
+  // Add bcgen-refunds only for admins who are not virtual assistants
+  if (user.value?.isAdmin && !user.value?.isVirtualAssistant) {
+    allowedTabs.push('bcgen-refunds');
+  }
+  if (newTab && allowedTabs.includes(newTab)) {
     currentTab.value = newTab;
   }
 });
 
 // Lifecycle hooks
-onMounted(() => {
+onMounted(async () => {
+  // Ensure user data is loaded first
+  await checkAccess();
+  
+  // Then fetch credits
   fetchCredits();
   
   // Set initial tab from query parameter
-  if (route.query.tab && ['orders', 'my-orders', 'refunds', 'credits', 'bcgen-refunds'].includes(route.query.tab)) {
+  const allowedTabs = ['orders', 'my-orders', 'refunds', 'credits'];
+  // Add bcgen-refunds only for admins who are not virtual assistants
+  if (user.value?.isAdmin && !user.value?.isVirtualAssistant) {
+    allowedTabs.push('bcgen-refunds');
+  }
+  console.log('[BCGen] User check - isAdmin:', user.value?.isAdmin, 'isVirtualAssistant:', user.value?.isVirtualAssistant);
+  
+  if (route.query.tab && allowedTabs.includes(route.query.tab)) {
     currentTab.value = route.query.tab;
   } else if (route.query.showCredits === 'true') {
     currentTab.value = 'credits';
@@ -159,8 +175,8 @@ onMounted(() => {
             <BCGenCredits />
           </div>
 
-          <!-- BCGen Refunds Tab (Admin Only) -->
-          <div v-if="currentTab === 'bcgen-refunds' && user?.isAdmin">
+          <!-- BCGen Refunds Tab (Admin Only, not for Virtual Assistants) -->
+          <div v-if="currentTab === 'bcgen-refunds' && user?.isAdmin && !user?.isVirtualAssistant">
             <BCGenRefunds />
           </div>
         </v-col>

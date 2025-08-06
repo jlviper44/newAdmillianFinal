@@ -280,6 +280,14 @@ export async function handleMetricsRequest(request, env, path, session = null) {
       headers: CORS_HEADERS 
     });
   }
+  
+  // Block virtual assistants from accessing metrics
+  if (session?.user?.isVirtualAssistant) {
+    return new Response(JSON.stringify({ error: 'Virtual assistants cannot access metrics' }), {
+      status: 403,
+      headers: CORS_HEADERS
+    });
+  }
 
   try {
     // Initialize tables on first request

@@ -29,8 +29,8 @@
       <v-row>
         <!-- Content Area -->
         <v-col cols="12">
-          <!-- Metrics Tab -->
-          <div v-if="selectedTab === 'metrics'">
+          <!-- Metrics Tab (Hidden from Virtual Assistants) -->
+          <div v-if="selectedTab === 'metrics' && !user?.isVirtualAssistant">
             <MetricsView />
           </div>
           
@@ -67,6 +67,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 import MetricsView from './components/Metrics/MetricsView.vue';
 import SparksView from './components/Sparks/SparksView.vue';
@@ -76,6 +77,7 @@ import CampaignsView from './components/Campaigns/CampaignsView.vue';
 import LogsView from './components/Logs/LogsView.vue';
 
 const route = useRoute();
+const { user, checkAccess } = useAuth();
 const selectedTab = ref('metrics');
 
 // Tab titles mapping
@@ -96,14 +98,32 @@ const currentTabTitle = computed(() => {
 // Watch for route query changes
 watch(() => route.query.tab, (newTab) => {
   if (newTab) {
-    selectedTab.value = newTab;
+    // Prevent virtual assistants from accessing metrics
+    if (newTab === 'metrics' && user.value?.isVirtualAssistant) {
+      selectedTab.value = 'campaigns';
+    } else {
+      selectedTab.value = newTab;
+    }
   }
 }, { immediate: true });
 
 // Set initial tab from query parameter
-onMounted(() => {
+onMounted(async () => {
+  // Ensure user data is loaded
+  await checkAccess();
+  
   if (route.query.tab) {
-    selectedTab.value = route.query.tab;
+    // Prevent virtual assistants from accessing metrics
+    if (route.query.tab === 'metrics' && user.value?.isVirtualAssistant) {
+      selectedTab.value = 'campaigns';
+    } else {
+      selectedTab.value = route.query.tab;
+    }
+  } else {
+    // Default to campaigns for virtual assistants
+    if (user.value?.isVirtualAssistant) {
+      selectedTab.value = 'campaigns';
+    }
   }
 });
 </script>
