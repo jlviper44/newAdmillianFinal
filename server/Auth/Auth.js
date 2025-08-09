@@ -99,6 +99,61 @@ function generateSessionId() {
   return `sess_${generateRandomString(32)}`;
 }
 
+/**
+ * Fetch all memberships with pagination support
+ * @param {string} accessToken - The user's access token
+ * @param {number} perPage - Number of items per page (default 10, max 123 based on API docs)
+ * @returns {Promise<Array>} - All memberships combined from all pages
+ */
+async function fetchAllMemberships(accessToken, perPage = 100) {
+  let allMemberships = [];
+  let currentPage = 1;
+  let hasMorePages = true;
+  
+  while (hasMorePages) {
+    try {
+      const url = `https://api.whop.com/api/v5/me/memberships?page=${currentPage}&per=${perPage}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (!response.ok) {
+        console.error(`Failed to fetch memberships page ${currentPage}:`, response.status);
+        break;
+      }
+      
+      const data = await response.json();
+      
+      if (data.data && Array.isArray(data.data)) {
+        allMemberships = allMemberships.concat(data.data);
+      }
+      
+      // Check pagination info
+      if (data.pagination) {
+        const { current_page, total_pages, next_page } = data.pagination;
+        hasMorePages = current_page < total_pages && next_page !== null;
+        currentPage = next_page || currentPage + 1;
+      } else {
+        // If no pagination info, assume no more pages
+        hasMorePages = false;
+      }
+      
+      // Safety check to prevent infinite loops
+      if (currentPage > 100) {
+        console.warn('Reached maximum page limit (100), stopping pagination');
+        break;
+      }
+    } catch (error) {
+      console.error(`Error fetching memberships page ${currentPage}:`, error);
+      break;
+    }
+  }
+  
+  return allMemberships;
+}
+
 // Get session from database
 async function getSession(db, sessionId) {
   const query = 'SELECT * FROM sessions WHERE session_id = ? AND expires_at > CURRENT_TIMESTAMP';
@@ -764,14 +819,9 @@ async function handleCheckAccess(request, env) {
   // For admin users, we still need to fetch real virtual assistant credits
   if (isAdmin) {
     try {
-      // Fetch user memberships to get real virtual assistant credits
-      const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-      
-      const memberships = membershipResponse.ok ? await membershipResponse.json() : { data: [] };
+      // Fetch all user memberships with pagination support
+      const allMemberships = await fetchAllMemberships(session.access_token);
+      const memberships = { data: allMemberships };
       
       // Get virtual assistant credits only
       const virtualAssistantCredits = memberships.data?.filter(m => 
@@ -898,12 +948,9 @@ async function handleCheckAccess(request, env) {
   }
   
   try {
-    // Fetch user memberships
-    const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`
-      }
-    });
+    // Fetch all user memberships with pagination support
+    const allMemberships = await fetchAllMemberships(session.access_token);
+    const membershipResponse = { ok: allMemberships.length >= 0 }; // Always considered ok if we got a response
     
     if (!membershipResponse.ok) {
       // If this is a virtual assistant request and the API call failed, grant access anyway
@@ -953,7 +1000,7 @@ async function handleCheckAccess(request, env) {
       });
     }
     
-    const memberships = await membershipResponse.json();
+    const memberships = { data: allMemberships };
     
     console.log('[VA] Fetched memberships for user:', session.user?.id);
     console.log('[VA] Total memberships:', memberships.data?.length || 0);
@@ -1357,21 +1404,17 @@ async function handleUseCredits(request, env) {
     : env.WHOP_VIRTUAL_ASSISTANT_PRODUCT_ID;
   
   try {
-    // Get user's memberships
-    const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`
-      }
-    });
+    // Get all user's memberships with pagination support
+    const allMemberships = await fetchAllMemberships(session.access_token);
     
-    if (!membershipResponse.ok) {
+    if (!allMemberships) {
       return new Response(JSON.stringify({ error: 'Failed to fetch memberships' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
     }
     
-    const memberships = await membershipResponse.json();
+    const memberships = { data: allMemberships };
     
     // Filter memberships with credits for the specific product type
     const creditMemberships = memberships.data?.filter(m => 
@@ -2069,14 +2112,10 @@ async function handleGetVirtualAssistantData(request, env) {
       });
     }
     
-    // Fetch user memberships using their access token
-    const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
-      headers: {
-        'Authorization': `Bearer ${targetSession.access_token}`
-      }
-    });
+    // Fetch all user memberships with pagination support
+    const allMemberships = await fetchAllMemberships(targetSession.access_token);
     
-    if (!membershipResponse.ok) {
+    if (!allMemberships) {
       return new Response(JSON.stringify({ 
         success: true,
         user: targetUser,
@@ -2096,7 +2135,7 @@ async function handleGetVirtualAssistantData(request, env) {
       });
     }
     
-    const memberships = await membershipResponse.json();
+    const memberships = { data: allMemberships };
     
     // Helper function to calculate days remaining
     const calculateDaysRemaining = (endTimestamp) => {
