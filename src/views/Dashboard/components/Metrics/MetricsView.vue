@@ -29,10 +29,17 @@ const snackbarColor = ref('success')
 const showAddApiDialog = ref(false)
 const newApi = ref({
   name: '',
+  api_type: 'affluent',
   api_key: '',
   affiliate_id: ''
 })
 const addingApi = ref(false)
+
+// API type options
+const apiTypeOptions = [
+  { title: 'Affluent', value: 'affluent' },
+  { title: 'Prescott', value: 'prescott' }
+]
 
 // Dialog state for deleting API
 const showDeleteApiDialog = ref(false)
@@ -78,9 +85,18 @@ const fetchAffluentAPIs = async () => {
       const affiliateIdKey = keys.find(k => k.toLowerCase() === 'affiliate_id' || k.toLowerCase() === 'affiliateid');
       
       
+      const apiTypeKey = keys.find(k => k.toLowerCase() === 'api_type' || k.toLowerCase() === 'apitype');
+      
+      // Convert old 'eflow' values to 'prescott'
+      let apiType = apiTypeKey ? api[apiTypeKey] : 'affluent';
+      if (apiType === 'eflow') {
+        apiType = 'prescott';
+      }
+      
       return {
         id: idKey ? api[idKey] : null,
         name: nameKey ? api[nameKey] : 'Unknown API',
+        api_type: apiType,
         api_key: apiKeyKey ? api[apiKeyKey].trim() : null,
         affiliate_id: affiliateIdKey ? api[affiliateIdKey] : null
       };
@@ -124,6 +140,24 @@ const showNotification = (text, color = 'success') => {
   showSnackbar.value = true
 }
 
+// Helper function to get API type color
+const getApiTypeColor = (apiType) => {
+  switch(apiType) {
+    case 'affluent': return 'blue'
+    case 'prescott': return 'green'
+    default: return 'grey'
+  }
+}
+
+// Helper function to get API type label
+const getApiTypeLabel = (apiType) => {
+  switch(apiType) {
+    case 'affluent': return 'Affluent'
+    case 'prescott': return 'Prescott'
+    default: return apiType
+  }
+}
+
 // Handle API change
 const onAPIChange = (api) => {
   if (api) {
@@ -134,19 +168,33 @@ const onAPIChange = (api) => {
 // Add new Affluent API
 const addNewApi = async () => {
   
-  if (!newApi.value.name || !newApi.value.api_key || !newApi.value.affiliate_id) {
-    showNotification('Please fill in all fields', 'error')
+  // Basic validation
+  if (!newApi.value.name || !newApi.value.api_key) {
+    showNotification('Please fill in name and API key', 'error')
+    return
+  }
+  
+  // Affiliate ID is required for non-Prescott APIs
+  if (newApi.value.api_type !== 'prescott' && !newApi.value.affiliate_id) {
+    showNotification('Affiliate ID is required for this API type', 'error')
     return
   }
 
   try {
     addingApi.value = true
     
-    const response = await metricsApi.addFluentApi({
+    const apiData = {
       name: newApi.value.name,
-      api_key: newApi.value.api_key.trim(),
-      affiliate_id: newApi.value.affiliate_id.trim()
-    })
+      api_type: newApi.value.api_type,
+      api_key: newApi.value.api_key.trim()
+    }
+    
+    // Only add affiliate_id if it exists (not needed for Prescott)
+    if (newApi.value.affiliate_id) {
+      apiData.affiliate_id = newApi.value.affiliate_id.trim()
+    }
+    
+    const response = await metricsApi.addFluentApi(apiData)
     
     
     if (response && response.success) {
@@ -156,6 +204,7 @@ const addNewApi = async () => {
       // Reset form
       newApi.value = {
         name: '',
+        api_type: 'affluent',
         api_key: '',
         affiliate_id: ''
       }
@@ -187,6 +236,7 @@ const openAddApiDialog = () => {
   
   newApi.value = {
     name: '',
+    api_type: 'affluent',
     api_key: '',
     affiliate_id: ''
   }
@@ -238,6 +288,7 @@ const testAPIConnection = async () => {
     showNotification('Testing API connection...', 'info')
     
     const response = await metricsApi.testAffiliate({
+      api_type: selectedAPI.value.api_type || 'affluent',
       api_key: selectedAPI.value.api_key,
       affiliate_id: selectedAPI.value.affiliate_id,
       start_date: '2024-01-01 00:00:00',
@@ -355,9 +406,7 @@ onMounted(() => {
           <v-select
             v-model="selectedAPI"
             :items="affluentAPIs"
-            item-title="name"
-            item-value="name"
-            label="Select Affluent API"
+            label="Select API"
             variant="outlined"
             density="comfortable"
             class="api-selector flex-grow-1"
@@ -366,16 +415,22 @@ onMounted(() => {
             prepend-inner-icon="mdi-api"
             return-object
             @update:model-value="onAPIChange"
-            hide-details
           >
-            <template v-slot:item="{ item, props }">
-              <v-list-item v-bind="props" :title="item.raw.name" rounded="lg"></v-list-item>
+            <template v-slot:item="{ props, item }">
+              <v-list-item v-bind="props">
+                <template v-slot:title>
+                  {{ item.raw.name }}
+                  <v-chip size="x-small" class="ml-2" :color="getApiTypeColor(item.raw.api_type)">
+                    {{ getApiTypeLabel(item.raw.api_type) }}
+                  </v-chip>
+                </template>
+              </v-list-item>
             </template>
             <template v-slot:selection="{ item }">
-              <span>{{ item.raw.name }}</span>
-            </template>
-            <template v-slot:append>
-              <v-icon v-if="selectedAPI" icon="mdi-check-circle" color="success" class="ml-2"></v-icon>
+              {{ item.raw.name }}
+              <v-chip size="x-small" class="ml-2" :color="getApiTypeColor(item.raw.api_type)">
+                {{ getApiTypeLabel(item.raw.api_type) }}
+              </v-chip>
             </template>
           </v-select>
         </div>
@@ -419,13 +474,13 @@ onMounted(() => {
       <v-window v-model="activeTab" class="tab-content">
         <v-window-item value="performance">
           <div class="pa-4">
-            <PerformanceTab :api-key="selectedAPI?.api_key" :affiliate-id="selectedAPI?.affiliate_id" />
+            <PerformanceTab :api-key="selectedAPI?.api_key" :affiliate-id="selectedAPI?.affiliate_id" :api-type="selectedAPI?.api_type" />
           </div>
         </v-window-item>
         
         <v-window-item value="subaffiliatesummary">
           <div class="pa-4">
-            <SubaffiliateSummaryTab :api-key="selectedAPI?.api_key" :affiliate-id="selectedAPI?.affiliate_id" />
+            <SubaffiliateSummaryTab :api-key="selectedAPI?.api_key" :affiliate-id="selectedAPI?.affiliate_id" :api-type="selectedAPI?.api_type" />
           </div>
         </v-window-item>
       </v-window>
@@ -457,7 +512,7 @@ onMounted(() => {
       <v-card>
         <v-card-title class="d-flex align-center">
           <v-icon icon="mdi-api" color="primary" class="mr-2"></v-icon>
-          <span>Add Affluent API</span>
+          <span>Add API Configuration</span>
         </v-card-title>
         
         <v-divider></v-divider>
@@ -475,6 +530,16 @@ onMounted(() => {
               class="mb-3"
             ></v-text-field>
             
+            <v-select
+              v-model="newApi.api_type"
+              label="API Type"
+              :items="apiTypeOptions"
+              prepend-icon="mdi-swap-horizontal"
+              variant="outlined"
+              density="comfortable"
+              class="mb-3"
+            ></v-select>
+            
             <v-text-field
               v-model="newApi.api_key"
               label="API Key"
@@ -488,6 +553,7 @@ onMounted(() => {
             ></v-text-field>
             
             <v-text-field
+              v-if="newApi.api_type !== 'prescott'"
               v-model="newApi.affiliate_id"
               label="Affiliate ID"
               placeholder="Your Affiliate ID"
@@ -498,6 +564,17 @@ onMounted(() => {
             ></v-text-field>
             
             <v-alert
+              v-if="newApi.api_type === 'prescott'"
+              type="success"
+              variant="tonal"
+              density="compact"
+              class="mt-3"
+            >
+              <small>Prescott only requires an API key (x-eflow-api-key). The affiliate information is determined by the API key itself.</small>
+            </v-alert>
+            
+            <v-alert
+              v-else
               type="info"
               variant="tonal"
               density="compact"
@@ -524,7 +601,7 @@ onMounted(() => {
             variant="flat"
             @click="addNewApi"
             :loading="addingApi"
-            :disabled="!newApi.name || !newApi.api_key || !newApi.affiliate_id"
+            :disabled="!newApi.name || !newApi.api_key || (newApi.api_type !== 'prescott' && !newApi.affiliate_id)"
           >
             Add API
           </v-btn>

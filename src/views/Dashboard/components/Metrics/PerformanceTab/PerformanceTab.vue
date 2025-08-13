@@ -24,6 +24,10 @@ const props = defineProps({
   affiliateId: {
     type: String,
     default: null
+  },
+  apiType: {
+    type: String,
+    default: 'affluent'
   }
 })
 
@@ -235,6 +239,7 @@ const conversionsFields = [
 // Function to prepare common request parameters
 const getRequestParams = (fields = []) => {
   const params = {
+    api_type: props.apiType,
     api_key: props.apiKey,
     affiliate_id: props.affiliateId,
     start_date: formatDateForApi(startDate.value, false),
@@ -247,7 +252,7 @@ const getRequestParams = (fields = []) => {
 
 // Function to fetch clicks data
 const fetchClicksData = async () => {
-  if (!startDate.value || !endDate.value || !props.apiKey || !props.affiliateId) {
+  if (!startDate.value || !endDate.value || !props.apiKey || (props.apiType !== 'prescott' && !props.affiliateId)) {
     return Promise.resolve()
   }
   
@@ -286,7 +291,7 @@ const fetchClicksData = async () => {
 
 // Function to fetch conversions data
 const fetchConversionsData = async () => {
-  if (!startDate.value || !endDate.value || !props.apiKey || !props.affiliateId) {
+  if (!startDate.value || !endDate.value || !props.apiKey || (props.apiType !== 'prescott' && !props.affiliateId)) {
     return Promise.resolve()
   }
   
@@ -331,7 +336,7 @@ const fetchAllData = async () => {
     return
   }
   
-  if (!props.apiKey || !props.affiliateId) {
+  if (!props.apiKey || (props.apiType !== 'prescott' && !props.affiliateId)) {
     // Set error states to show API credentials missing
     clicksError.value = "API credentials are missing"
     conversionsError.value = "API credentials are missing"
@@ -422,7 +427,7 @@ watch(
 
 // Initialize with current dates and fetch data if API credentials are available
 onMounted(() => {
-  if (props.apiKey && props.affiliateId) {
+  if (props.apiKey && (props.apiType === 'prescott' || props.affiliateId)) {
     fetchAllData()
   }
 })
@@ -466,7 +471,7 @@ onMounted(() => {
               <v-btn 
                 color="primary" 
                 :loading="loadingClicks || loadingConversions"
-                :disabled="!startDate || !endDate || !apiKey || !affiliateId"
+                :disabled="!startDate || !endDate || !apiKey || (props.apiType !== 'prescott' && !affiliateId)"
                 @click="fetchAllData"
                 variant="elevated"
                 prepend-icon="mdi-refresh"

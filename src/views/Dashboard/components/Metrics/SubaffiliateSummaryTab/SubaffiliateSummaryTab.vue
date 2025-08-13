@@ -24,6 +24,10 @@ const props = defineProps({
   affiliateId: {
     type: String,
     default: null
+  },
+  apiType: {
+    type: String,
+    default: 'affluent'
   }
 })
 
@@ -148,7 +152,7 @@ onMounted(() => {
   // Fetch data automatically on mount with a slight delay
   // to ensure all components are properly mounted
   setTimeout(() => {
-    if (props.apiKey && props.affiliateId) {
+    if (props.apiKey && (props.apiType === 'prescott' || props.affiliateId)) {
       applyDateFilter()
     }
   }, 100)
@@ -314,6 +318,7 @@ const getRequestParams = (startDate, endDate) => {
   ]
   
   const params = {
+    api_type: props.apiType,
     api_key: props.apiKey,
     affiliate_id: props.affiliateId,
     start_date: formatDateForApi(startDate, false),
@@ -375,7 +380,7 @@ const fetchDayData = async (date) => {
 const applyDateFilter = async () => {
   if (!startDateLocal.value || !endDateLocal.value) return
   
-  if (!props.apiKey || !props.affiliateId) {
+  if (!props.apiKey || (props.apiType !== 'prescott' && !props.affiliateId)) {
     localErrorState.value = "API credentials are missing"
     return
   }
@@ -485,7 +490,7 @@ const applyDateFilter = async () => {
               <v-btn 
                 color="primary" 
                 :loading="loadingSubaffiliateSummary"
-                :disabled="!startDateLocal || !endDateLocal || !apiKey || !affiliateId"
+                :disabled="!startDateLocal || !endDateLocal || !apiKey || (props.apiType !== 'prescott' && !affiliateId)"
                 @click="applyDateFilter"
                 variant="elevated"
                 prepend-icon="mdi-refresh"
