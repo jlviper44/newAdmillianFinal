@@ -235,7 +235,7 @@
                   <span class="text-body-2 ml-1">/month</span>
                 </div>
                 <v-divider class="mx-auto" style="max-width: 60px;"></v-divider>
-                <p class="text-body-2 font-weight-bold mt-1">Plus $2 per credit</p>
+                <p class="text-body-2 font-weight-bold mt-1">$3 per credit</p>
                 <p class="text-caption text-grey">Pay as you go for credits</p>
               </div>
 
