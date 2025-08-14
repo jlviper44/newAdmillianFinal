@@ -1063,6 +1063,14 @@ async function createOrder(request, env, userId, teamId) {
       return jsonResponse({ error: 'TikTok post ID is required' }, 400);
     }
     
+    // Validate TikTok post ID format - must be exactly 19 digits
+    const postIdStr = String(orderData.post_id).trim();
+    if (!/^\d{19}$/.test(postIdStr)) {
+      return jsonResponse({ 
+        error: 'Invalid TikTok post ID format. Must be exactly 19 digits (e.g., 7532583896517463327)' 
+      }, 400);
+    }
+    
     // Ensure at least one interaction type is specified
     if (
       (!orderData.like_count || orderData.like_count <= 0) && 
@@ -1074,9 +1082,9 @@ async function createOrder(request, env, userId, teamId) {
       }, 400);
     }
     
-    // Prepare API data
+    // Prepare API data (use validated post ID)
     let apiData = {
-      post_id: orderData.post_id,
+      post_id: postIdStr,
       like_count: orderData.like_count || 0,
       save_count: orderData.save_count || 0
     };

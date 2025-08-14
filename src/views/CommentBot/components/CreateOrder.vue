@@ -69,6 +69,22 @@ const postIdError = computed(() => {
     .map(id => id.trim())
     .filter(id => id.length > 0);
   
+  // Check each post ID for valid format (19 digits)
+  for (const postId of postIds) {
+    // Remove any non-digit characters (like URLs)
+    const cleanId = postId.replace(/\D/g, '');
+    
+    // Check if it's exactly 19 digits
+    if (cleanId.length !== 19) {
+      return `Invalid TikTok post ID: "${postId}". Must be exactly 19 digits (e.g., 7532583896517463327)`;
+    }
+    
+    // Check if the original contains only digits (no URLs)
+    if (postId !== cleanId) {
+      return `Invalid format: "${postId}". Please enter only the 19-digit post ID, not a URL`;
+    }
+  }
+  
   // No limit for admins
   if (!props.isAdmin && postIds.length > 10) {
     return `Maximum 10 post IDs allowed. You have entered ${postIds.length} post IDs.`;
@@ -82,7 +98,8 @@ const postIdCount = computed(() => {
   const postIds = newOrder.value.post_ids
     .split(/[\n,]+/)
     .map(id => id.trim())
-    .filter(id => id.length > 0);
+    .filter(id => id.length > 0)
+    .filter(id => /^\d{19}$/.test(id)); // Only count valid 19-digit IDs
   
   return postIds.length;
 });
@@ -118,11 +135,17 @@ const handleCancelOrder = () => {
 const createOrder = async () => {
   if (isCreatingOrders.value) return;
   
-  // Parse multiple post IDs from textarea
+  // Parse multiple post IDs from textarea and validate format
   const postIds = newOrder.value.post_ids
     .split(/[\n,]+/)
     .map(id => id.trim())
-    .filter(id => id.length > 0);
+    .filter(id => id.length > 0)
+    .map(id => {
+      // Extract only digits in case user accidentally included non-digits
+      const cleanId = id.replace(/\D/g, '');
+      return cleanId;
+    })
+    .filter(id => id.length === 19); // Only keep valid 19-digit IDs
   
   // Limit to 10 post IDs for non-admins
   const limitedPostIds = props.isAdmin ? postIds : postIds.slice(0, 10);
@@ -268,14 +291,14 @@ const createOrder = async () => {
             <v-textarea
               v-model="newOrder.post_ids"
               :label="`TikTok Post IDs (${postIdCount}${!isAdmin ? '/10' : ''})`"
-              placeholder="Enter TikTok post IDs (one per line or comma-separated)"
+              placeholder="Enter 19-digit TikTok post IDs (e.g., 7532583896517463327)"
               variant="outlined"
               :disabled="isCreatingOrders"
               required
               :error-messages="postIdError || error"
               rows="3"
               auto-grow
-              :hint="isAdmin ? 'You can enter multiple post IDs separated by commas or new lines (no limit for admins)' : 'You can enter multiple post IDs separated by commas or new lines (maximum 10 post IDs)'"
+              :hint="isAdmin ? 'Enter 19-digit post IDs only (not URLs). Separated by commas or new lines (no limit for admins)' : 'Enter 19-digit post IDs only (not URLs). Separated by commas or new lines (maximum 10 post IDs)'"
               persistent-hint
             ></v-textarea>
           </v-col>
