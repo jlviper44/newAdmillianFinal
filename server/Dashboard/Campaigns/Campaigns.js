@@ -1759,6 +1759,15 @@ function generateAffiliateLinksScript(affiliateLinks) {
   
   // Helper function to replace all affiliate link placeholders
   function replaceAffiliateLinkPlaceholders(finalUrl) {
+    // Get the default link that was replaced server-side
+    const defaultLink = window.defaultAffiliateLink;
+    
+    // If the final URL is the same as default, no need to replace
+    if (defaultLink === finalUrl) {
+      console.log('Affiliate link already set to correct value:', finalUrl);
+      return;
+    }
+    
     // Replace both encoded and unencoded versions in text content
     // Also handle cases where /pages/ or other paths are incorrectly included before the placeholder
     document.body.innerHTML = document.body.innerHTML
@@ -1769,13 +1778,13 @@ function generateAffiliateLinksScript(affiliateLinks) {
     
     // Update all links
     document.querySelectorAll('a').forEach(link => {
-      // Check if href contains the placeholder (encoded or not)
       if (link.href) {
-        // Handle various incorrect formats
+        // Check if href contains the placeholder (encoded or not) OR the default link
         if (link.href.includes('/pages/{{AFFILIATE_LINK}}') || 
             link.href.includes('/pages/%7B%7BAFFILIATE_LINK%7D%7D') ||
             link.href.includes('{{AFFILIATE_LINK}}') || 
-            link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D')) {
+            link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D') ||
+            (defaultLink && link.href === defaultLink)) {
           link.href = finalUrl;
         }
       }
@@ -1801,7 +1810,8 @@ function generateAffiliateLinksScript(affiliateLinks) {
           (element.dataset.href.includes('{{AFFILIATE_LINK}}') || 
            element.dataset.href.includes('%7B%7BAFFILIATE_LINK%7D%7D') ||
            element.dataset.href.includes('/pages/{{AFFILIATE_LINK}}') ||
-           element.dataset.href.includes('/pages/%7B%7BAFFILIATE_LINK%7D%7D'))) {
+           element.dataset.href.includes('/pages/%7B%7BAFFILIATE_LINK%7D%7D') ||
+           (defaultLink && element.dataset.href === defaultLink))) {
         element.dataset.href = finalUrl;
       }
     });
@@ -2089,8 +2099,20 @@ function generateHideShopifyElementsCSS() {
  * Build offer page content with template and scripts
  */
 function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumber }) {
+  // Get a default affiliate link (prefer US, then first available)
+  const affiliateLinks = campaign.affiliateLinks || {};
+  const defaultAffiliateLink = affiliateLinks.US || 
+                               affiliateLinks.US_android || 
+                               affiliateLinks.US_ios || 
+                               Object.values(affiliateLinks)[0] || 
+                               '#';
+  
+  // Replace {{AFFILIATE_LINK}} placeholder in template with default link
+  // This prevents the browser from URL-encoding the placeholder
+  const processedTemplate = templateHTML.replace(/{{AFFILIATE_LINK}}/g, defaultAffiliateLink);
+  
   // Generate affiliate links script
-  const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
+  const affiliateLinksScript = generateAffiliateLinksScript(affiliateLinks);
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
   return `
@@ -2098,13 +2120,15 @@ ${hideShopifyElementsCSS}
 
 <!-- Offer Content Container -->
 <div id="offer-content">
-${templateHTML}
+${processedTemplate}
 </div>
 
 <!-- Affiliate Link Replacement Script -->
 <script>
 // Store affiliate links globally for the nuclear option
-window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
+window.affiliateLinks = ${JSON.stringify(affiliateLinks)};
+// Store default link for reference
+window.defaultAffiliateLink = "${defaultAffiliateLink}";
 </script>
 ${affiliateLinksScript}
 `;

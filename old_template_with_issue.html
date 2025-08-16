@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cash Rewards</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            background: #86efac;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            color: #2f3033;
+            padding-top: 20px;
+        }
+
+        .page-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .reward-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            padding: 1rem;
+            position: relative;
+            z-index: 2;
+            backdrop-filter: blur(10px);
+            border: 1px solid #22c55e33;
+            max-width: 450px;
+            width: 100%;
+            box-shadow: 0 10px 30px #22c55e1a, 0 1px 8px #22c55e33;
+            animation: cardFloat 3s ease-in-out infinite;
+        }
+
+        @keyframes cardFloat {
+            0%, 100% { transform: translatey(0px); }
+            50% { transform: translatey(-10px); }
+        }
+
+        .app-logo-container {
+            text-align: center;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #22c55e1a;
+            position: relative;
+        }
+
+        .app-logo {
+            width: 100px;
+            height: auto;
+            filter: drop-shadow(0 4px 12px #22c55e4d);
+            animation: logoShine 3s infinite;
+            display: block;
+            margin: 0 auto;
+            border-radius: 8px;
+        }
+
+        @keyframes logoShine {
+            0% { filter: drop-shadow(0 4px 12px #22c55e4d); }
+            50% { filter: drop-shadow(0 8px 20px #22c55e80); }
+            100% { filter: drop-shadow(0 4px 12px #22c55e4d); }
+        }
+
+        .cash-text {
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-top: 0.5rem;
+            color: #22c55e;
+            text-shadow: 0 4px 20px #22c55e4d;
+        }
+
+        .amount {
+            font-size: 2.2rem;
+            font-weight: 700;
+            text-align: center;
+            color: #22c55e;
+            margin: 0rem 0 0rem 0;
+            text-shadow: 0 4px 20px #22c55e4d;
+            animation: amountPulse 2s infinite;
+        }
+
+        @keyframes amountPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .amount-subtext {
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #22c55e;
+            text-shadow: 0 2px 10px #22c55e4d;
+        }
+
+        .instructions-container {
+            margin: 1rem auto;
+            padding: 1rem;
+            background: #22c55e0d;
+            border-radius: 16px;
+            border: 1px solid #22c55e1a;
+        }
+
+        .instruction-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 8px 0;
+            font-size: 0.95rem;
+            color: #2f3033;
+            font-weight: 600;
+        }
+
+        .number {
+            background: #22c55e;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0, 214, 48, 0.2);
+        }
+
+        .verd-logo {
+            width: 150px;
+            height: auto;
+            display: block;
+            margin: 0.5rem auto 0;
+        }
+
+        .instruction-item span {
+            text-transform: capitalize;
+        }
+
+        .underline {
+            text-decoration: underline;
+            text-decoration-color: #22c55e;
+            text-decoration-thickness: 2px;
+            text-underline-offset: 2px;
+        }
+
+        .claim-button {
+            background: #22c55e;
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 20px;
+            font-weight: 800;
+            font-size: 1.1rem;
+            width: 100%;
+            max-width: 400px;
+            cursor: pointer;
+            margin: 1rem auto;
+            display: block;
+            box-shadow: 0 10px 30px #22c55e4d, 0 5px 15px #22c55e33;
+            transition: all 0.3s ease;
+        }
+
+        .claim-button:hover {
+            transform: translatey(-5px);
+            box-shadow: 0 15px 40px #22c55e66, 0 8px 20px #22c55e4d;
+        }
+
+        .trust-badge {
+            width: 100% !important;
+            height: auto !important;
+            margin-top: 0.5rem;
+            border-radius: 12px;
+            opacity: 0.9;
+            transition: opacity 0.3s ease;
+        }
+
+        .trust-badge:hover {
+            opacity: 1;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px #22c55e33;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #2f3033;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            border: 1px solid #22c55e33;
+            transition: transform 0.3s ease;
+            max-width: 320px;
+            width: calc(100% - 2rem);
+        }
+
+        .notification.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .notification-icon {
+            width: 24px;
+            height: 24px;
+            background: #22c55e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .notification-text {
+            color: #666;
+            font-size: 13px;
+        }
+
+        #nameAlert {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translatex(-50%) translatey(0);
+            background: rgba(255, 255, 255, 0.95);
+            color: #2f3033;
+            padding: 12px 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px #22c55e33;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 1000;
+            width: calc(100% - 2rem);
+            max-width: 320px;
+            backdrop-filter: blur(10px);
+            margin: 0 auto;
+            border: 1px solid #22c55e33;
+            animation: slideDown 0.3s ease-out;
+            display: none;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translatex(-50%) translatey(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translatex(-50%) translatey(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="particles-js" style="position:fixed;width:100%;height:100%;z-index:1"></div>
+    <div id="nameAlert">
+        <span style="font-size: 24px;">💵</span>
+        <div><span class="name">Olivia M.</span> claimed <span id="nameAlertAmount">$1,000</span>!</div>
+    </div>
+    <div class="page-container">
+        <div class="reward-card">
+            <div class="app-logo-container">
+                <img alt="Cash" width="100" height="100" class="app-logo" src="https://i.ibb.co/QGQtxtg/cash2.webp">
+                <div class="cash-text">Cash Balance</div>
+                <img alt="Verified" width="80" height="80" class="verd-logo" src="https://i.ibb.co/Q3z1s735/verd.webp">
+            </div>
+            <div id="amount" class="amount">$1,000</div>
+            <div class="amount-subtext">deposited to you</div>
+            <div class="instructions-container">
+                <div class="instruction-item">
+                    <span class="number">1</span>
+                    <span>Click the Button Below</span>
+                </div>
+                <div class="instruction-item">
+                    <span class="number">2</span>
+                    <span>Enter Your Email & Info</span>
+                </div>
+                <div class="instruction-item">
+                    <span class="number">3</span>
+                    <span class="underline">Complete Recommended Deals</span>
+                </div>
+                <div class="instruction-item">
+                    <span class="number">4</span>
+                    <span>Claim Reward & Repeat</span>
+                </div>
+            </div>
+            <div class="button-container">
+                <!-- THIS WAS THE PROBLEM: href="#" instead of href="{{AFFILIATE_LINK}}" -->
+                <a id="claim-link" href="#" target="_blank" rel="noreferrer" style="text-decoration: none;">
+                    <button id="claimButton" class="claim-button">Get Your $1,000 →</button>
+                </a>
+                <img alt="Trust Badge" class="trust-badge" src="https://i.ibb.co/x8dRqZjX/trus2.webp">
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <script>
+        // Currency detection and handling
+        class CurrencyHandler {
+            constructor() {
+                // All values are now fixed at 1000, only symbols change
+                this.currencyData = {
+                    // Main currencies
+                    US: { symbol: '$', code: 'USD', value: 1000 },
+                    GB: { symbol: '£', code: 'GBP', value: 1000 },
+                    EU: { symbol: '€', code: 'EUR', value: 1000 },
+                    CA: { symbol: 'C$', code: 'CAD', value: 1000 },
+                    AU: { symbol: 'A$', code: 'AUD', value: 1000 },
+                    NZ: { symbol: 'NZ$', code: 'NZD', value: 1000 },
+                    // Additional currencies
+                    JP: { symbol: '¥', code: 'JPY', value: 1000 },
+                    CH: { symbol: 'CHF', code: 'CHF', value: 1000 },
+                    IN: { symbol: '₹', code: 'INR', value: 1000 },
+                    BR: { symbol: 'R$', code: 'BRL', value: 1000 },
+                    ZA: { symbol: 'R', code: 'ZAR', value: 1000 },
+                    RU: { symbol: '₽', code: 'RUB', value: 1000 },
+                    CN: { symbol: '¥', code: 'CNY', value: 1000 },
+                    MX: { symbol: 'Mex$', code: 'MXN', value: 1000 },
+                    SG: { symbol: 'S$', code: 'SGD', value: 1000 },
+                    AE: { symbol: 'د.إ', code: 'AED', value: 1000 }
+                };
+                
+                this.defaultCurrency = this.currencyData.US;
+                this.detectedCurrency = this.defaultCurrency;
+                this.initialize();
+            }
+
+            async initialize() {
+                try {
+                    // Try to detect country from URL params first
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const countryParam = urlParams.get('country') || urlParams.get('region');
+                    
+                    if (countryParam && this.currencyData[countryParam.toUpperCase()]) {
+                        this.detectedCurrency = this.currencyData[countryParam.toUpperCase()];
+                        console.log(`Currency set from URL param: ${this.detectedCurrency.code}`);
+                        return;
+                    }
+                    
+                    // Try to detect using geo IP API
+                    try {
+                        const response = await fetch('https://ipapi.co/json/');
+                        if (response.ok) {
+                            const data = await response.json();
+                            const countryCode = data.country_code;
+                            
+                            if (countryCode && this.currencyData[countryCode]) {
+                                this.detectedCurrency = this.currencyData[countryCode];
+                                console.log(`Currency detected from IP: ${this.detectedCurrency.code} (${countryCode})`);
+                                return;
+                            }
+                            
+                            // If country has no specific currency entry but has a currency code
+                            if (data.currency) {
+                                // Create an entry for this currency - always with value 1000
+                                this.detectedCurrency = {
+                                    symbol: data.currency_symbol || data.currency,
+                                    code: data.currency,
+                                    value: 1000 // Fixed at 1000 for all currencies
+                                };
+                                console.log(`Using currency from IP API: ${this.detectedCurrency.code}`);
+                                return;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error detecting currency from IP', e);
+                    }
+                    
+                    // Fallback to browser locale
+                    try {
+                        const locale = navigator.language || navigator.userLanguage;
+                        const localeCountry = locale.split('-')[1];
+                        
+                        if (localeCountry && this.currencyData[localeCountry]) {
+                            this.detectedCurrency = this.currencyData[localeCountry];
+                            console.log(`Currency set from browser locale: ${this.detectedCurrency.code}`);
+                            return;
+                        }
+                        
+                        // Try to match currency based on locale
+                        if (locale.startsWith('en-GB')) {
+                            this.detectedCurrency = this.currencyData.GB;
+                        } else if (locale.startsWith('en-CA')) {
+                            this.detectedCurrency = this.currencyData.CA;
+                        } else if (locale.startsWith('en-AU')) {
+                            this.detectedCurrency = this.currencyData.AU;
+                        } else if (locale.startsWith('fr-CA')) {
+                            this.detectedCurrency = this.currencyData.CA;
+                        } else if (locale.startsWith('fr-FR') || locale.startsWith('de-DE') || locale.startsWith('es-ES') || locale.startsWith('it-IT')) {
+                            this.detectedCurrency = this.currencyData.EU;
+                        } else if (locale.startsWith('ja-JP')) {
+                            this.detectedCurrency = this.currencyData.JP;
+                        }
+                        
+                        if (this.detectedCurrency !== this.defaultCurrency) {
+                            console.log(`Currency set from browser locale pattern: ${this.detectedCurrency.code}`);
+                            return;
+                        }
+                    } catch (e) {
+                        console.error('Error detecting currency from locale', e);
+                    }
+                    
+                    // If all else fails, use USD
+                    console.log('Using default currency: USD');
+                } catch (e) {
+                    console.error('Error in currency detection', e);
+                    // Keep default USD
+                }
+            }
+            
+            getFormattedAmount() {
+                return `${this.detectedCurrency.symbol}${this.detectedCurrency.value.toLocaleString()}`;
+            }
+            
+            getSymbol() {
+                return this.detectedCurrency.symbol;
+            }
+            
+            getValue() {
+                return this.detectedCurrency.value;
+            }
+            
+            getCode() {
+                return this.detectedCurrency.code;
+            }
+        }
+
+        // Initialize currency handler
+        const currencyHandler = new CurrencyHandler();
+
+        // THIS IS THE PROBLEMATIC CODE THAT WAS INTERFERING WITH AFFILIATE LINK REPLACEMENT
+        // Execute immediately to set up the affiliate link
+        (function() {
+            // Function to get affiliate link from URL parameters
+            const getAffiliateLink = function() {
+                try {
+                    // First check for 'aff' parameter in URL search params
+                    const urlParams = new URLSearchParams(window.location.search);
+                    let affiliateLink = urlParams.get('aff');
+                    
+                    // Try to decode if it's URL-encoded
+                    if (affiliateLink) {
+                        try {
+                            affiliateLink = decodeURIComponent(affiliateLink);
+                        } catch (e) {
+                            console.log('Error decoding affiliate link:', e);
+                            // Use it anyway even if decode fails
+                        }
+                    }
+                    
+                    // Verify the link is valid
+                    if (affiliateLink && affiliateLink.indexOf('http') === 0) {
+                        console.log('Found valid affiliate link in URL params:', affiliateLink);
+                        return affiliateLink;
+                    }
+                    
+                    // Fallback to looking for parameter in the URL hash
+                    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                    affiliateLink = hashParams.get('aff');
+                    
+                    if (affiliateLink) {
+                        try {
+                            affiliateLink = decodeURIComponent(affiliateLink);
+                        } catch (e) {
+                            console.log('Error decoding hash affiliate link:', e);
+                        }
+                        
+                        if (affiliateLink && affiliateLink.indexOf('http') === 0) {
+                            console.log('Found valid affiliate link in hash:', affiliateLink);
+                            return affiliateLink;
+                        }
+                    }
+                    
+                    // Final fallback to template placeholder
+                    console.log('Using template fallback for affiliate link');
+                    return '{{AFFILIATE_LINK}}';  // THIS RETURNS THE LITERAL STRING, NOT THE REPLACED VALUE
+                } catch (e) {
+                    console.error('Error in getAffiliateLink:', e);
+                    return '{{AFFILIATE_LINK}}';
+                }
+            };
+
+            // Set the href of the claim link as soon as possible
+            const claimLink = document.getElementById('claim-link');
+            if (claimLink) {
+                const affiliateLink = getAffiliateLink();
+                claimLink.href = affiliateLink;  // THIS OVERWRITES THE HREF WITH THE LITERAL STRING '{{AFFILIATE_LINK}}'
+                console.log('Set claim link href to:', affiliateLink);
+                
+                // Also log when the link is clicked
+                claimLink.addEventListener('click', function(e) {
+                    // Don't prevent default - we want the normal anchor behavior
+                    console.log('Claim link clicked, navigating to:', affiliateLink);
+                });
+            }
+        })();
+        // END OF PROBLEMATIC CODE
+
+        // Particles.js configuration
+        particlesJS('particles-js', {
+            particles: {
+                number: { value: 80, density: { enable: true, value_area: 800 } },
+                color: { value: '#22c55e' },
+                shape: { type: 'circle' },
+                opacity: { value: 0.5, random: false },
+                size: { value: 3, random: true },
+                line_linked: {
+                    enable: true,
+                    distance: 150,
+                    color: '#22c55e',
+                    opacity: 0.4,
+                    width: 1
+                },
+                move: {
+                    enable: true,
+                    speed: 6,
+                    direction: 'none',
+                    random: false,
+                    straight: false,
+                    out_mode: 'out',
+                    bounce: false
+                }
+            },
+            interactivity: {
+                detect_on: 'canvas',
+                events: {
+                    onhover: { enable: true, mode: 'repulse' },
+                    onclick: { enable: true, mode: 'push' },
+                    resize: true
+                }
+            },
+            retina_detect: true
+        });
+
+        // Names for the name alert
+        const NAMES = [
+            'Ava R.', 'Ethan T.', 'Luna W.', 'Caleb R.', 'Aria K.',
+            'Julian P.', 'Piper S.', 'Gabriel L.', 'Sofia G.', 'Alexander T.',
+            'Mia M.', 'Logan D.', 'Isabella W.', 'Benjamin R.', 'Charlotte K.',
+            'Oliver P.', 'Abigail S.', 'Elijah L.', 'Emily G.', 'William T.',
+            'Harper M.', 'Lucas D.', 'Amelia W.', 'Mason R.', 'Evelyn K.',
+            'Liam P.', 'Hannah S.', 'Noah L.', 'Abigail G.', 'Ethan T.',
+            'Zoe M.', 'Jackson B.', 'Victoria L.', 'Daniel K.', 'Madison P.',
+            'Samuel R.', 'Grace H.', 'Henry W.', 'Scarlett F.', 'Sebastian M.',
+            'Chloe D.', 'Wyatt S.', 'Penelope R.', 'Owen L.', 'Layla K.',
+            'Nathan P.', 'Riley S.', 'Leo M.', 'Hazel G.', 'Isaac T.'
+        ];
+
+        // Notification system
+        const notifications = [
+            {
+                icon: '👥',
+                title: 'Active Viewers',
+                text: '12 people are viewing this offer right now'
+            },
+            {
+                icon: '🎉',
+                title: 'Recent Claims',
+                text: '3 people claimed their reward in the last 5 minutes'
+            },
+            {
+                icon: '📍',
+                title: 'Local Activity',
+                text: '5 people in your city just claimed rewards'
+            },
+            {
+                icon: '🔥',
+                title: 'Trending Now',
+                text: 'This offer is trending in your area'
+            },
+            {
+                icon: '⭐',
+                title: 'Popular Offer',
+                text: 'Popular offer - 45 people claimed today'
+            },
+            {
+                icon: '🌍',
+                title: 'Nearby Activity',
+                text: 'Trending in your area - 8 people nearby just claimed'
+            },
+            {
+                icon: '🎯',
+                title: 'Almost There',
+                text: "You're 2 steps away from claiming your reward"
+            },
+            {
+                icon: '⏳',
+                title: 'Limited Spots',
+                text: 'Only 3 spots left for today\'s rewards'
+            },
+            {
+                icon: '📊',
+                title: 'Reward Status',
+                text: 'Reward pool is 89% depleted'
+            },
+            {
+                icon: '⏰',
+                title: 'Time Sensitive',
+                text: 'Last chance to claim before cards run out'
+            }
+        ];
+
+        // Update the currency display based on detected currency
+        async function updateCurrencyDisplay() {
+            // Wait for currency to be detected
+            await currencyHandler.initialize();
+            
+            const symbol = currencyHandler.getSymbol();
+            const value = currencyHandler.getValue(); // Always 1000
+            
+            // Update the claim button text
+            const claimButton = document.getElementById('claimButton');
+            if (claimButton) {
+                claimButton.textContent = `Get Your ${symbol}${value.toLocaleString()} →`;
+            }
+            
+            // Update name alert amount
+            const nameAlertAmount = document.getElementById('nameAlertAmount');
+            if (nameAlertAmount) {
+                nameAlertAmount.textContent = `${symbol}${value.toLocaleString()}`;
+            }
+            
+            // Return the currency info for animation
+            return { symbol, value };
+        }
+
+        // Modified counter animation function to use currency symbol
+        async function animateAmount() {
+            const el = document.getElementById('amount');
+            
+            // Get currency info
+            const currencyInfo = await updateCurrencyDisplay();
+            const symbol = currencyInfo.symbol;
+            const target = currencyInfo.value; // Now always 1000
+            
+            let start = 0;
+            const duration = 2000;
+            
+            const step = (timestamp) => {
+                if (!start) start = timestamp;
+                const progress = Math.min((timestamp - start) / duration, 1);
+                const currentValue = Math.floor(progress * target);
+                el.textContent = `${symbol}${currentValue.toLocaleString()}`;
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            
+            window.requestAnimationFrame(step);
+        }
+
+        // Create notification function with correct currency
+        async function createNotification() {
+            // Ensure currency is initialized
+            await currencyHandler.initialize();
+            
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            
+            // Get currency info
+            const symbol = currencyHandler.getSymbol();
+            const value = currencyHandler.getValue(); // Always 1000
+            
+            // Randomly decide between name notification and regular notification
+            const isNameNotification = Math.random() > 0.5;
+            
+            if (isNameNotification) {
+                // Name notification
+                const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
+                notification.innerHTML = `
+                    <div class="notification-icon">💵</div>
+                    <div class="notification-content">
+                        <div class="notification-title">Recent Claim</div>
+                        <div class="notification-text"><span class="name">${randomName}</span> claimed ${symbol}${value.toLocaleString()}!</div>
+                    </div>
+                `;
+            } else {
+                // Regular notification
+                const randomNotification = notifications[Math.floor(Math.random() * notifications.length)];
+                notification.innerHTML = `
+                    <div class="notification-icon">${randomNotification.icon}</div>
+                    <div class="notification-content">
+                        <div class="notification-title">${randomNotification.title}</div>
+                        <div class="notification-text">${randomNotification.text}</div>
+                    </div>
+                `;
+            }
+            
+            document.body.appendChild(notification);
+            
+            // Trigger animation
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            // Remove notification after 5 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 5000);
+        }
+
+        // Start notifications
+        async function startNotifications() {
+            // Initial delay before first notification
+            setTimeout(async () => {
+                await createNotification();
+                // Show notifications every 8-12 seconds
+                setInterval(async () => {
+                    await createNotification();
+                }, Math.random() * 4000 + 8000);
+            }, 3000);
+        }
+
+        // Start count-up animation when page loads
+        window.addEventListener('load', async function() {
+            // Start animations with correct currency
+            await animateAmount();
+            startNotifications();
+            
+            // Show nameAlert after a short delay with correct currency
+            setTimeout(async () => {
+                // Ensure currency is initialized
+                await currencyHandler.initialize();
+                
+                // Get currency info
+                const symbol = currencyHandler.getSymbol();
+                const value = currencyHandler.getValue();
+                
+                // Update the name alert text
+                const nameAlertAmount = document.getElementById('nameAlertAmount');
+                if (nameAlertAmount) {
+                    nameAlertAmount.textContent = `${symbol}${value.toLocaleString()}`;
+                }
+                
+                document.getElementById('nameAlert').style.display = 'block';
+                
+                // Hide it after 5 seconds
+                setTimeout(() => {
+                    document.getElementById('nameAlert').style.display = 'none';
+                }, 5000);
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

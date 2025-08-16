@@ -945,7 +945,20 @@ async function getTemplateHTML(templateId) {
 }
 
 function buildOfferPageContent({ templateHTML, campaign, campaignId, launchNumber }) {
-  const affiliateLinksScript = generateAffiliateLinksScript(campaign.affiliateLinks || {});
+  // Get a default affiliate link (prefer US, then first available)
+  const affiliateLinks = campaign.affiliateLinks || {};
+  const defaultAffiliateLink = affiliateLinks.US || 
+                               affiliateLinks.US_android || 
+                               affiliateLinks.US_ios || 
+                               Object.values(affiliateLinks)[0] || 
+                               '#';
+  
+  // Replace {{AFFILIATE_LINK}} placeholder in template with default link
+  // This prevents the browser from URL-encoding the placeholder
+  const processedTemplate = templateHTML.replace(/{{AFFILIATE_LINK}}/g, defaultAffiliateLink);
+  
+  // Generate affiliate links script
+  const affiliateLinksScript = generateAffiliateLinksScript(affiliateLinks);
   const hideShopifyElementsCSS = generateHideShopifyElementsCSS();
   
   return `
@@ -953,13 +966,15 @@ ${hideShopifyElementsCSS}
 
 <!-- Offer Content Container -->
 <div id="offer-content">
-${templateHTML}
+${processedTemplate}
 </div>
 
 <!-- Affiliate Link Replacement Script -->
 <script>
 // Store affiliate links globally for the nuclear option
-window.affiliateLinks = ${JSON.stringify(campaign.affiliateLinks || {})};
+window.affiliateLinks = ${JSON.stringify(affiliateLinks)};
+// Store default link for reference
+window.defaultAffiliateLink = "${defaultAffiliateLink}";
 </script>
 ${affiliateLinksScript}
 `;
