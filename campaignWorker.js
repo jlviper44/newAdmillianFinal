@@ -1157,6 +1157,33 @@ function generateAffiliateLinksScript(affiliateLinks) {
   window.buildFinalAffiliateUrl = buildFinalAffiliateUrl;
   window.replaceAffiliateLinkPlaceholders = replaceAffiliateLinkPlaceholders;
   window.affiliateLinks = affiliateLinks;
+  
+  // Run replacement multiple times to catch dynamically loaded content
+  function runReplacement() {
+    if (affiliateLink) {
+      const finalUrl = buildFinalAffiliateUrl(affiliateLink, { s1, s2, s3: ttclid });
+      replaceAffiliateLinkPlaceholders(finalUrl);
+    } else if (Object.values(affiliateLinks)[0]) {
+      const finalUrl = buildFinalAffiliateUrl(Object.values(affiliateLinks)[0], { s1, s2, s3: ttclid });
+      replaceAffiliateLinkPlaceholders(finalUrl);
+    }
+  }
+  
+  // Run immediately
+  runReplacement();
+  
+  // Run when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runReplacement);
+  } else {
+    runReplacement();
+  }
+  
+  // Run after a short delay to catch any lazy-loaded content
+  setTimeout(runReplacement, 100);
+  setTimeout(runReplacement, 500);
+  setTimeout(runReplacement, 1000);
+  setTimeout(runReplacement, 2000);
 })();
 </script>`;
 }
