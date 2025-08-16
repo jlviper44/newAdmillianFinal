@@ -1759,24 +1759,37 @@ function generateAffiliateLinksScript(affiliateLinks) {
   
   // Helper function to replace all affiliate link placeholders
   function replaceAffiliateLinkPlaceholders(finalUrl) {
-    // Replace in text content
-    document.body.innerHTML = document.body.innerHTML.replace(/{{AFFILIATE_LINK}}/g, finalUrl);
+    // Replace both encoded and unencoded versions in text content
+    document.body.innerHTML = document.body.innerHTML
+      .replace(/{{AFFILIATE_LINK}}/g, finalUrl)
+      .replace(/%7B%7BAFFILIATE_LINK%7D%7D/g, finalUrl);
     
-    // Update direct links
-    document.querySelectorAll('a.affiliate-link, a[href*="{{AFFILIATE_LINK}}"]').forEach(link => {
-      link.href = finalUrl;
+    // Update direct links (both encoded and unencoded)
+    document.querySelectorAll('a[href*="{{AFFILIATE_LINK}}"], a[href*="%7B%7BAFFILIATE_LINK%7D%7D"], a.affiliate-link').forEach(link => {
+      if (link.href.includes('{{AFFILIATE_LINK}}') || link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D')) {
+        link.href = finalUrl;
+      }
     });
     
     // Update buttons with onclick events
-    document.querySelectorAll('button[onclick*="{{AFFILIATE_LINK}}"]').forEach(button => {
+    document.querySelectorAll('button[onclick*="{{AFFILIATE_LINK}}"], button[onclick*="%7B%7BAFFILIATE_LINK%7D%7D"]').forEach(button => {
       button.onclick = function() { 
         window.location.href = finalUrl; 
       };
     });
     
     // Update any data attributes
-    document.querySelectorAll('[data-href*="{{AFFILIATE_LINK}}"]').forEach(element => {
-      element.dataset.href = finalUrl;
+    document.querySelectorAll('[data-href*="{{AFFILIATE_LINK}}"], [data-href*="%7B%7BAFFILIATE_LINK%7D%7D"]').forEach(element => {
+      if (element.dataset.href && (element.dataset.href.includes('{{AFFILIATE_LINK}}') || element.dataset.href.includes('%7B%7BAFFILIATE_LINK%7D%7D'))) {
+        element.dataset.href = finalUrl;
+      }
+    });
+    
+    // Also check for any remaining URLs that might have the placeholder
+    document.querySelectorAll('a').forEach(link => {
+      if (link.href && (link.href.includes('{{AFFILIATE_LINK}}') || link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D'))) {
+        link.href = finalUrl;
+      }
     });
   }
   
