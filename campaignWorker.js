@@ -1089,37 +1089,53 @@ function generateAffiliateLinksScript(affiliateLinks) {
   // Helper function to replace all affiliate link placeholders
   function replaceAffiliateLinkPlaceholders(finalUrl) {
     // Replace both encoded and unencoded versions in text content
+    // Also handle cases where /pages/ or other paths are incorrectly included before the placeholder
     document.body.innerHTML = document.body.innerHTML
+      .replace(/\/pages\/{{AFFILIATE_LINK}}/g, finalUrl)
+      .replace(/\/pages\/%7B%7BAFFILIATE_LINK%7D%7D/g, finalUrl)
       .replace(/{{AFFILIATE_LINK}}/g, finalUrl)
       .replace(/%7B%7BAFFILIATE_LINK%7D%7D/g, finalUrl);
     
-    // Update direct links (both encoded and unencoded)
-    document.querySelectorAll('a[href*="{{AFFILIATE_LINK}}"], a[href*="%7B%7BAFFILIATE_LINK%7D%7D"], a.affiliate-link').forEach(link => {
-      if (link.href.includes('{{AFFILIATE_LINK}}') || link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D')) {
-        link.href = finalUrl;
+    // Update all links
+    document.querySelectorAll('a').forEach(link => {
+      // Check if href contains the placeholder (encoded or not)
+      if (link.href) {
+        // Handle various incorrect formats
+        if (link.href.includes('/pages/{{AFFILIATE_LINK}}') || 
+            link.href.includes('/pages/%7B%7BAFFILIATE_LINK%7D%7D') ||
+            link.href.includes('{{AFFILIATE_LINK}}') || 
+            link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D')) {
+          link.href = finalUrl;
+        }
       }
     });
     
     // Update buttons with onclick events
-    document.querySelectorAll('button[onclick*="{{AFFILIATE_LINK}}"], button[onclick*="%7B%7BAFFILIATE_LINK%7D%7D"]').forEach(button => {
-      button.onclick = function() { 
-        window.location.href = finalUrl; 
-      };
+    document.querySelectorAll('button').forEach(button => {
+      if (button.onclick && button.onclick.toString().includes('AFFILIATE_LINK')) {
+        button.onclick = function() { 
+          window.location.href = finalUrl; 
+        };
+      }
+      // Also check for onclick attribute as string
+      const onclickAttr = button.getAttribute('onclick');
+      if (onclickAttr && (onclickAttr.includes('{{AFFILIATE_LINK}}') || onclickAttr.includes('%7B%7BAFFILIATE_LINK%7D%7D'))) {
+        button.setAttribute('onclick', 'window.location.href="' + finalUrl + '"');
+      }
     });
     
     // Update any data attributes
-    document.querySelectorAll('[data-href*="{{AFFILIATE_LINK}}"], [data-href*="%7B%7BAFFILIATE_LINK%7D%7D"]').forEach(element => {
-      if (element.dataset.href && (element.dataset.href.includes('{{AFFILIATE_LINK}}') || element.dataset.href.includes('%7B%7BAFFILIATE_LINK%7D%7D'))) {
+    document.querySelectorAll('[data-href]').forEach(element => {
+      if (element.dataset.href && 
+          (element.dataset.href.includes('{{AFFILIATE_LINK}}') || 
+           element.dataset.href.includes('%7B%7BAFFILIATE_LINK%7D%7D') ||
+           element.dataset.href.includes('/pages/{{AFFILIATE_LINK}}') ||
+           element.dataset.href.includes('/pages/%7B%7BAFFILIATE_LINK%7D%7D'))) {
         element.dataset.href = finalUrl;
       }
     });
     
-    // Also check for any remaining URLs that might have the placeholder
-    document.querySelectorAll('a').forEach(link => {
-      if (link.href && (link.href.includes('{{AFFILIATE_LINK}}') || link.href.includes('%7B%7BAFFILIATE_LINK%7D%7D'))) {
-        link.href = finalUrl;
-      }
-    });
+    console.log('Affiliate links replaced with:', finalUrl);
   }
   
   // Track redirect for analytics (internal use only)
