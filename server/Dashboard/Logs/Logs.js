@@ -323,7 +323,7 @@ async function createLog(request, env) {
                           regions: JSON.parse(fullCampaign.regions || '[]'),
                           affiliateLinks: JSON.parse(fullCampaign.affiliate_link || '{}'),
                           redirectType: fullCampaign.redirect_type,
-                          customRedirectUrl: fullCampaign.custom_redirect_link,
+                          customRedirectLink: fullCampaign.custom_redirect_link,
                           name: fullCampaign.name
                         };
                         

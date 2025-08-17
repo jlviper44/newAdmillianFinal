@@ -1197,7 +1197,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
                 regions: JSON.parse(campaign.regions || '[]'),
                 affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
                 redirectType: campaign.redirect_type,
-                customRedirectUrl: campaign.custom_redirect_link
+                customRedirectLink: campaign.custom_redirect_link
               };
               
               // Update the TikTok store page
@@ -3024,7 +3024,7 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
       campaignId: campaign.id,
       name: campaign.name,
       redirectType: campaign.redirect_type,
-      customRedirectUrl: campaign.custom_redirect_link,
+      customRedirectLink: campaign.custom_redirect_link,
       redirectStoreDomain: redirectStoreDomain,
       region: regions.includes(country) ? country : 'US',
       affiliateLinks: affiliateLinks,
