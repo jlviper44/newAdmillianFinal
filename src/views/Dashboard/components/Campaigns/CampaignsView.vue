@@ -587,6 +587,8 @@
                     v => /^https?:\/\/.+/.test(v) || 'Invalid URL format'
                   ] : []"
                   :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
+                  hint="This URL will automatically be applied to all selected regions"
+                  persistent-hint
                 ></v-text-field>
               </v-col>
             </v-row>
@@ -656,6 +658,17 @@
             <v-divider class="my-4"></v-divider>
             <div class="text-subtitle-1 mb-4">Affiliate Links Configuration</div>
             
+            <v-alert 
+              v-if="formData.redirectType === 'custom' && formData.customRedirectUrl && formData.regions.length > 0"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-3"
+            >
+              <v-icon size="small">mdi-information</v-icon>
+              All affiliate links are automatically set to your custom redirect URL
+            </v-alert>
+            
             <v-expansion-panels v-model="expandedPanels" multiple>
               <v-expansion-panel
                 v-for="region in formData.regions"
@@ -665,6 +678,14 @@
                 <v-expansion-panel-title>
                   <v-icon class="mr-2">mdi-earth</v-icon>
                   {{ getRegionName(region) }}
+                  <v-chip 
+                    v-if="formData.redirectType === 'custom'"
+                    size="x-small"
+                    color="info"
+                    class="ml-2"
+                  >
+                    Auto-filled
+                  </v-chip>
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
                   <v-row>
@@ -675,6 +696,8 @@
                         placeholder="https://example.com/ios"
                         variant="outlined"
                         density="compact"
+                        :readonly="formData.redirectType === 'custom'"
+                        :hint="formData.redirectType === 'custom' ? 'Auto-filled from custom redirect URL' : ''"
                       >
                         <template v-slot:prepend-inner>
                           <v-icon size="small">mdi-apple</v-icon>
@@ -688,6 +711,8 @@
                         placeholder="https://example.com/android"
                         variant="outlined"
                         density="compact"
+                        :readonly="formData.redirectType === 'custom'"
+                        :hint="formData.redirectType === 'custom' ? 'Auto-filled from custom redirect URL' : ''"
                       >
                         <template v-slot:prepend-inner>
                           <v-icon size="small">mdi-android</v-icon>
@@ -701,6 +726,8 @@
                         placeholder="https://example.com/default"
                         variant="outlined"
                         density="compact"
+                        :readonly="formData.redirectType === 'custom'"
+                        :hint="formData.redirectType === 'custom' ? 'Auto-filled from custom redirect URL' : ''"
                       >
                         <template v-slot:prepend-inner>
                           <v-icon size="small">mdi-devices</v-icon>
@@ -1361,6 +1388,18 @@ const saveCampaign = async () => {
       isActive: formData.value.status === 'active'
     };
     
+    // Clean up redirect configuration based on type
+    if (campaignData.redirectType === 'shopify') {
+      // Remove custom redirect URL when using shopify type
+      delete campaignData.customRedirectUrl;
+      delete campaignData.customRedirectLink;
+    } else if (campaignData.redirectType === 'custom') {
+      // Ensure customRedirectLink is set for backend compatibility
+      campaignData.customRedirectLink = campaignData.customRedirectUrl;
+      delete campaignData.redirectStoreId;
+      delete campaignData.redirectStoreName;
+    }
+    
     // Find store names
     const tiktokStore = stores.value.find(s => s.id === campaignData.tiktokStoreId);
     if (tiktokStore) {
@@ -1783,6 +1822,18 @@ const testStoreConnection = async (storeId, type) => {
 const onRedirectTypeChange = () => {
   if (formData.value.redirectType === 'custom') {
     formData.value.redirectStoreId = '';
+    
+    // Auto-fill all selected regions with the custom redirect URL
+    if (formData.value.customRedirectUrl && formData.value.regions.length > 0) {
+      formData.value.regions.forEach(region => {
+        // Set the same URL for all device types in each region
+        formData.value.affiliateLinks[region] = formData.value.customRedirectUrl;
+        formData.value.affiliateLinks[region + '_ios'] = formData.value.customRedirectUrl;
+        formData.value.affiliateLinks[region + '_android'] = formData.value.customRedirectUrl;
+      });
+      
+      showSuccess('All regions auto-filled with custom redirect URL');
+    }
   } else {
     formData.value.customRedirectUrl = '';
   }
@@ -1947,8 +1998,35 @@ const updateDisabledClicksThreshold = async () => {
 };
 
 // Watch regions to update expanded panels
-watch(() => formData.value.regions, (newRegions) => {
+watch(() => formData.value.regions, (newRegions, oldRegions) => {
   expandedPanels.value = newRegions;
+  
+  // Auto-fill new regions with custom redirect URL if in custom mode
+  if (formData.value.redirectType === 'custom' && formData.value.customRedirectUrl) {
+    const newlyAddedRegions = newRegions.filter(r => !oldRegions?.includes(r));
+    
+    newlyAddedRegions.forEach(region => {
+      formData.value.affiliateLinks[region] = formData.value.customRedirectUrl;
+      formData.value.affiliateLinks[region + '_ios'] = formData.value.customRedirectUrl;
+      formData.value.affiliateLinks[region + '_android'] = formData.value.customRedirectUrl;
+    });
+    
+    if (newlyAddedRegions.length > 0) {
+      showSuccess('New regions auto-filled with custom redirect URL');
+    }
+  }
+});
+
+// Watch custom redirect URL changes to auto-update affiliate links
+watch(() => formData.value.customRedirectUrl, (newUrl) => {
+  if (formData.value.redirectType === 'custom' && newUrl && formData.value.regions.length > 0) {
+    // Update all affiliate links for selected regions
+    formData.value.regions.forEach(region => {
+      formData.value.affiliateLinks[region] = newUrl;
+      formData.value.affiliateLinks[region + '_ios'] = newUrl;
+      formData.value.affiliateLinks[region + '_android'] = newUrl;
+    });
+  }
 });
 
 // Auto-refresh functionality
