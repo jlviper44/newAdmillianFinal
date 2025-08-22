@@ -25,6 +25,7 @@ async function initializeCampaignsTable(db) {
         affiliate_link TEXT,
         status TEXT DEFAULT 'active', -- 'active', 'paused', 'completed'
         is_active BOOLEAN DEFAULT 1,
+        is_enabled BOOLEAN DEFAULT 1, -- Manual enable/disable control
         traffic INTEGER DEFAULT 0,
         traffic_passed INTEGER DEFAULT 0, -- Blackhat/redirected traffic
         traffic_blocked INTEGER DEFAULT 0, -- Whitehat/blocked traffic
@@ -88,14 +89,134 @@ async function initializeCampaignsTable(db) {
         await db.prepare(`ALTER TABLE campaigns ADD COLUMN disabled_clicks_threshold INTEGER DEFAULT 10`).run();
         console.log('Added disabled_clicks_threshold column to campaigns table');
       }
+      
+      // Check if is_enabled column exists for manual control
+      const hasIsEnabledColumn = tableInfo.results && tableInfo.results.some(col => col.name === 'is_enabled');
+      if (!hasIsEnabledColumn) {
+        await db.prepare(`ALTER TABLE campaigns ADD COLUMN is_enabled BOOLEAN DEFAULT 1`).run();
+        console.log('Added is_enabled column to campaigns table for manual control');
+      }
     } catch (error) {
       console.error('Error handling user_id/team_id columns:', error);
     }
+    
+    // Migrate existing campaign data to simplified structure
+    await migrateCampaignData(db);
     
     console.log('Campaigns table initialized successfully');
   } catch (error) {
     console.error('Error initializing campaigns table:', error);
     throw error;
+  }
+}
+
+/**
+ * Migrate existing campaign data to simplified structure
+ */
+async function migrateCampaignData(db) {
+  try {
+    console.log('Starting campaign data migration...');
+    
+    // Get all existing campaigns
+    const campaigns = await db.prepare('SELECT * FROM campaigns').all();
+    
+    if (campaigns.results && campaigns.results.length > 0) {
+      for (const campaign of campaigns.results) {
+        let needsUpdate = false;
+        const updates = [];
+        const params = [];
+        
+        // Ensure regions is empty array (removing geo functionality)
+        if (campaign.regions && campaign.regions !== '[]') {
+          updates.push('regions = ?');
+          params.push('[]');
+          needsUpdate = true;
+          console.log(`Campaign ${campaign.id}: Clearing regions`);
+        }
+        
+        // Ensure affiliate_link is empty object (simplified)
+        if (campaign.affiliate_link && campaign.affiliate_link !== '{}') {
+          updates.push('affiliate_link = ?');
+          params.push('{}');
+          needsUpdate = true;
+          console.log(`Campaign ${campaign.id}: Clearing affiliate links`);
+        }
+        
+        // Set default redirect_type to 'custom' if it's 'template' and no redirect_store_id
+        if (campaign.redirect_type === 'template' && !campaign.redirect_store_id) {
+          updates.push('redirect_type = ?');
+          params.push('custom');
+          needsUpdate = true;
+          console.log(`Campaign ${campaign.id}: Setting redirect_type to custom`);
+        }
+        
+        // Ensure launches have the correct structure with isActive defaulting to false
+        if (campaign.launches) {
+          try {
+            const launches = JSON.parse(campaign.launches);
+            let launchesModified = false;
+            
+            // Ensure launch 0 exists with proper structure
+            if (!launches['0']) {
+              launches['0'] = {
+                isActive: false,
+                createdAt: new Date().toISOString(),
+                generatedAt: null
+              };
+              launchesModified = true;
+            }
+            
+            // Ensure all launches have isActive set to false by default
+            for (const launchNum in launches) {
+              if (launches[launchNum].isActive === undefined) {
+                launches[launchNum].isActive = false;
+                launchesModified = true;
+              }
+            }
+            
+            if (launchesModified) {
+              updates.push('launches = ?');
+              params.push(JSON.stringify(launches));
+              needsUpdate = true;
+              console.log(`Campaign ${campaign.id}: Updated launches structure`);
+            }
+          } catch (e) {
+            // If launches is invalid JSON, reset to default
+            updates.push('launches = ?');
+            params.push('{"0": {"isActive": false, "createdAt": "' + new Date().toISOString() + '", "generatedAt": null}}');
+            needsUpdate = true;
+            console.log(`Campaign ${campaign.id}: Reset invalid launches to default`);
+          }
+        }
+        
+        // Clear traffic tracking fields (no longer used)
+        if (campaign.traffic_passed > 0 || campaign.traffic_blocked > 0 || campaign.traffic_disabled > 0) {
+          updates.push('traffic_passed = 0', 'traffic_blocked = 0', 'traffic_disabled = 0');
+          needsUpdate = true;
+          console.log(`Campaign ${campaign.id}: Clearing traffic statistics`);
+        }
+        
+        // Clear disabled_clicks_threshold (no longer used)
+        if (campaign.disabled_clicks_threshold && campaign.disabled_clicks_threshold !== 0) {
+          updates.push('disabled_clicks_threshold = 0');
+          needsUpdate = true;
+          console.log(`Campaign ${campaign.id}: Clearing disabled_clicks_threshold`);
+        }
+        
+        // Apply updates if needed
+        if (needsUpdate) {
+          params.push(campaign.id);
+          const updateQuery = `UPDATE campaigns SET ${updates.join(', ')} WHERE id = ?`;
+          await db.prepare(updateQuery).bind(...params).run();
+          console.log(`Campaign ${campaign.id}: Migration completed`);
+        }
+      }
+    }
+    
+    console.log('Campaign data migration completed');
+  } catch (error) {
+    console.error('Error migrating campaign data:', error);
+    // Don't throw - allow the app to continue even if migration fails
   }
 }
 
@@ -264,7 +385,6 @@ async function listCampaigns(db, request, env) {
     const limit = parseInt(url.searchParams.get('limit') || '10');
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
-    const region = url.searchParams.get('region') || 'all';
     const offset = (page - 1) * limit;
     
     // Build query conditions - filter by team members if in a team
@@ -300,20 +420,12 @@ async function listCampaigns(db, request, env) {
       params.push(status);
     }
     
-    if (region !== 'all') {
-      // Since regions is stored as a JSON array, we need to search within it
-      // Using LIKE operator for compatibility with Cloudflare D1
-      whereConditions.push(`regions LIKE ?`);
-      params.push(`%"${region}"%`);
-    }
-    
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
     
     // Log query details for debugging
     console.log('Campaign query filters:', {
       search,
       status,
-      region,
       whereClause,
       params
     });
@@ -338,6 +450,7 @@ async function listCampaigns(db, request, env) {
       regions: JSON.parse(campaign.regions || '[]'),
       launches: JSON.parse(campaign.launches || '{}'),
       isActive: campaign.is_active === 1,
+      isEnabled: campaign.is_enabled === 1,
       tiktokStoreId: campaign.tiktok_store_id,
       redirectStoreId: campaign.redirect_store_id,
       templateId: campaign.template_id,
@@ -480,6 +593,7 @@ async function getCampaign(db, campaignId, request, env) {
       regions: JSON.parse(campaign.regions || '[]'),
       launches: JSON.parse(campaign.launches || '{}'),
       isActive: campaign.is_active === 1,
+      isEnabled: campaign.is_enabled === 1,
       tiktokStoreId: campaign.tiktok_store_id,
       redirectStoreId: campaign.redirect_store_id,
       templateId: campaign.template_id,
@@ -540,9 +654,9 @@ async function createCampaign(db, request, env) {
     const campaignData = await request.json();
     
     // Validate required fields
-    if (!campaignData.name || !campaignData.regions || campaignData.regions.length === 0) {
+    if (!campaignData.name) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields (name and at least one region)' }),
+        JSON.stringify({ error: 'Missing required field (name)' }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json' }
@@ -617,9 +731,9 @@ async function createCampaign(db, request, env) {
     // Generate ID if not provided
     const campaignId = campaignData.id || generateId();
     
-    // Initialize launches
+    // Initialize launches - start with launch 0 disabled by default
     const launches = campaignData.launches || {
-      "0": { isActive: false, createdAt: new Date().toISOString(), generatedAt: null, trafficPassed: 0, trafficBlocked: 0, trafficDisabled: 0 }
+      "0": { isActive: false, createdAt: new Date().toISOString(), generatedAt: null }
     };
     
     // Insert campaign
@@ -627,31 +741,32 @@ async function createCampaign(db, request, env) {
       INSERT INTO campaigns (
         id, user_id, team_id, name, description, regions, tiktok_store_id, redirect_store_id,
         template_id, redirect_type, custom_redirect_link, affiliate_link,
-        status, is_active, traffic, traffic_passed, traffic_blocked, traffic_disabled, launches, max_launch_number, total_launches, disabled_clicks_threshold
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, is_active, is_enabled, traffic, traffic_passed, traffic_blocked, traffic_disabled, launches, max_launch_number, total_launches, disabled_clicks_threshold
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       campaignId,
       userId,
       teamId,
       campaignData.name,
       campaignData.description || null,
-      JSON.stringify(campaignData.regions),
+      '[]', // Empty regions array (simplified - no geo targeting)
       campaignData.tiktokStoreId,
       campaignData.redirectStoreId || null,
       campaignData.templateId || null,
-      campaignData.redirectType || 'template',
+      campaignData.redirectType || 'custom', // Default to 'custom' redirect
       campaignData.customRedirectLink || null,
-      campaignData.affiliateLinks ? JSON.stringify(campaignData.affiliateLinks) : null,
+      '{}', // Empty affiliate links (simplified)
       campaignData.status || 'active',
-      campaignData.isActive !== false ? 1 : 0,
+      1, // is_active (campaign level, always active)
+      1, // is_enabled (not used anymore, kept for compatibility)
       0, // traffic starts at 0
-      0, // traffic_passed starts at 0
-      0, // traffic_blocked starts at 0
-      0, // traffic_disabled starts at 0
+      0, // traffic_passed (not tracked anymore)
+      0, // traffic_blocked (not tracked anymore)
+      0, // traffic_disabled (not tracked anymore)
       JSON.stringify(launches),
       0, // maxLaunchNumber
       1,  // totalLaunches
-      10  // disabled_clicks_threshold defaults to 10
+      0  // disabled_clicks_threshold (not used anymore)
     ).run();
     
     // Fetch and return the created campaign
@@ -664,6 +779,7 @@ async function createCampaign(db, request, env) {
       regions: JSON.parse(created.regions),
       launches: JSON.parse(created.launches),
       isActive: created.is_active === 1,
+      isEnabled: created.is_enabled === 1,
       tiktokStoreId: created.tiktok_store_id,
       redirectStoreId: created.redirect_store_id,
       templateId: created.template_id,
@@ -739,20 +855,11 @@ async function updateCampaign(db, campaignId, request, env) {
     const campaignData = await request.json();
     
     // For partial updates, use existing values if not provided
-    if (campaignData.name !== undefined || campaignData.regions !== undefined) {
+    if (campaignData.name !== undefined) {
       // Only validate if these fields are being updated
-      if (campaignData.name !== undefined && !campaignData.name) {
+      if (!campaignData.name) {
         return new Response(
           JSON.stringify({ error: 'Name cannot be empty' }),
-          {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-      }
-      if (campaignData.regions !== undefined && (!campaignData.regions || campaignData.regions.length === 0)) {
-        return new Response(
-          JSON.stringify({ error: 'At least one region is required' }),
           {
             status: 400,
             headers: { 'Content-Type': 'application/json' }
@@ -775,6 +882,7 @@ async function updateCampaign(db, campaignId, request, env) {
         affiliate_link = ?,
         status = ?,
         is_active = ?,
+        is_enabled = ?,
         launches = ?,
         max_launch_number = ?,
         total_launches = ?,
@@ -784,19 +892,20 @@ async function updateCampaign(db, campaignId, request, env) {
     `).bind(
       campaignData.name !== undefined ? campaignData.name : existingCampaign.name,
       campaignData.description !== undefined ? campaignData.description : existingCampaign.description,
-      campaignData.regions !== undefined ? JSON.stringify(campaignData.regions) : existingCampaign.regions,
+      '[]', // Always empty regions array (simplified - no geo targeting)
       campaignData.tiktokStoreId !== undefined ? campaignData.tiktokStoreId : existingCampaign.tiktok_store_id,
       campaignData.redirectStoreId !== undefined ? campaignData.redirectStoreId : existingCampaign.redirect_store_id,
       campaignData.templateId !== undefined ? campaignData.templateId : existingCampaign.template_id,
       campaignData.redirectType !== undefined ? campaignData.redirectType : existingCampaign.redirect_type,
       campaignData.customRedirectLink !== undefined ? campaignData.customRedirectLink : existingCampaign.custom_redirect_link,
-      campaignData.affiliateLinks !== undefined ? JSON.stringify(campaignData.affiliateLinks) : existingCampaign.affiliate_link,
+      '{}', // Always empty affiliate links (simplified)
       campaignData.status !== undefined ? campaignData.status : existingCampaign.status,
-      campaignData.isActive !== undefined ? (campaignData.isActive ? 1 : 0) : existingCampaign.is_active,
+      1, // is_active always 1 (campaign level, always active)
+      1, // is_enabled always 1 (not used anymore, kept for compatibility)
       campaignData.launches ? JSON.stringify(campaignData.launches) : existingCampaign.launches,
       campaignData.maxLaunchNumber !== undefined ? campaignData.maxLaunchNumber : existingCampaign.max_launch_number,
       campaignData.totalLaunches !== undefined ? campaignData.totalLaunches : existingCampaign.total_launches,
-      campaignData.disabledClicksThreshold !== undefined ? campaignData.disabledClicksThreshold : (existingCampaign.disabled_clicks_threshold || 0),
+      0, // disabled_clicks_threshold always 0 (not used anymore),
       campaignId
     ).run();
     
@@ -830,6 +939,7 @@ async function updateCampaign(db, campaignId, request, env) {
       regions: JSON.parse(updated.regions),
       launches: JSON.parse(updated.launches),
       isActive: updated.is_active === 1,
+      isEnabled: updated.is_enabled === 1,
       tiktokStoreId: updated.tiktok_store_id,
       redirectStoreId: updated.redirect_store_id,
       templateId: updated.template_id,
@@ -1066,6 +1176,7 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
       regions: JSON.parse(updated.regions),
       launches: JSON.parse(updated.launches),
       isActive: updated.is_active === 1,
+      isEnabled: updated.is_enabled === 1,
       tiktokStoreId: updated.tiktok_store_id,
       redirectStoreId: updated.redirect_store_id,
       templateId: updated.template_id,
@@ -1105,6 +1216,10 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
  * Manage campaign launches (add, toggle)
  */
 async function manageCampaignLaunches(db, campaignId, request, env) {
+  console.log('=== manageCampaignLaunches called ===');
+  console.log('Campaign ID:', campaignId);
+  console.log('Method:', request.method);
+  
   try {
     // Get user_id and team_id from session
     const { userId, teamId } = await getUserInfoFromSession(request, env);
@@ -1113,6 +1228,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
     const { action, launchData } = requestData;
     
     console.log(`Managing launches for campaign ${campaignId}: ${action}`);
+    console.log('Launch data:', launchData);
     
     // Fetch campaign with team permission check
     let campaign;
@@ -1153,7 +1269,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
       case 'add':
         const newLaunchNumber = maxLaunchNumber + 1;
         launches[newLaunchNumber] = {
-          isActive: false,
+          isActive: false,  // New launches start disabled
           createdAt: new Date().toISOString(),
           generatedAt: null,
           trafficPassed: 0,
@@ -1187,17 +1303,45 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
             ).bind(campaign.tiktok_store_id).first();
             
             if (tiktokStore && tiktokStore.access_token) {
+              console.log('=== SHOPIFY UPDATE START ===');
               console.log(`Updating TikTok store page for launch ${launchNum} - isActive: ${launches[launchNum].isActive}`);
+              console.log('TikTok Store:', {
+                id: tiktokStore.id,
+                store_url: tiktokStore.store_url,
+                hasToken: !!tiktokStore.access_token
+              });
+              console.log('Campaign data:', { 
+                redirect_type: campaign.redirect_type, 
+                custom_redirect_link: campaign.custom_redirect_link,
+                tiktok_store_id: campaign.tiktok_store_id
+              });
               
               const pageHandle = `cloak-${campaignId}-${launchNum}`;
+              
+              // Get redirect store domain if using template redirect
+              let redirectStoreDomain = null;
+              if (campaign.redirect_type !== 'custom' && campaign.redirect_store_id) {
+                const redirectStore = await db.prepare(
+                  'SELECT store_url FROM shopify_stores WHERE id = ?'
+                ).bind(campaign.redirect_store_id).first();
+                
+                if (redirectStore && redirectStore.store_url) {
+                  redirectStoreDomain = redirectStore.store_url.replace(/^https?:\/\//, '');
+                  if (!redirectStoreDomain.includes('.myshopify.com')) {
+                    redirectStoreDomain = `${redirectStoreDomain}.myshopify.com`;
+                  }
+                }
+              }
               
               // Parse campaign data for page update
               const campaignData = {
                 ...campaign,
-                regions: JSON.parse(campaign.regions || '[]'),
-                affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
-                redirectType: campaign.redirect_type,
-                customRedirectLink: campaign.custom_redirect_link
+                name: campaign.name,
+                redirect_type: campaign.redirect_type,
+                custom_redirect_link: campaign.custom_redirect_link,
+                redirect_store_id: campaign.redirect_store_id,
+                redirect_store_domain: redirectStoreDomain,
+                template_id: campaign.template_id
               };
               
               // Update the TikTok store page
@@ -1210,8 +1354,10 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
                 launches[launchNum].isActive
               );
               
+              console.log(`=== SHOPIFY UPDATE COMPLETE ===`);
               console.log(`TikTok store page updated successfully for launch ${launchNum}`);
             } else {
+              console.warn('=== SHOPIFY UPDATE SKIPPED ===');
               console.warn('TikTok store not found or missing access token - cannot update page');
             }
           } catch (updateError) {
@@ -1264,47 +1410,34 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
 }
 
 /**
- * Generate page content for TikTok validation page
+ * Generate page content for simplified redirect page
  */
 function generatePageContent(campaign, campaignId, launchNumber) {
-  const loadingScreenHTML = `
-<div id="loading-container" style="
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100vh;
-  background: #f5f5f5;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-">
-  <div style="text-align: center;">
-    <div class="spinner" style="
-      border: 4px solid rgba(0, 0, 0, 0.1);
-      border-left-color: #000;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 20px;
-    "></div>
-    <p style="
-      color: #666;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-      font-size: 16px;
-      margin: 0;
-    ">Loading...</p>
-  </div>
-</div>
-
-<style>
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+  console.log('Generating page content for:', { 
+    campaignId, 
+    launchNumber, 
+    redirect_type: campaign.redirect_type, 
+    custom_redirect_link: campaign.custom_redirect_link 
+  });
+  
+  // Add timestamp to ensure content changes and forces Shopify to update
+  const timestamp = new Date().toISOString();
+  
+  // Determine the redirect URL based on campaign settings
+  let redirectUrl = '';
+  if (campaign.redirect_type === 'custom' && campaign.custom_redirect_link) {
+    redirectUrl = campaign.custom_redirect_link;
+  } else if (campaign.redirect_store_domain) {
+    // For template-based redirects, build the offer page URL
+    const offerPageHandle = `offer-${campaignId}-${launchNumber}`;
+    redirectUrl = `https://${campaign.redirect_store_domain}/pages/${offerPageHandle}`;
   }
   
+  // Simple static page that immediately redirects - no API calls
+  const pageContent = `
+<!-- Page updated: ${timestamp} -->
+<!-- Campaign: ${campaignId}, Launch: ${launchNumber} -->
+<style>
   .shopify-section, header, footer, .header, .footer {
     display: none !important;
   }
@@ -1312,297 +1445,60 @@ function generatePageContent(campaign, campaignId, launchNumber) {
   body {
     margin: 0;
     padding: 0;
-    overflow: hidden;
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #f5f5f5;
+  }
+  
+  .redirect-container {
+    text-align: center;
+    padding: 20px;
   }
 </style>
-`;
 
-  const trackingScript = `
+<div class="redirect-container">
+  <h2>Redirecting...</h2>
+  <p>Please wait while we redirect you to your destination.</p>
+</div>
+
 <script>
 (function() {
-  // Extract campaign info from URL
-  const pathMatch = window.location.pathname.match(/\\/pages\\/cloak-([^-]+)-(\\d+)/);
-  if (!pathMatch) {
-    console.error('Invalid page URL format');
+  // Static redirect - no API calls needed
+  const redirectUrl = '${redirectUrl.replace(/'/g, "\\'")}';
+  
+  if (!redirectUrl || redirectUrl === '#') {
+    document.body.innerHTML = '<h1>Page not configured</h1>';
     return;
   }
   
-  const campaignId = pathMatch[1];
-  const launchNumber = pathMatch[2];
-  
-  // Get URL parameters
+  // Get URL parameters to pass through
   const urlParams = new URLSearchParams(window.location.search);
   const ttclid = urlParams.get('ttclid');
-  const testMode = urlParams.get('test') === 'true';
   
-  // Store server-provided data
-  let serverData = null;
-  
-  // Validation checks
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  const hasTtclid = ttclid && ttclid.length > 0;
-  
-  // Check referrer
-  let isTikTokReferrer = false;
-  if (testMode) {
-    isTikTokReferrer = true;
-    console.log('TEST MODE: Skipping referrer check');
-  } else {
-    isTikTokReferrer = document.referrer.includes('tiktok.com') || 
-                       document.referrer === '' || 
-                       document.referrer.includes('tiktokv.com') ||
-                       document.referrer.includes('tiktokcdn.com');
+  // Build final URL with tracking parameters
+  try {
+    const finalUrl = new URL(redirectUrl);
+    finalUrl.searchParams.set('s1', '${campaignId}');
+    finalUrl.searchParams.set('s2', '${launchNumber}');
+    
+    if (ttclid) {
+      finalUrl.searchParams.set('ttclid', ttclid);
+    }
+    
+    // Immediate redirect
+    window.location.href = finalUrl.href;
+  } catch (e) {
+    // If URL is invalid, try direct redirect
+    window.location.href = redirectUrl;
   }
-  
-  console.log('Validation results:', { 
-    isMobile, 
-    hasTtclid, 
-    isTikTokReferrer,
-    referrer: document.referrer,
-    userAgent: navigator.userAgent,
-    testMode 
-  });
-  
-  // First, fetch campaign data to get server information
-  var timestamp = new Date().getTime();
-  var apiUrl = 'https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber + '?t=' + timestamp;
-  console.log('Fetching campaign data from:', apiUrl);
-  fetch(apiUrl)
-    .then(function(response) { 
-      console.log('Campaign data response status:', response.status);
-      if (!response.ok) {
-        throw new Error('Failed to fetch campaign data: ' + response.status);
-      }
-      return response.json(); 
-    })
-    .then(function(data) {
-      console.log('Campaign data received:', data);
-      // Store the server data
-      serverData = data;
-      
-      // Check if campaign/launch is active
-      if (data.error) {
-        console.error('API Error:', data.error);
-        throw new Error(data.error);
-      }
-      
-      if (!data.isActive) {
-        console.log('Campaign is not active (campaign level)');
-        throw new Error('Campaign is not active. Please activate the campaign first.');
-      }
-      
-      if (data.launch && !data.launch.isActive) {
-        console.log('Launch is disabled (launch level)');
-        throw new Error('Launch is disabled. Please enable the launch.');
-      }
-      
-      // Check validations
-      if (!isMobile || !hasTtclid || !isTikTokReferrer) {
-        console.log('Validation failed, staying on page');
-        
-        // Log failed validation
-        const failureReason = !isMobile ? 'not_mobile' : !hasTtclid ? 'no_ttclid' : 'invalid_referrer';
-        
-        // Send log for failed validation
-        const logData = {
-          campaignId: campaignId,
-          launchNumber: launchNumber,
-          type: 'validation',
-          decision: 'whitehat',
-          ip: serverData.clientIP || 'unknown',
-          country: serverData.geoData?.country || 'unknown',
-          region: serverData.geoData?.region || null,
-          city: serverData.geoData?.city || null,
-          timezone: serverData.geoData?.timezone || null,
-          timestamp: new Date().toISOString(),
-          userAgent: navigator.userAgent,
-          referer: document.referrer,
-          url: window.location.href,
-          params: {
-            ttclid: ttclid,
-            test: testMode,
-            failureReason: failureReason
-          }
-        };
-        
-        // Send log to server - always use fetch for better debugging
-        console.log('Sending whitehat log:', logData);
-        fetch('https://cranads.com/api/logs/public', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(logData),
-          keepalive: true
-        })
-        .then(function(response) {
-          console.log('Log response status:', response.status);
-          return response.text();
-        })
-        .then(function(text) {
-          console.log('Log response body:', text);
-          try {
-            const data = JSON.parse(text);
-            console.log('Log saved with ID:', data.id);
-          } catch (e) {
-            console.log('Response was not JSON:', text);
-          }
-        })
-        .catch(function(err) {
-          console.error('Failed to send log:', err);
-        });
-        
-        // Show default content
-        document.getElementById('loading-container').style.display = 'none';
-        document.querySelectorAll('.shopify-section, header, footer, .header, .footer').forEach(function(el) {
-          el.style.display = '';
-        });
-        document.body.style.overflow = '';
-        return;
-      }
-      
-      // Validation passed, continue with redirect
-      console.log('All validations passed, processing redirect...');
-      
-      if (data.error) {
-        console.error('Failed to fetch campaign data:', data.error);
-        document.getElementById('loading-container').style.display = 'none';
-        return;
-      }
-      
-      // Get GEO data from server response
-      const geoData = data.geoData || {};
-      const country = geoData.country || 'US';
-      const os = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'ios' : 'android';
-      
-      console.log('Server-detected GEO:', {
-        country: country,
-        region: geoData.region,
-        city: geoData.city,
-        timezone: geoData.timezone,
-        continent: geoData.continent
-      });
-      
-      let redirectUrl;
-      
-      // Check redirect type
-      if (data.redirectType === 'custom' && data.customRedirectLink) {
-        // Custom redirect
-        try {
-          redirectUrl = new URL(data.customRedirectLink);
-          console.log('Using custom redirect');
-        } catch (e) {
-          console.error('Invalid custom redirect URL:', data.customRedirectLink);
-          return;
-        }
-      } else if (data.redirectStoreDomain) {
-        // Template/Shopify redirect
-        const redirectPageHandle = 'offer-' + campaignId + '-' + launchNumber;
-        redirectUrl = new URL('https://' + data.redirectStoreDomain + '/pages/' + redirectPageHandle);
-        console.log('Redirecting to offer page on redirect store:', data.redirectStoreDomain);
-      } else {
-        console.error('No redirect store domain found');
-        document.getElementById('loading-container').style.display = 'none';
-        return;
-      }
-      
-      // Add tracking parameters (no more IP passing)
-      redirectUrl.searchParams.set('s1', campaignId);
-      redirectUrl.searchParams.set('s2', launchNumber);
-      
-      // Pass ttclid
-      if (ttclid) {
-        redirectUrl.searchParams.set('ttclid', ttclid);
-      }
-      
-      // For template redirects, pass additional data (but not IP)
-      if (data.redirectType !== 'custom') {
-        redirectUrl.searchParams.set('os', os);
-        redirectUrl.searchParams.set('geo', country);
-        
-        if (geoData.region) {
-          redirectUrl.searchParams.set('region', geoData.region);
-        }
-        if (geoData.city) {
-          redirectUrl.searchParams.set('city', geoData.city);
-        }
-        if (geoData.timezone) {
-          redirectUrl.searchParams.set('tz', encodeURIComponent(geoData.timezone));
-        }
-      }
-      
-      console.log('Redirecting to:', redirectUrl.href);
-      
-      // Log successful click before redirect
-      const successLogData = {
-        campaignId: campaignId,
-        launchNumber: launchNumber,
-        type: 'click',
-        decision: 'blackhat',
-        ip: serverData.clientIP || 'unknown',
-        country: country || 'unknown',
-        region: geoData.region || null,
-        city: geoData.city || null,
-        timezone: geoData.timezone || null,
-        timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent,
-        referer: document.referrer,
-        url: window.location.href,
-        redirectUrl: redirectUrl.href,
-        os: os,
-        params: {
-          ttclid: ttclid,
-          test: testMode,
-          redirectType: data.redirectType
-        }
-      };
-      
-      // Function to perform the redirect
-      function performRedirect() {
-        console.log('Performing redirect to:', redirectUrl.href);
-        window.location.href = redirectUrl.href;
-      }
-      
-      // Log and redirect - always use fetch for better debugging
-      console.log('Sending blackhat click log:', successLogData);
-      fetch('https://cranads.com/api/logs/public', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(successLogData),
-        keepalive: true
-      })
-      .then(function(response) {
-        console.log('Click log response status:', response.status);
-        return response.text();
-      })
-      .then(function(text) {
-        console.log('Click log response body:', text);
-        try {
-          const data = JSON.parse(text);
-          console.log('Click log saved with ID:', data.id);
-        } catch (e) {
-          console.log('Response was not JSON:', text);
-        }
-        performRedirect();
-      })
-      .catch(function(err) {
-        console.error('Failed to log click:', err);
-        performRedirect();
-      });
-    })
-    .catch(function(error) {
-      console.error('Redirect error:', error);
-      console.error('Error details:', error.message, error.stack);
-      // Hide loading and show normal page
-      document.getElementById('loading-container').style.display = 'none';
-      document.querySelectorAll('.shopify-section, header, footer, .header, .footer').forEach(function(el) {
-        el.style.display = '';
-      });
-      document.body.style.overflow = '';
-    });
 })();
 </script>
 `;
 
-  return loadingScreenHTML + trackingScript;
+  return pageContent;
 }
 
 /**
@@ -1643,21 +1539,11 @@ function generateAffiliateLinksScript(affiliateLinks) {
 (function() {
   // Get URL parameters
   const urlParams = new URLSearchParams(window.location.search);
-  const os = urlParams.get('os') || 'unknown';
-  const geo = urlParams.get('geo') || 'US';
-  const region = urlParams.get('region');
-  const city = urlParams.get('city');
-  const timezone = urlParams.get('tz');
   const s1 = urlParams.get('s1'); // campaign ID
   const s2 = urlParams.get('s2'); // launch number
   const ttclid = urlParams.get('ttclid'); // TikTok Click ID - this is s3
   
-  console.log('Offer page - Location data:', { 
-    geo: geo, 
-    region: region,
-    city: city,
-    timezone: timezone ? decodeURIComponent(timezone) : 'not provided',
-    os: os, 
+  console.log('Offer page - Parameters:', { 
     s1: s1, 
     s2: s2, 
     ttclid: ttclid
@@ -1668,13 +1554,11 @@ function generateAffiliateLinksScript(affiliateLinks) {
   
   // Debug: Log available affiliate links
   console.log('Available affiliate links:', affiliateLinks);
-  console.log('Looking for geo:', geo, 'with OS:', os);
   
-  // Select the best matching affiliate link
-  let affiliateLink = selectAffiliateLink(affiliateLinks, geo, os);
+  // Simply use the first available affiliate link
+  let affiliateLink = Object.values(affiliateLinks)[0];
   
   console.log('Selected affiliate link:', affiliateLink);
-  console.log('Selection logic used:', getSelectionLogic(affiliateLinks, geo, os));
   
   if (affiliateLink) {
     try {
@@ -1689,56 +1573,11 @@ function generateAffiliateLinksScript(affiliateLinks) {
       // Replace all {{AFFILIATE_LINK}} placeholders
       replaceAffiliateLinkPlaceholders(finalUrl);
       
-      // Track the redirect for analytics
-      trackRedirect(geo, os, region, city);
-      
     } catch (error) {
       console.error('Error processing affiliate link:', error);
     }
   } else {
-    console.error('No affiliate link found for geo:', geo, 'os:', os);
-    // Fallback to first available link
-    const fallbackLink = Object.values(affiliateLinks)[0];
-    if (fallbackLink) {
-      console.warn('Using fallback link:', fallbackLink);
-      const finalUrl = buildFinalAffiliateUrl(fallbackLink, { 
-        s1, 
-        s2, 
-        s3: ttclid
-      });
-      replaceAffiliateLinkPlaceholders(finalUrl);
-    }
-  }
-  
-  // Helper function to explain selection logic
-  function getSelectionLogic(links, geo, os) {
-    const osLower = os ? os.toLowerCase() : 'unknown';
-    const geoUpper = geo ? geo.toUpperCase() : 'US';
-    
-    if (links[geoUpper + '_' + osLower]) return 'Exact match (normalized): ' + geoUpper + '_' + osLower;
-    if (links[geoUpper + '_' + os]) return 'Exact match (uppercase geo): ' + geoUpper + '_' + os;
-    if (links[geoUpper]) return 'Country match (uppercase): ' + geoUpper;
-    if (links[geo + '_' + osLower]) return 'Exact match (original case): ' + geo + '_' + osLower;
-    if (links[geo]) return 'Country match (original case): ' + geo;
-    if (links['US']) return 'Default US fallback';
-    return 'First available link';
-  }
-  
-  // Helper function to select the best matching affiliate link
-  function selectAffiliateLink(links, geo, os) {
-    // Normalize OS to lowercase for matching
-    const osLower = os ? os.toLowerCase() : 'unknown';
-    // Normalize geo to uppercase for matching
-    const geoUpper = geo ? geo.toUpperCase() : 'US';
-    
-    // Try different combinations in priority order
-    return links[geoUpper + '_' + osLower] ||     // e.g., US_ios
-           links[geoUpper + '_' + os] ||          // e.g., US_iOS (fallback for exact case)
-           links[geoUpper] ||                     // e.g., US (standard link)
-           links[geo + '_' + osLower] ||          // Original case with lowercase OS
-           links[geo] ||                          // Original case
-           links['US'] ||                         // Default to US
-           Object.values(links)[0];               // Any available link
+    console.error('No affiliate link found');
   }
   
   // Simplified: Only add s1, s2, and s3 parameters
@@ -1749,10 +1588,6 @@ function generateAffiliateLinksScript(affiliateLinks) {
     if (params.s1) url.searchParams.set('s1', params.s1); // Campaign ID
     if (params.s2) url.searchParams.set('s2', params.s2); // Launch Number
     if (params.s3) url.searchParams.set('s3', params.s3); // ttclid
-    
-    // Optionally add geo for affiliate's reference (not as s-parameter)
-    url.searchParams.set('geo', geo);
-    if (region) url.searchParams.set('region', region);
 
     return url.href;
   }
@@ -1819,22 +1654,7 @@ function generateAffiliateLinksScript(affiliateLinks) {
     console.log('Affiliate links replaced with:', finalUrl);
   }
   
-  // Track redirect for analytics (internal use only)
-  function trackRedirect(geo, os, region, city) {
-    console.log('Redirect tracked:', {
-      timestamp: new Date().toISOString(),
-      geo: geo,
-      os: os,
-      region: region,
-      city: city,
-      campaign: s1,
-      launch: s2,
-      ttclid: ttclid
-    });
-  }
-  
   // Make functions available globally for the nuclear option
-  window.selectAffiliateLink = selectAffiliateLink;
   window.buildFinalAffiliateUrl = buildFinalAffiliateUrl;
   window.replaceAffiliateLinkPlaceholders = replaceAffiliateLinkPlaceholders;
   window.affiliateLinks = affiliateLinks;
@@ -1979,18 +1799,16 @@ function generateHideShopifyElementsCSS() {
         });
         
         // Re-run affiliate link replacement
-        if (window.selectAffiliateLink && window.buildFinalAffiliateUrl && window.replaceAffiliateLinkPlaceholders) {
+        if (window.buildFinalAffiliateUrl && window.replaceAffiliateLinkPlaceholders) {
           // Get URL parameters again
           const urlParams = new URLSearchParams(window.location.search);
-          const os = urlParams.get('os') || 'unknown';
-          const geo = urlParams.get('geo') || 'US';
           const s1 = urlParams.get('s1');
           const s2 = urlParams.get('s2');
           const ttclid = urlParams.get('ttclid');
           
           // Re-run the affiliate link logic
           if (window.affiliateLinks) {
-            const affiliateLink = window.selectAffiliateLink(window.affiliateLinks, geo, os);
+            const affiliateLink = Object.values(window.affiliateLinks)[0];
             if (affiliateLink) {
               const finalUrl = window.buildFinalAffiliateUrl(affiliateLink, { s1, s2, s3: ttclid });
               window.replaceAffiliateLinkPlaceholders(finalUrl);
@@ -2138,98 +1956,9 @@ ${affiliateLinksScript}
  * Generate disabled page content
  */
 function generateDisabledPageContent(campaignId, launchNumber) {
-  return `
-<!-- Campaign Launch Disabled -->
-<!-- This page has been temporarily disabled -->
-<!-- Only tracking code will be executed -->
-<script>
-(function() {
-  // Basic tracking for disabled launch
-  var campaignId = "${campaignId}";
-  var launchNumber = ${launchNumber};
-  
-  console.log('Disabled launch tracking - Campaign:', campaignId, 'Launch:', launchNumber);
-  
-  // Get query parameters
-  var urlParams = new URLSearchParams(window.location.search);
-  var ttclid = urlParams.get('ttclid');
-  var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  
-  // Simple log data without needing server data first
-  var logData = {
-    campaignId: campaignId,
-    launchNumber: launchNumber,
-    type: 'disabled',
-    decision: 'whitehat',
-    ip: 'pending',
-    country: 'unknown',
-    region: null,
-    city: null,
-    timezone: null,
-    continent: null,
-    userAgent: navigator.userAgent,
-    referer: document.referrer,
-    url: window.location.href,
-    os: null,
-    params: {
-      ttclid: ttclid,
-      from: urlParams.get('from'),
-      mobile: isMobile,
-      failureReason: 'Launch disabled'
-    }
-  };
-  
-  console.log('Sending disabled launch log:', logData);
-  
-  // First try to get server data for better tracking info
-  var timestamp = new Date().getTime();
-  fetch('https://cranads.com/api/campaigns/client/' + campaignId + '/' + launchNumber + '?t=' + timestamp)
-    .then(function(response) {
-      console.log('Server data response:', response.status);
-      return response.json();
-    })
-    .then(function(data) {
-      // Update log data with server info if available
-      if (data && data.clientIP) {
-        logData.ip = data.clientIP;
-      }
-      if (data && data.geoData) {
-        logData.country = data.geoData.country || 'unknown';
-        logData.region = data.geoData.region || null;
-        logData.city = data.geoData.city || null;
-        logData.timezone = data.geoData.timezone || null;
-        logData.continent = data.geoData.continent || null;
-      }
-      if (data && data.os) {
-        logData.os = data.os;
-      }
-    })
-    .catch(function(error) {
-      console.log('Could not fetch server data:', error);
-    })
-    .finally(function() {
-      // Send log regardless of whether we got server data
-      console.log('Sending log with data:', logData);
-      fetch('https://cranads.com/api/logs/public', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(logData),
-        keepalive: true
-      })
-      .then(function(response) {
-        console.log('Log sent, status:', response.status);
-        return response.text();
-      })
-      .then(function(responseText) {
-        console.log('Log response:', responseText);
-      })
-      .catch(function(error) {
-        console.error('Failed to send log:', error);
-      });
-    });
-})();
-</script>
-`;
+  // For disabled launches, return empty content to leave Shopify page in its original state
+  // No injections, no custom HTML, no styles - just the original Shopify page
+  return '';
 }
 
 /**
@@ -2304,22 +2033,38 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
     
     // Generate appropriate content based on active status
     let pageContent;
+    let updateData;
+    
     if (isActive) {
       // Generate full redirect content
       pageContent = generatePageContent(campaign, campaignId, launchNumber);
+      updateData = {
+        page: {
+          title: `${campaign.name} - Launch ${launchNumber}`,
+          body_html: pageContent,
+          published: true
+        }
+      };
     } else {
-      // Generate minimal tracking content without redirect
-      pageContent = generateDisabledPageContent(campaignId, launchNumber);
+      // For disabled launches, clear the body_html to leave Shopify page in original state
+      pageContent = '';
+      updateData = {
+        page: {
+          title: `${campaign.name} - Launch ${launchNumber}`,
+          body_html: '',  // Empty content removes all custom HTML
+          published: true
+        }
+      };
     }
     
-    // Update the page
-    const updateData = {
-      page: {
-        body_html: pageContent
-      }
-    };
-    
     console.log(`Updating page ${pageHandle} (ID: ${pageId}) - Active: ${isActive}`);
+    console.log(`Page content length: ${pageContent.length} characters`);
+    
+    console.log('Sending update request to Shopify:', {
+      url: `https://${apiDomain}/admin/api/2024-01/pages/${pageId}.json`,
+      hasToken: !!store.access_token,
+      contentLength: pageContent.length
+    });
     
     const updateResponse = await fetch(`https://${apiDomain}/admin/api/2024-01/pages/${pageId}.json`, {
       method: 'PUT',
@@ -2330,13 +2075,19 @@ async function updateTikTokPageContent(store, campaign, campaignId, launchNumber
       body: JSON.stringify(updateData)
     });
     
+    console.log('Shopify update response status:', updateResponse.status);
+    
     if (!updateResponse.ok) {
       const errorText = await updateResponse.text();
+      console.error('Shopify update failed:', errorText);
       throw new Error(`Failed to update page: ${updateResponse.status} - ${errorText}`);
     }
     
     const result = await updateResponse.json();
-    console.log(`Page updated successfully: ${pageHandle}`);
+    console.log(`Page updated successfully: ${pageHandle}`, {
+      pageId: result.page?.id,
+      updatedAt: result.page?.updated_at
+    });
     return result;
     
   } catch (error) {
@@ -2720,6 +2471,21 @@ async function generateCampaignLink(db, request, env) {
       // This ensures any campaign changes (like affiliate links) are reflected
       console.log('Creating/updating TikTok store validation page with latest campaign data...');
       
+      // Get redirect store domain if using template redirect
+      let redirectStoreDomain = null;
+      if (campaign.redirect_type !== 'custom' && campaign.redirect_store_id) {
+        const redirectStore = await db.prepare(
+          'SELECT store_url FROM shopify_stores WHERE id = ?'
+        ).bind(campaign.redirect_store_id).first();
+        
+        if (redirectStore && redirectStore.store_url) {
+          redirectStoreDomain = redirectStore.store_url.replace(/^https?:\/\//, '');
+          if (!redirectStoreDomain.includes('.myshopify.com')) {
+            redirectStoreDomain = `${redirectStoreDomain}.myshopify.com`;
+          }
+        }
+      }
+      
       // Parse campaign data for page creation
       // IMPORTANT: Use the updated launches object, not the original campaign.launches
       const campaignData = {
@@ -2727,8 +2493,9 @@ async function generateCampaignLink(db, request, env) {
         launches: JSON.stringify(launches), // Use the updated launches
         regions: JSON.parse(campaign.regions || '[]'),
         affiliateLinks: JSON.parse(campaign.affiliate_link || '{}'),
-        redirectType: campaign.redirect_type,
-        customRedirectUrl: campaign.custom_redirect_link
+        redirect_type: campaign.redirect_type,
+        custom_redirect_link: campaign.custom_redirect_link,
+        redirect_store_domain: redirectStoreDomain
       };
       
       // Check if launch is active
@@ -2773,13 +2540,12 @@ async function generateCampaignLink(db, request, env) {
           );
           console.log('Existing page updated with disabled content');
         } else {
-          // Page doesn't exist, create it with disabled content
-          const disabledPageContent = generateDisabledPageContent(campaignId, launch);
+          // Page doesn't exist, create it with empty content (disabled state)
           const createPageData = {
             page: {
               title: `${campaign.name} - Launch ${launch}`,
               handle: pageHandle,
-              body_html: disabledPageContent,
+              body_html: '',  // Empty content for disabled launch
               published: true,
               template_suffix: null
             }
@@ -3008,39 +2774,24 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
                     request.headers.get('X-Real-IP') || 
                     'unknown';
     
-    // Get user's region from Cloudflare headers
-    const country = request.headers.get('CF-IPCountry') || 'US';
-    const region = request.headers.get('CF-Region') || null;
-    const city = request.headers.get('CF-City') || null;
-    const timezone = request.headers.get('CF-Timezone') || null;
-    const continent = request.headers.get('CF-Continent') || null;
-    
-    // Parse regions and affiliate links
-    const regions = JSON.parse(campaign.regions || '[]');
+    // Parse affiliate links
     const affiliateLinks = JSON.parse(campaign.affiliate_link || '{}');
     
     // Return campaign data for client
     return new Response(JSON.stringify({
       campaignId: campaign.id,
       name: campaign.name,
-      redirectType: campaign.redirect_type,
-      customRedirectLink: campaign.custom_redirect_link,
-      redirectStoreDomain: redirectStoreDomain,
-      region: regions.includes(country) ? country : 'US',
+      redirect_type: campaign.redirect_type,
+      custom_redirect_link: campaign.custom_redirect_link,
+      redirect_store_domain: redirectStoreDomain,
       affiliateLinks: affiliateLinks,
       isActive: campaign.is_active === 1,
+      isEnabled: campaign.is_enabled === 1, // Manual enable/disable status
       launch: {
         number: parseInt(launchNumber),
         isActive: launches[launchNumber.toString()].isActive
       },
-      clientIP: clientIP,
-      geoData: {
-        country: country,
-        region: region,
-        city: city,
-        timezone: timezone,
-        continent: continent
-      }
+      clientIP: clientIP
     }), {
       headers: { 
         'Content-Type': 'application/json',

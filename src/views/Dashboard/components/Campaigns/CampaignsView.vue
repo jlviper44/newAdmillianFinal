@@ -47,27 +47,7 @@
               :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
             ></v-select>
           </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-select
-              v-model="regionFilter"
-              label="Region"
-              :items="[
-                { title: 'All Regions', value: 'all' },
-                { title: 'United States', value: 'US' },
-                { title: 'United Kingdom', value: 'UK' },
-                { title: 'Canada', value: 'CA' },
-                { title: 'Germany', value: 'DE' },
-                { title: 'Australia', value: 'AU' },
-                { title: 'New Zealand', value: 'NZ' },
-                { title: 'Czech Republic', value: 'CZ' },
-                { title: 'Slovakia', value: 'SK' }
-              ]"
-              hide-details
-              @update:model-value="searchCampaigns"
-              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
-            ></v-select>
-          </v-col>
-          <v-col cols="12" md="2">
+          <v-col cols="12" md="5">
             <v-btn 
               color="primary" 
               @click="searchCampaigns" 
@@ -316,28 +296,15 @@
                 </div>
               </v-col>
               
-              <!-- Regions Section -->
+              <!-- Redirect Link Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="info-section">
                   <div class="section-title mb-2">
-                    <v-icon size="small" class="mr-1">mdi-earth</v-icon>
-                    Target Regions
+                    <v-icon size="small" class="mr-1">mdi-link</v-icon>
+                    Redirect Link
                   </div>
-                  <div v-if="campaign.regions && campaign.regions.length > 0" class="regions-grid">
-                    <v-chip
-                      v-for="region in campaign.regions"
-                      :key="region"
-                      size="small"
-                      color="blue"
-                      variant="tonal"
-                      label
-                      class="mr-1 mb-1"
-                    >
-                      {{ getRegionDisplayName(region) }}
-                    </v-chip>
-                  </div>
-                  <div v-else class="text-caption text-medium-emphasis">
-                    No regions selected
+                  <div class="text-body-2 text-truncate">
+                    {{ campaign.customRedirectLink || 'Not configured' }}
                   </div>
                 </div>
               </v-col>
@@ -358,38 +325,6 @@
               <!-- Stats Section -->
               <v-col cols="12" sm="6" md="3">
                 <div class="stats-section">
-                  <!-- Compact Traffic Indicators -->
-                  <div class="traffic-row d-flex align-center gap-2 mb-2 flex-wrap">
-                    <div class="traffic-indicator disabled-traffic d-flex align-center gap-1 px-2 py-1">
-                      <v-icon size="x-small" color="grey">mdi-pause</v-icon>
-                      <span class="text-caption">Disabled</span>
-                      <span class="font-weight-medium ml-1">{{ campaign.trafficDisabled || 0 }}</span>
-                    </div>
-                    
-                    <div class="traffic-indicator passed-traffic d-flex align-center gap-1 px-2 py-1">
-                      <v-icon size="x-small" color="success">mdi-check</v-icon>
-                      <span class="text-caption">Passed</span>
-                      <span class="font-weight-medium ml-1">{{ campaign.trafficPassed || 0 }}</span>
-                    </div>
-                    
-                    <div class="traffic-indicator blocked-traffic d-flex align-center gap-1 px-2 py-1">
-                      <v-icon size="x-small" color="error">mdi-close</v-icon>
-                      <span class="text-caption">Blocked</span>
-                      <span class="font-weight-medium ml-1">{{ campaign.trafficBlocked || 0 }}</span>
-                    </div>
-                    
-                    <v-btn
-                      icon
-                      size="small"
-                      variant="text"
-                      :loading="refreshingTraffic === campaign.id"
-                      @click.stop="refreshCampaignTraffic(campaign)"
-                      title="Refresh traffic"
-                      class="ml-auto"
-                    >
-                      <v-icon size="small">mdi-refresh</v-icon>
-                    </v-btn>
-                  </div>
                   
                   <div class="stat-item">
                     <v-btn
@@ -500,98 +435,46 @@
             ></v-textarea>
 
             <!-- Store Configuration -->
-            <v-row :dense="$vuetify.display.smAndDown">
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="formData.tiktokStoreId"
-                  label="TikTok Store"
-                  :items="stores"
-                  item-title="store_name"
-                  item-value="id"
-                  variant="outlined"
-                  :rules="[v => !!v || 'TikTok store is required']"
-                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
+            <v-select
+              v-model="formData.tiktokStoreId"
+              label="TikTok Store"
+              :items="stores"
+              item-title="store_name"
+              item-value="id"
+              variant="outlined"
+              :rules="[v => !!v || 'TikTok store is required']"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
+              class="mb-4"
+            >
+              <template v-slot:append-inner>
+                <v-btn
+                  icon
+                  size="small"
+                  variant="text"
+                  @click.stop="testStoreConnection(formData.tiktokStoreId, 'tiktok')"
+                  :loading="testingConnection.tiktok"
+                  :disabled="!formData.tiktokStoreId"
                 >
-                  <template v-slot:append-inner>
-                    <v-btn
-                      icon
-                      size="small"
-                      variant="text"
-                      @click.stop="testStoreConnection(formData.tiktokStoreId, 'tiktok')"
-                      :loading="testingConnection.tiktok"
-                      :disabled="!formData.tiktokStoreId"
-                    >
-                      <v-icon>mdi-connection</v-icon>
-                    </v-btn>
-                  </template>
-                </v-select>
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="formData.redirectType"
-                  label="Redirect Type"
-                  :items="['shopify', 'custom']"
-                  variant="outlined"
-                  @update:model-value="onRedirectTypeChange"
-                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
-                >
-                  <template v-slot:item="{ item, props }">
-                    <v-list-item v-bind="props">
-                      <template v-slot:prepend>
-                        <v-icon>{{ item.value === 'shopify' ? 'mdi-shopping' : 'mdi-open-in-new' }}</v-icon>
-                      </template>
-                      <v-list-item-title>{{ item.value === 'shopify' ? 'Shopify Store' : 'Custom URL' }}</v-list-item-title>
-                    </v-list-item>
-                  </template>
-                </v-select>
-              </v-col>
-            </v-row>
+                  <v-icon>mdi-connection</v-icon>
+                </v-btn>
+              </template>
+            </v-select>
 
-            <v-row v-if="formData.redirectType === 'shopify'" :dense="$vuetify.display.smAndDown">
-              <v-col cols="12">
-                <v-select
-                  v-model="formData.redirectStoreId"
-                  label="Redirect Store"
-                  :items="stores"
-                  item-title="store_name"
-                  item-value="id"
-                  variant="outlined"
-                  :rules="formData.redirectType === 'shopify' ? [v => !!v || 'Redirect store is required'] : []"
-                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
-                >
-                  <template v-slot:append-inner>
-                    <v-btn
-                      icon
-                      size="small"
-                      variant="text"
-                      @click.stop="testStoreConnection(formData.redirectStoreId, 'redirect')"
-                      :loading="testingConnection.redirect"
-                      :disabled="!formData.redirectStoreId"
-                    >
-                      <v-icon>mdi-connection</v-icon>
-                    </v-btn>
-                  </template>
-                </v-select>
-              </v-col>
-            </v-row>
-
-            <v-row v-else :dense="$vuetify.display.smAndDown">
-              <v-col cols="12">
-                <v-text-field
-                  v-model="formData.customRedirectUrl"
-                  label="Custom Redirect URL"
-                  placeholder="https://example.com"
-                  variant="outlined"
-                  :rules="formData.redirectType === 'custom' ? [
-                    v => !!v || 'Custom URL is required',
-                    v => /^https?:\/\/.+/.test(v) || 'Invalid URL format'
-                  ] : []"
-                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
-                  hint="This URL will automatically be applied to all selected regions"
-                  persistent-hint
-                ></v-text-field>
-              </v-col>
-            </v-row>
+            <!-- Single Redirect Link Field -->
+            <v-text-field
+              v-model="formData.customRedirectLink"
+              label="Redirect Link"
+              placeholder="https://example.com"
+              variant="outlined"
+              :rules="[
+                v => !!v || 'Redirect link is required',
+                v => /^https?:\/\/.+/.test(v) || 'Invalid URL format'
+              ]"
+              :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
+              class="mb-4"
+              hint="All visitors will be redirected to this URL when the campaign is enabled"
+              persistent-hint
+            ></v-text-field>
 
             <!-- Landing Page Template -->
             <v-select
@@ -633,111 +516,6 @@
                 </v-list-item>
               </template>
             </v-select>
-
-            <!-- Region Selection -->
-            <div class="mb-4">
-              <p class="text-subtitle-2 mb-2">Target Regions</p>
-              <v-chip-group
-                v-model="formData.regions"
-                multiple
-                selected-class="v-chip--selected"
-              >
-                <v-chip
-                  v-for="region in availableRegions"
-                  :key="region.value"
-                  :value="region.value"
-                  color="primary"
-                  variant="tonal"
-                >
-                  {{ region.title }}
-                </v-chip>
-              </v-chip-group>
-            </div>
-
-            <!-- Affiliate Links Configuration -->
-            <v-divider class="my-4"></v-divider>
-            <div class="text-subtitle-1 mb-4">Affiliate Links Configuration</div>
-            
-            <v-alert 
-              v-if="formData.redirectType === 'custom' && formData.customRedirectUrl && formData.regions.length > 0"
-              type="info"
-              variant="tonal"
-              density="compact"
-              class="mb-3"
-            >
-              <v-icon size="small">mdi-information</v-icon>
-              All affiliate links are automatically set to your custom redirect URL
-            </v-alert>
-            
-            <v-expansion-panels v-model="expandedPanels" multiple>
-              <v-expansion-panel
-                v-for="region in formData.regions"
-                :key="region"
-                :value="region"
-              >
-                <v-expansion-panel-title>
-                  <v-icon class="mr-2">mdi-earth</v-icon>
-                  {{ getRegionName(region) }}
-                  <v-chip 
-                    v-if="formData.redirectType === 'custom'"
-                    size="x-small"
-                    color="info"
-                    class="ml-2"
-                  >
-                    Auto-filled
-                  </v-chip>
-                </v-expansion-panel-title>
-                <v-expansion-panel-text>
-                  <v-row>
-                    <v-col cols="12" md="6">
-                      <v-text-field
-                        v-model="formData.affiliateLinks[region + '_ios']"
-                        label="iOS Link"
-                        placeholder="https://example.com/ios"
-                        variant="outlined"
-                        density="compact"
-                        :readonly="formData.redirectType === 'custom'"
-                        :hint="formData.redirectType === 'custom' ? 'Auto-filled from custom redirect URL' : ''"
-                      >
-                        <template v-slot:prepend-inner>
-                          <v-icon size="small">mdi-apple</v-icon>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                    <v-col cols="12" md="6">
-                      <v-text-field
-                        v-model="formData.affiliateLinks[region + '_android']"
-                        label="Android Link"
-                        placeholder="https://example.com/android"
-                        variant="outlined"
-                        density="compact"
-                        :readonly="formData.redirectType === 'custom'"
-                        :hint="formData.redirectType === 'custom' ? 'Auto-filled from custom redirect URL' : ''"
-                      >
-                        <template v-slot:prepend-inner>
-                          <v-icon size="small">mdi-android</v-icon>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                    <v-col cols="12">
-                      <v-text-field
-                        v-model="formData.affiliateLinks[region]"
-                        label="Default Link (All Devices)"
-                        placeholder="https://example.com/default"
-                        variant="outlined"
-                        density="compact"
-                        :readonly="formData.redirectType === 'custom'"
-                        :hint="formData.redirectType === 'custom' ? 'Auto-filled from custom redirect URL' : ''"
-                      >
-                        <template v-slot:prepend-inner>
-                          <v-icon size="small">mdi-devices</v-icon>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                  </v-row>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
           </v-form>
         </v-card-text>
         
@@ -774,16 +552,6 @@
               <v-btn 
                 icon 
                 variant="text" 
-                :size="$vuetify.display.smAndDown ? 'x-small' : 'small'"
-                @click="refreshCampaignTraffic(currentCampaign)"
-                :loading="refreshingTraffic === currentCampaign?.id"
-                title="Refresh traffic data"
-              >
-                <v-icon>mdi-refresh</v-icon>
-              </v-btn>
-              <v-btn 
-                icon 
-                variant="text" 
                 :size="$vuetify.display.smAndDown ? 'x-small' : 'small'" 
                 @click="showLaunchesModal = false" 
               >
@@ -815,47 +583,6 @@
             </v-card>
           </div>
 
-          <!-- Auto Enable Settings -->
-          <div class="px-4 pb-3">
-            <v-card variant="flat" class="pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
-              <div class="d-flex align-center justify-space-between">
-                <div class="flex-grow-1">
-                  <h4 class="text-body-2 font-weight-medium mb-2">Auto Enable Settings</h4>
-                  <div class="d-flex align-center gap-2">
-                    <v-text-field
-                      v-model.number="disabledClicksThreshold"
-                      label="Number of Disabled Clicks before Auto Enable"
-                      type="number"
-                      min="0"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      style="max-width: 350px;"
-                    >
-                      <template v-slot:append-inner>
-                        <v-tooltip location="top">
-                          <template v-slot:activator="{ props }">
-                            <v-icon v-bind="props" size="small">mdi-information-outline</v-icon>
-                          </template>
-                          <span>Launch will automatically enable after this many disabled clicks. Set to 0 to disable auto-enable.</span>
-                        </v-tooltip>
-                      </template>
-                    </v-text-field>
-                    <v-btn
-                      color="primary"
-                      variant="flat"
-                      size="small"
-                      @click="updateDisabledClicksThreshold"
-                      :loading="savingThreshold"
-                      prepend-icon="mdi-content-save"
-                    >
-                      Save
-                    </v-btn>
-                  </div>
-                </div>
-              </div>
-            </v-card>
-          </div>
 
           <!-- Add New Launches Section -->
           <div class="px-4 pb-3">
@@ -968,23 +695,6 @@
 
                     <!-- Action buttons and traffic stats -->
                     <div class="d-flex align-center gap-3 flex-shrink-0">
-                      <!-- Traffic stats -->
-                      <div class="launch-traffic-stats d-flex align-center gap-2 mr-2">
-                        <div class="d-flex align-center gap-1">
-                          <v-icon size="x-small" color="grey">mdi-pause</v-icon>
-                          <span class="text-caption font-weight-medium">{{ launch.trafficDisabled || 0 }}</span>
-                        </div>
-                        <v-divider vertical class="mx-1" style="height: 16px;"></v-divider>
-                        <div class="d-flex align-center gap-1">
-                          <v-icon size="x-small" color="success">mdi-check</v-icon>
-                          <span class="text-caption font-weight-medium">{{ launch.trafficPassed || 0 }}</span>
-                        </div>
-                        <v-divider vertical class="mx-1" style="height: 16px;"></v-divider>
-                        <div class="d-flex align-center gap-1">
-                          <v-icon size="x-small" color="error">mdi-close</v-icon>
-                          <span class="text-caption font-weight-medium">{{ launch.trafficBlocked || 0 }}</span>
-                        </div>
-                      </div>
                       
                       <v-btn
                         color="purple"
@@ -1145,7 +855,6 @@ const testingConnection = ref({ tiktok: false, redirect: false });
 // Search and filters
 const searchQuery = ref('');
 const statusFilter = ref('all');
-const regionFilter = ref('all');
 const selectedCampaigns = ref([]);
 const selectAllCheckbox = ref(false);
 const itemsPerPage = ref(10);
@@ -1172,9 +881,6 @@ const newLaunchCount = ref(1);
 const addingLaunches = ref(false);
 const generatingLinkFor = ref(null);
 const togglingLaunch = ref(null);
-const refreshingTraffic = ref(null);
-const disabledClicksThreshold = ref(10);
-const savingThreshold = ref(false);
 
 // Forms
 const campaignForm = ref(null);
@@ -1185,13 +891,9 @@ const formData = ref({
   description: '',
   status: 'draft',
   tiktokStoreId: '',
-  redirectStoreId: '',
-  redirectType: 'shopify',
-  customRedirectUrl: '',
+  customRedirectLink: '',
   templateId: '',
-  sparkId: '',
-  regions: [],
-  affiliateLinks: {}
+  sparkId: ''
 });
 
 const linkFormData = ref({
@@ -1202,34 +904,6 @@ const linkFormData = ref({
 });
 
 // Available regions
-const availableRegions = [
-  { title: 'United States', value: 'US' },
-  { title: 'United Kingdom', value: 'UK' },
-  { title: 'Canada', value: 'CA' },
-  { title: 'Germany', value: 'DE' },
-  { title: 'Australia', value: 'AU' },
-  { title: 'New Zealand', value: 'NZ' },
-  { title: 'Czech Republic', value: 'CZ' },
-  { title: 'Slovakia', value: 'SK' }
-];
-
-// Region code to full name mapping
-const regionNameMap = {
-  'US': 'United States',
-  'UK': 'United Kingdom',
-  'CA': 'Canada',
-  'DE': 'Germany',
-  'AU': 'Australia',
-  'NZ': 'New Zealand',
-  'CZ': 'Czech Republic',
-  'SK': 'Slovakia'
-};
-
-// Function to get region display name
-const getRegionDisplayName = (regionCode) => {
-  return regionNameMap[regionCode] || regionCode;
-};
-
 // Status options for select
 const statusOptions = [
   { title: 'Draft', value: 'draft' },
@@ -1262,7 +936,6 @@ const fetchCampaigns = async (isInitialLoad = false) => {
     const params = {
       search: searchQuery.value,
       status: statusFilter.value,
-      region: regionFilter.value,
       page: currentPage.value,
       limit: itemsPerPage.value
     };
@@ -1333,13 +1006,9 @@ const openCreateModal = () => {
     description: '',
     status: 'draft',
     tiktokStoreId: '',
-    redirectStoreId: '',
-    redirectType: 'shopify',
-    customRedirectUrl: '',
+    customRedirectLink: '',
     templateId: '',
-    sparkId: '',
-    regions: [],
-    affiliateLinks: {}
+    sparkId: ''
   };
   expandedPanels.value = [];
   showCreateModal.value = true;
@@ -1355,16 +1024,12 @@ const openEditModal = async (campaign) => {
       description: data.description || '',
       status: data.status,
       tiktokStoreId: data.tiktokStoreId,
-      redirectStoreId: data.redirectStoreId || '',
-      redirectType: data.redirectType || 'shopify',
-      customRedirectUrl: data.customRedirectUrl || '',
+      customRedirectLink: data.customRedirectLink || '',
       templateId: data.templateId || '',
-      sparkId: data.sparkId || '',
-      regions: data.regions || [],
-      affiliateLinks: data.affiliateLinks || {}
+      sparkId: data.sparkId || ''
     };
     
-    expandedPanels.value = data.regions || [];
+    expandedPanels.value = [];
     showCreateModal.value = true;
   } catch (error) {
     showError('Failed to load campaign details');
@@ -1385,32 +1050,14 @@ const saveCampaign = async () => {
   try {
     const campaignData = {
       ...formData.value,
-      isActive: formData.value.status === 'active'
+      isActive: formData.value.status === 'active',
+      redirectType: 'custom' // Always use custom type now
     };
-    
-    // Clean up redirect configuration based on type
-    if (campaignData.redirectType === 'shopify') {
-      // Remove custom redirect URL when using shopify type
-      delete campaignData.customRedirectUrl;
-      delete campaignData.customRedirectLink;
-    } else if (campaignData.redirectType === 'custom') {
-      // Ensure customRedirectLink is set for backend compatibility
-      campaignData.customRedirectLink = campaignData.customRedirectUrl;
-      delete campaignData.redirectStoreId;
-      delete campaignData.redirectStoreName;
-    }
     
     // Find store names
     const tiktokStore = stores.value.find(s => s.id === campaignData.tiktokStoreId);
     if (tiktokStore) {
       campaignData.tiktokStoreName = tiktokStore.store_name;
-    }
-    
-    if (campaignData.redirectType === 'shopify' && campaignData.redirectStoreId) {
-      const redirectStore = stores.value.find(s => s.id === campaignData.redirectStoreId);
-      if (redirectStore) {
-        campaignData.redirectStoreName = redirectStore.store_name;
-      }
     }
     
     // Find spark name
@@ -1568,9 +1215,6 @@ const openLaunchesModal = async (campaign) => {
     const data = await campaignsApi.getCampaign(campaign.id);
     currentCampaign.value = data;
     
-    // Load disabled clicks threshold
-    disabledClicksThreshold.value = data.disabledClicksThreshold !== undefined ? data.disabledClicksThreshold : 10;
-    
     // Fetch traffic data for this campaign
     let trafficData = {};
     try {
@@ -1642,40 +1286,6 @@ const addNewLaunches = async () => {
   }
 };
 
-const refreshCampaignTraffic = async (campaign) => {
-  refreshingTraffic.value = campaign.id;
-  try {
-    // Fetch latest campaign data which includes traffic stats
-    const updatedCampaign = await campaignsApi.getCampaign(campaign.id);
-    
-    if (updatedCampaign) {
-      // Update the campaign in the campaigns array
-      const campaignIndex = campaigns.value.findIndex(c => c.id === campaign.id);
-      if (campaignIndex !== -1) {
-        campaigns.value[campaignIndex] = updatedCampaign;
-      }
-      
-      // If the launches modal is open for this campaign, update it
-      if (showLaunchesModal.value && currentCampaign.value?.id === campaign.id) {
-        currentCampaign.value = updatedCampaign;
-        
-        // Update launches with the latest data
-        const launches = updatedCampaign.launches || {};
-        currentLaunches.value = Object.entries(launches).map(([num, launch]) => ({
-          number: parseInt(num),
-          ...launch
-        })).sort((a, b) => a.number - b.number);
-      }
-      
-      showSuccess('Traffic data refreshed');
-    }
-  } catch (error) {
-    console.error('Failed to refresh traffic:', error);
-    showError('Failed to refresh traffic data');
-  } finally {
-    refreshingTraffic.value = null;
-  }
-};
 
 const toggleLaunch = async (launchNumber) => {
   togglingLaunch.value = launchNumber;
@@ -1819,26 +1429,6 @@ const testStoreConnection = async (storeId, type) => {
   }
 };
 
-const onRedirectTypeChange = () => {
-  if (formData.value.redirectType === 'custom') {
-    formData.value.redirectStoreId = '';
-    
-    // Auto-fill all selected regions with the custom redirect URL
-    if (formData.value.customRedirectUrl && formData.value.regions.length > 0) {
-      formData.value.regions.forEach(region => {
-        // Set the same URL for all device types in each region
-        formData.value.affiliateLinks[region] = formData.value.customRedirectUrl;
-        formData.value.affiliateLinks[region + '_ios'] = formData.value.customRedirectUrl;
-        formData.value.affiliateLinks[region + '_android'] = formData.value.customRedirectUrl;
-      });
-      
-      showSuccess('All regions auto-filled with custom redirect URL');
-    }
-  } else {
-    formData.value.customRedirectUrl = '';
-  }
-};
-
 // Helper functions
 const getStatusColor = (status) => {
   const colors = {
@@ -1848,11 +1438,6 @@ const getStatusColor = (status) => {
     completed: 'info'
   };
   return colors[status] || 'grey';
-};
-
-const getRegionName = (region) => {
-  const regionObj = availableRegions.find(r => r.value === region);
-  return regionObj ? regionObj.title : region;
 };
 
 const getActiveLaunches = (campaign) => {
@@ -1865,17 +1450,6 @@ const getTotalLaunches = (campaign) => {
   return Object.keys(campaign.launches).length;
 };
 
-const getTrafficPercentage = (campaign, type) => {
-  const total = campaign.traffic || 0;
-  if (total === 0) return 0;
-  
-  if (type === 'passed') {
-    return ((campaign.trafficPassed || 0) / total * 100).toFixed(1);
-  } else if (type === 'blocked') {
-    return ((campaign.trafficBlocked || 0) / total * 100).toFixed(1);
-  }
-  return 0;
-};
 
 const getTemplateName = (templateId) => {
   if (!templateId) return null;
@@ -1973,61 +1547,6 @@ const validateLaunchCount = () => {
   }
 };
 
-const updateDisabledClicksThreshold = async () => {
-  savingThreshold.value = true;
-  try {
-    // Update the campaign with the new threshold
-    await campaignsApi.updateCampaign(currentCampaign.value.id, {
-      disabledClicksThreshold: disabledClicksThreshold.value
-    });
-    
-    showSuccess('Auto-enable threshold updated');
-    
-    // Update the local campaign data
-    currentCampaign.value.disabledClicksThreshold = disabledClicksThreshold.value;
-    
-    // Refresh campaigns list to show updated data
-    fetchCampaigns(true);
-  } catch (error) {
-    showError('Failed to update auto-enable threshold');
-    // Reset to previous value on error
-    disabledClicksThreshold.value = currentCampaign.value.disabledClicksThreshold !== undefined ? currentCampaign.value.disabledClicksThreshold : 10;
-  } finally {
-    savingThreshold.value = false;
-  }
-};
-
-// Watch regions to update expanded panels
-watch(() => formData.value.regions, (newRegions, oldRegions) => {
-  expandedPanels.value = newRegions;
-  
-  // Auto-fill new regions with custom redirect URL if in custom mode
-  if (formData.value.redirectType === 'custom' && formData.value.customRedirectUrl) {
-    const newlyAddedRegions = newRegions.filter(r => !oldRegions?.includes(r));
-    
-    newlyAddedRegions.forEach(region => {
-      formData.value.affiliateLinks[region] = formData.value.customRedirectUrl;
-      formData.value.affiliateLinks[region + '_ios'] = formData.value.customRedirectUrl;
-      formData.value.affiliateLinks[region + '_android'] = formData.value.customRedirectUrl;
-    });
-    
-    if (newlyAddedRegions.length > 0) {
-      showSuccess('New regions auto-filled with custom redirect URL');
-    }
-  }
-});
-
-// Watch custom redirect URL changes to auto-update affiliate links
-watch(() => formData.value.customRedirectUrl, (newUrl) => {
-  if (formData.value.redirectType === 'custom' && newUrl && formData.value.regions.length > 0) {
-    // Update all affiliate links for selected regions
-    formData.value.regions.forEach(region => {
-      formData.value.affiliateLinks[region] = newUrl;
-      formData.value.affiliateLinks[region + '_ios'] = newUrl;
-      formData.value.affiliateLinks[region + '_android'] = newUrl;
-    });
-  }
-});
 
 // Auto-refresh functionality
 let refreshInterval = null;
