@@ -23,6 +23,11 @@ const error = ref({
 const showAddDialog = ref(false);
 const assistantEmail = ref('');
 const assistants = ref([]);
+const assistantRoles = ref({
+  hasCommentBotAccess: false,
+  hasDashboardAccess: false,
+  hasBCGenAccess: false
+});
 
 // Confirmation dialogs
 const showExtendDialog = ref(false);
@@ -30,6 +35,11 @@ const showDeleteDialog = ref(false);
 const showEditDialog = ref(false);
 const selectedAssistant = ref(null);
 const editEmail = ref('');
+const editRoles = ref({
+  hasCommentBotAccess: false,
+  hasDashboardAccess: false,
+  hasBCGenAccess: false
+});
 
 // Validation
 const emailRules = [
@@ -87,8 +97,8 @@ const addVirtualAssistant = async () => {
   error.value.addAssistant = null;
   
   try {
-    // Call API to add virtual assistant
-    const response = await usersApi.addVirtualAssistant(assistantEmail.value);
+    // Call API to add virtual assistant with roles
+    const response = await usersApi.addVirtualAssistant(assistantEmail.value, assistantRoles.value);
     
     if (response.success) {
       // Add the new assistant to the list
@@ -99,6 +109,11 @@ const addVirtualAssistant = async () => {
       
       // Clear form and close dialog
       assistantEmail.value = '';
+      assistantRoles.value = {
+        hasCommentBotAccess: false,
+        hasDashboardAccess: false,
+        hasBCGenAccess: false
+      };
       showAddDialog.value = false;
     } else {
       throw new Error(response.error || 'Failed to add virtual assistant');
@@ -126,6 +141,11 @@ const confirmDelete = (assistant) => {
 const confirmEdit = (assistant) => {
   selectedAssistant.value = assistant;
   editEmail.value = assistant.email;
+  editRoles.value = {
+    hasCommentBotAccess: assistant.has_comment_bot_access || false,
+    hasDashboardAccess: assistant.has_dashboard_access || false,
+    hasBCGenAccess: assistant.has_bc_gen_access || false
+  };
   showEditDialog.value = true;
 };
 
@@ -168,19 +188,27 @@ const editAssistant = async () => {
   const id = selectedAssistant.value.id;
   
   try {
-    const response = await usersApi.editVirtualAssistant(id, editEmail.value);
+    const response = await usersApi.editVirtualAssistant(id, editEmail.value, editRoles.value);
     
     if (response.success) {
-      // Update the assistant's email in the list
+      // Update the assistant's email and roles in the list
       const assistant = assistants.value.find(a => a.id === id);
       if (assistant) {
-        assistant.email = response.newEmail;
+        assistant.email = response.newEmail || editEmail.value;
+        assistant.has_comment_bot_access = editRoles.value.hasCommentBotAccess;
+        assistant.has_dashboard_access = editRoles.value.hasDashboardAccess;
+        assistant.has_bc_gen_access = editRoles.value.hasBCGenAccess;
       }
       
       // Close dialog
       showEditDialog.value = false;
       selectedAssistant.value = null;
       editEmail.value = '';
+      editRoles.value = {
+        hasCommentBotAccess: false,
+        hasDashboardAccess: false,
+        hasBCGenAccess: false
+      };
     } else {
       throw new Error(response.error || 'Failed to edit virtual assistant');
     }
@@ -229,14 +257,6 @@ const extendAssistant = async () => {
   }
 };
 
-// Access account
-const accessAccount = (assistant) => {
-  // Navigate to dashboard with targetUserId parameter
-  router.push({
-    path: '/dashboard',
-    query: { targetUserId: assistant.user_id }
-  });
-};
 
 // Format date
 const formatDate = (dateString) => {
@@ -348,6 +368,7 @@ const refreshData = async () => {
               v-if="!$vuetify.display.smAndDown"
               :headers="[
                 { title: 'Email', key: 'email' },
+                { title: 'Permissions', key: 'permissions' },
                 { title: 'Status', key: 'status' },
                 { title: 'Added', key: 'created_at' },
                 { title: 'Expires', key: 'expires_at' },
@@ -357,6 +378,37 @@ const refreshData = async () => {
               :loading="loading.checkAccess"
               no-data-text="No virtual assistants added yet"
             >
+              <template v-slot:item.permissions="{ item }">
+                <div class="d-flex flex-wrap gap-1">
+                  <v-chip
+                    v-if="item.has_comment_bot_access"
+                    size="x-small"
+                    color="primary"
+                    variant="outlined"
+                  >
+                    CommentBot
+                  </v-chip>
+                  <v-chip
+                    v-if="item.has_dashboard_access"
+                    size="x-small"
+                    color="success"
+                    variant="outlined"
+                  >
+                    Dashboard
+                  </v-chip>
+                  <v-chip
+                    v-if="item.has_bc_gen_access"
+                    size="x-small"
+                    color="info"
+                    variant="outlined"
+                  >
+                    BCGen
+                  </v-chip>
+                  <span v-if="!item.has_comment_bot_access && !item.has_dashboard_access && !item.has_bc_gen_access" class="text-caption text-medium-emphasis">
+                    No permissions
+                  </span>
+                </div>
+              </template>
               <template v-slot:item.status="{ item }">
                 <v-chip
                   :color="getStatusInfo(item).color"
@@ -372,20 +424,6 @@ const refreshData = async () => {
                 {{ formatDate(item.expires_at) }}
               </template>
               <template v-slot:item.actions="{ item }">
-                <v-btn
-                  v-if="item.status === 'active'"
-                  icon
-                  variant="text"
-                  size="small"
-                  color="success"
-                  @click="accessAccount(item)"
-                  class="mr-1"
-                >
-                  <v-icon>mdi-login</v-icon>
-                  <v-tooltip activator="parent" location="top">
-                    Access Account
-                  </v-tooltip>
-                </v-btn>
                 <v-btn
                   icon
                   variant="text"
@@ -452,17 +490,36 @@ const refreshData = async () => {
                   <div class="text-caption text-medium-emphasis">
                     Expires: {{ formatDate(assistant.expires_at) }}
                   </div>
-                  <div class="mt-2 d-flex gap-2 flex-wrap">
-                    <v-btn
-                      v-if="assistant.status === 'active'"
-                      size="small"
-                      variant="text"
-                      color="success"
-                      @click="accessAccount(assistant)"
+                  <div class="d-flex flex-wrap gap-1 mt-2">
+                    <v-chip
+                      v-if="assistant.has_comment_bot_access"
+                      size="x-small"
+                      color="primary"
+                      variant="outlined"
                     >
-                      <v-icon start small>mdi-login</v-icon>
-                      Access
-                    </v-btn>
+                      CommentBot
+                    </v-chip>
+                    <v-chip
+                      v-if="assistant.has_dashboard_access"
+                      size="x-small"
+                      color="success"
+                      variant="outlined"
+                    >
+                      Dashboard
+                    </v-chip>
+                    <v-chip
+                      v-if="assistant.has_bc_gen_access"
+                      size="x-small"
+                      color="info"
+                      variant="outlined"
+                    >
+                      BCGen
+                    </v-chip>
+                    <span v-if="!assistant.has_comment_bot_access && !assistant.has_dashboard_access && !assistant.has_bc_gen_access" class="text-caption text-medium-emphasis">
+                      No permissions set
+                    </span>
+                  </div>
+                  <div class="mt-2 d-flex gap-2 flex-wrap">
                     <v-btn
                       size="small"
                       variant="text"
@@ -533,7 +590,30 @@ const refreshData = async () => {
             :rules="emailRules"
             :error-messages="error.addAssistant"
             @keyup.enter="addVirtualAssistant"
+            class="mb-4"
           ></v-text-field>
+          
+          <div class="mb-2">
+            <p class="text-subtitle-2 mb-2">Access Permissions</p>
+            <v-checkbox
+              v-model="assistantRoles.hasCommentBotAccess"
+              label="CommentBot Access"
+              density="compact"
+              hide-details
+            ></v-checkbox>
+            <v-checkbox
+              v-model="assistantRoles.hasDashboardAccess"
+              label="Dashboard Access"
+              density="compact"
+              hide-details
+            ></v-checkbox>
+            <v-checkbox
+              v-model="assistantRoles.hasBCGenAccess"
+              label="BCGen Access"
+              density="compact"
+              hide-details
+            ></v-checkbox>
+          </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -659,7 +739,7 @@ const refreshData = async () => {
       <v-card>
         <v-card-title>
           <v-icon class="mr-2">mdi-pencil</v-icon>
-          Edit Virtual Assistant Email
+          Edit Virtual Assistant
         </v-card-title>
         <v-card-text>
           <div class="mb-4">
@@ -684,6 +764,28 @@ const refreshData = async () => {
           >
             The virtual assistant will need to use the new email to access their account.
           </v-alert>
+          
+          <div class="mt-4">
+            <p class="text-subtitle-2 mb-2">Access Permissions</p>
+            <v-checkbox
+              v-model="editRoles.hasCommentBotAccess"
+              label="CommentBot Access"
+              density="compact"
+              hide-details
+            ></v-checkbox>
+            <v-checkbox
+              v-model="editRoles.hasDashboardAccess"
+              label="Dashboard Access"
+              density="compact"
+              hide-details
+            ></v-checkbox>
+            <v-checkbox
+              v-model="editRoles.hasBCGenAccess"
+              label="BCGen Access"
+              density="compact"
+              hide-details
+            ></v-checkbox>
+          </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -697,9 +799,9 @@ const refreshData = async () => {
             color="primary"
             variant="elevated"
             @click="editAssistant"
-            :disabled="!editEmail || editEmail === selectedAssistant?.email"
+            :disabled="!editEmail"
           >
-            Update Email
+            Save Changes
           </v-btn>
         </v-card-actions>
       </v-card>

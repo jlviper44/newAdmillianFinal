@@ -23,7 +23,6 @@ const { initAuth, isAuthenticated, hasCommentBotAccess, hasBcGenAccess, hasDashb
 const isAdmin = computed(() => {
   const isAdminUser = user.value?.isAdmin === true;
   const isVA = user.value?.isVirtualAssistant === true;
-  console.log('[Admin Check] isAdmin:', isAdminUser, 'isVirtualAssistant:', isVA, 'final:', isAdminUser && !isVA);
   return isAdminUser && !isVA;
 });
 
@@ -52,7 +51,8 @@ const allRoutes = [
     title: 'Profile', 
     icon: 'mdi-account', 
     path: '/profile',
-    requiresSubscription: null
+    requiresSubscription: null,
+    hideForVirtualAssistant: true
   },
   { 
     title: 'Settings', 
@@ -66,11 +66,15 @@ const allRoutes = [
 const visibleRoutes = computed(() => {
   if (!isAuthenticated.value) return [];
   
+  
   return allRoutes.filter(route => {
+    // Hide routes marked as hideForVirtualAssistant
+    if (route.hideForVirtualAssistant && user.value?.isVirtualAssistant) return false;
+    
     // Check if route requires admin access (excluding virtual assistants)
     if (route.requiresAdmin && !isAdmin.value) return false;
     
-    // Always show routes without subscription requirements (unless they require admin)
+    // Always show routes without subscription requirements (unless they require admin or are hidden for VA)
     if (!route.requiresSubscription) return true;
     
     // Check specific subscription requirements
@@ -108,17 +112,13 @@ const toggleDrawer = () => {
 
 // Stop assisting
 const stopAssisting = async () => {
-  console.log('[VA] Banner stopAssisting called')
   try {
-    console.log('[VA] Calling endVirtualAssistantMode API from banner...')
     const response = await usersApi.endVirtualAssistantMode()
-    console.log('[VA] Virtual assistant mode ended from banner:', response)
     
     // Reload the page to refresh all data with the normal session context
-    console.log('[VA] Reloading page from banner...')
     window.location.reload()
   } catch (error) {
-    console.error('[VA] Failed to exit virtual assistant mode from banner:', error)
+    console.error('Failed to exit virtual assistant mode:', error)
     alert('Failed to exit virtual assistant mode. Please try again.')
   }
 };

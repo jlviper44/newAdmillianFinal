@@ -98,9 +98,9 @@ export const usersApi = {
   
   // Virtual Assistants
   getVirtualAssistants: () => api.get('/auth/virtual-assistants'),
-  addVirtualAssistant: (email) => api.post('/auth/virtual-assistants', { email }),
+  addVirtualAssistant: (email, roles = {}) => api.post('/auth/virtual-assistants', { email, ...roles }),
   extendVirtualAssistant: (assistantId) => api.post('/auth/virtual-assistants/extend', { assistantId }),
-  editVirtualAssistant: (assistantId, newEmail) => api.put('/auth/virtual-assistants/edit', { assistantId, newEmail }),
+  editVirtualAssistant: (assistantId, newEmail, roles = {}) => api.put('/auth/virtual-assistants/edit', { assistantId, newEmail, ...roles }),
   removeVirtualAssistant: (id) => api.delete(`/auth/virtual-assistants/${id}`),
   
   // Virtual Assistant Mode

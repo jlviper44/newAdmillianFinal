@@ -165,26 +165,6 @@ const router = useRouter()
 
 const showAccountSwitcher = ref(false)
 
-// Debug virtual assistant accounts
-watch(virtualAssistantAccounts, (newVal) => {
-  console.log('Virtual assistant accounts updated:', newVal)
-})
-
-watch(isVirtualAssistant, (newVal) => {
-  console.log('Is virtual assistant:', newVal)
-})
-
-watch(isAssistingUser, (newVal) => {
-  console.log('[VA Debug] isAssistingUser changed:', newVal)
-})
-
-watch(user, (newVal) => {
-  console.log('[VA Debug] User data:', {
-    isVirtualAssistant: newVal?.isVirtualAssistant,
-    assistingFor: newVal?.assistingFor,
-    email: newVal?.email
-  })
-}, { deep: true })
 
 
 const viewProfile = () => {
@@ -192,35 +172,29 @@ const viewProfile = () => {
 }
 
 const switchToAccount = async (account) => {
-  console.log('[VA] Switching to account:', account)
   showAccountSwitcher.value = false
   
   try {
     // Start virtual assistant mode using the new API
     const response = await usersApi.startVirtualAssistantMode(account.user_id)
-    console.log('[VA] Virtual assistant mode started:', response)
     
     // Reload the page to refresh all data with the new session context
     window.location.reload()
   } catch (error) {
-    console.error('[VA] Failed to switch to virtual assistant mode:', error)
+    console.error('Failed to switch to virtual assistant mode:', error)
     // Show error message to user
     alert('Failed to switch to virtual assistant mode. Please try again.')
   }
 }
 
 const exitVirtualAssistantMode = async () => {
-  console.log('[VA] exitVirtualAssistantMode called')
   try {
-    console.log('[VA] Calling endVirtualAssistantMode API...')
     const response = await usersApi.endVirtualAssistantMode()
-    console.log('[VA] Virtual assistant mode ended:', response)
     
     // Reload the page to refresh all data with the normal session context
-    console.log('[VA] Reloading page...')
     window.location.reload()
   } catch (error) {
-    console.error('[VA] Failed to exit virtual assistant mode:', error)
+    console.error('Failed to exit virtual assistant mode:', error)
     alert('Failed to exit virtual assistant mode. Please try again.')
   }
 }

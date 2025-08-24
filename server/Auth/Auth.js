@@ -62,6 +62,9 @@ async function initializeAuthTables(env) {
         user_id VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL,
         status VARCHAR(20) DEFAULT 'active',
+        has_comment_bot_access BOOLEAN DEFAULT 0,
+        has_dashboard_access BOOLEAN DEFAULT 0,
+        has_bc_gen_access BOOLEAN DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         expires_at TIMESTAMP NOT NULL
       )
@@ -78,10 +81,80 @@ async function initializeAuthTables(env) {
       ON virtual_assistants(expires_at)
     `).run();
     
+    // Migrate existing virtual assistants to add role columns if they don't exist
+    await migrateVirtualAssistantsRoles(env);
+    
     return true;
   } catch (error) {
     console.error('Error initializing auth tables:', error);
     return false;
+  }
+}
+
+// Migrate virtual assistants table to add role columns
+async function migrateVirtualAssistantsRoles(env) {
+  try {
+    // Check if role columns exist by trying to query them
+    const testQuery = `
+      SELECT has_comment_bot_access, has_dashboard_access, has_bc_gen_access 
+      FROM virtual_assistants 
+      LIMIT 1
+    `;
+    
+    try {
+      await env.USERS_DB.prepare(testQuery).first();
+      // Columns exist, no migration needed
+      return;
+    } catch (error) {
+      // Columns don't exist, need to add them
+      console.log('Migrating virtual_assistants table to add role columns...');
+      
+      // Add has_comment_bot_access column with default true for backward compatibility
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN has_comment_bot_access BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add has_dashboard_access column with default true for backward compatibility
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN has_dashboard_access BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add has_bc_gen_access column with default true for backward compatibility
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN has_bc_gen_access BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Update existing records to have full access for backward compatibility
+      await env.USERS_DB.prepare(`
+        UPDATE virtual_assistants 
+        SET has_comment_bot_access = 1,
+            has_dashboard_access = 1,
+            has_bc_gen_access = 1
+        WHERE has_comment_bot_access IS NULL 
+           OR has_dashboard_access IS NULL 
+           OR has_bc_gen_access IS NULL
+      `).run();
+      
+      console.log('Virtual assistants migration completed successfully');
+    }
+  } catch (error) {
+    console.error('Error during virtual assistants migration:', error);
+    // Non-critical error, continue
   }
 }
 
@@ -509,15 +582,16 @@ async function getVirtualAssistantAccounts(env, userEmail) {
       return [];
     }
     
-    console.log('[VA Debug] Getting virtual assistant accounts for email:', userEmail);
-    
-    // Simplified query for D1 compatibility
+    // Simplified query for D1 compatibility with roles
     const query = `
       SELECT 
         user_id, 
         expires_at, 
         status,
-        created_at
+        created_at,
+        has_comment_bot_access,
+        has_dashboard_access,
+        has_bc_gen_access
       FROM virtual_assistants
       WHERE LOWER(email) = LOWER(?) 
         AND status = 'active'
@@ -527,11 +601,9 @@ async function getVirtualAssistantAccounts(env, userEmail) {
     const result = await env.USERS_DB.prepare(query).bind(userEmail).all();
     
     if (!result.results || result.results.length === 0) {
-      console.log('No virtual assistant accounts found');
-      return [];
+        return [];
     }
     
-    console.log('Found virtual assistant records:', result.results);
     
     // For each virtual assistant record, fetch the user data
     const accounts = [];
@@ -558,17 +630,18 @@ async function getVirtualAssistantAccounts(env, userEmail) {
             name: userData.name || 'Unknown',
             expires_at: row.expires_at,
             status: row.status,
-            created_at: row.created_at
+            created_at: row.created_at,
+            has_comment_bot_access: row.has_comment_bot_access,
+            has_dashboard_access: row.has_dashboard_access,
+            has_bc_gen_access: row.has_bc_gen_access
           });
         } else {
-          console.log('No session found for user_id:', row.user_id);
         }
       } catch (e) {
         console.error('Error processing virtual assistant record:', e);
       }
     }
     
-    console.log('Returning accounts:', accounts);
     return accounts;
   } catch (error) {
     console.error('Error fetching virtual assistant accounts:', error);
@@ -664,12 +737,8 @@ async function handleCheckAccess(request, env) {
   const virtualAssistantMode = userData.virtualAssistantMode;
   const targetUserId = virtualAssistantMode?.targetUserId;
   
-  console.log('[VA Debug] Check-access called');
-  console.log('[VA Debug] Virtual assistant mode:', !!virtualAssistantMode);
-  console.log('[VA Debug] targetUserId from session:', targetUserId);
   
   if (targetUserId) {
-    console.log('[VA] Virtual assistant access requested for user:', targetUserId);
     
     // Verify the current user is a virtual assistant for the target user
     const vaQuery = `
@@ -708,7 +777,6 @@ async function handleCheckAccess(request, env) {
     if (!targetSession || !targetSession.access_token) {
       // Target user has no active session, but virtual assistant should still be able to access
       // Return basic user info without fresh subscription data
-      console.log('[VA] Target user has no active session, returning basic access');
       
       // Get basic user data from any session
       const basicUserQuery = `
@@ -729,28 +797,34 @@ async function handleCheckAccess(request, env) {
               id: targetUserId,
               ...userData,
               isVirtualAssistant: true,
-              assistingFor: userData.email
+              assistingFor: userData.email,
+              // Include VA permissions directly in user object
+              vaPermissions: {
+                hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
+                hasDashboardAccess: vaResult.has_dashboard_access === 1,
+                hasBCGenAccess: vaResult.has_bc_gen_access === 1
+              }
             },
             memberships: [],
             subscriptions: {
-              // Grant access to all features for virtual assistants
+              // Grant access based on virtual assistant permissions
               comment_bot: { 
-                isActive: true, 
-                expiresIn: 365, 
+                isActive: vaResult.has_comment_bot_access === 1, 
+                expiresIn: vaResult.has_comment_bot_access === 1 ? 365 : 0, 
                 checkoutLink: null,
-                totalCredits: 999999,
+                totalCredits: vaResult.has_comment_bot_access === 1 ? 999999 : 0,
                 creditMemberships: []
               },
               bc_gen: { 
-                isActive: true, 
-                expiresIn: 365, 
+                isActive: vaResult.has_bc_gen_access === 1, 
+                expiresIn: vaResult.has_bc_gen_access === 1 ? 365 : 0, 
                 checkoutLink: null,
-                totalCredits: 999999,
+                totalCredits: vaResult.has_bc_gen_access === 1 ? 999999 : 0,
                 creditMemberships: []
               },
               dashboard: { 
-                isActive: true, 
-                expiresIn: 365, 
+                isActive: vaResult.has_dashboard_access === 1, 
+                expiresIn: vaResult.has_dashboard_access === 1 ? 365 : 0, 
                 checkoutLink: null
               },
               virtual_assistant: {
@@ -792,7 +866,7 @@ async function handleCheckAccess(request, env) {
       });
     }
     
-    // Use the target user's session for the rest of the function
+    // Use the target user's session for the rest of the function with role permissions
     session = {
       ...targetSession,
       user_id: targetUserId, // Add user_id at root level for compatibility
@@ -800,14 +874,21 @@ async function handleCheckAccess(request, env) {
         id: targetUserId,
         ...targetUserData,
         isVirtualAssistant: true,
-        assistingFor: targetUserData.email
+        assistingFor: targetUserData.email,
+        // Include VA permissions directly in user object
+        vaPermissions: {
+          hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
+          hasDashboardAccess: vaResult.has_dashboard_access === 1,
+          hasBCGenAccess: vaResult.has_bc_gen_access === 1
+        }
+      },
+      virtualAssistantPermissions: {
+        hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
+        hasDashboardAccess: vaResult.has_dashboard_access === 1,
+        hasBCGenAccess: vaResult.has_bc_gen_access === 1
       }
     };
     
-    console.log('[VA] Using target user session for user:', targetUserId);
-    console.log('[VA] Target user has access token:', !!targetSession.access_token);
-    console.log('[VA] Session user id before modification:', session.user?.id);
-    console.log('[VA] Session user id after modification:', session.user?.id);
   }
   
   // Fetch user's team information
@@ -956,7 +1037,6 @@ async function handleCheckAccess(request, env) {
     if (!membershipResponse.ok) {
       // If this is a virtual assistant request and the API call failed, grant access anyway
       if (targetUserId) {
-        console.log('[VA] Membership API failed for target user, granting access anyway');
         return new Response(JSON.stringify({ 
           user: { ...session.user, isAdmin, team: userTeam },
           memberships: [],
@@ -1003,8 +1083,6 @@ async function handleCheckAccess(request, env) {
     
     const memberships = { data: allMemberships };
     
-    console.log('[VA] Fetched memberships for user:', session.user?.id);
-    console.log('[VA] Total memberships:', memberships.data?.length || 0);
     if (targetUserId) {
       console.log('[VA] This is a virtual assistant request for target user:', targetUserId);
       console.log('[VA] Membership response status:', membershipResponse.status);
@@ -1112,31 +1190,108 @@ async function handleCheckAccess(request, env) {
     // Check if user is a virtual assistant for other accounts
     // If we're in virtual assistant mode, use the original email, not the target user's email
     const emailToCheck = targetUserId && session.user?.originalEmail ? session.user.originalEmail : session.user?.email;
-    console.log('[VA Debug] Checking virtual assistant status for user:', emailToCheck);
     const virtualAssistantAccounts = await getVirtualAssistantAccounts(env, emailToCheck);
-    console.log('[VA Debug] Found virtual assistant accounts:', virtualAssistantAccounts);
     
-    if (targetUserId) {
-      console.log('[VA] Final subscriptions for virtual assistant access:', {
-        dashboard: subscriptions.dashboard,
-        comment_bot: subscriptions.comment_bot,
-        bc_gen: subscriptions.bc_gen
-      });
+    // Check if current user IS a virtual assistant (logged in directly)
+    // If they have virtual assistant accounts, they should only see what they have permission for
+    // Note: Even if user has their own subscriptions, if they're listed as a VA, apply restrictions
+    const isDirectVirtualAssistant = !targetUserId && virtualAssistantAccounts.length > 0 && !isAdmin;
+    
+    if (isDirectVirtualAssistant) {
+      
+      // Get the permissions from the first account (or merge all permissions)
+      let hasAnyCommentBotAccess = false;
+      let hasAnyDashboardAccess = false;
+      let hasAnyBCGenAccess = false;
+      
+      for (const account of virtualAssistantAccounts) {
+        if (account.has_comment_bot_access) hasAnyCommentBotAccess = true;
+        if (account.has_dashboard_access) hasAnyDashboardAccess = true;
+        if (account.has_bc_gen_access) hasAnyBCGenAccess = true;
+      }
+      
+      // Apply restrictions based on their virtual assistant permissions
+      if (!hasAnyCommentBotAccess) {
+        subscriptions.comment_bot = {
+          isActive: false,
+          expiresIn: 0,
+          checkoutLink: null,
+          totalCredits: 0,
+          creditMemberships: []
+        };
+      }
+      
+      if (!hasAnyDashboardAccess) {
+        subscriptions.dashboard = {
+          isActive: false,
+          expiresIn: 0,
+          checkoutLink: null
+        };
+      }
+      
+      if (!hasAnyBCGenAccess) {
+        subscriptions.bc_gen = {
+          isActive: false,
+          expiresIn: 0,
+          checkoutLink: null,
+          totalCredits: 0,
+          creditMemberships: []
+        };
+      }
+      
     }
     
+    // Apply role-based filtering for virtual assistants
+    if (targetUserId && session.virtualAssistantPermissions) {
+      const perms = session.virtualAssistantPermissions;
+      
+      // Filter subscriptions based on permissions
+      if (!perms.hasCommentBotAccess) {
+        subscriptions.comment_bot = {
+          isActive: false,
+          expiresIn: 0,
+          checkoutLink: null,
+          totalCredits: 0,
+          creditMemberships: []
+        };
+      }
+      
+      if (!perms.hasDashboardAccess) {
+        subscriptions.dashboard = {
+          isActive: false,
+          expiresIn: 0,
+          checkoutLink: null
+        };
+      }
+      
+      if (!perms.hasBCGenAccess) {
+        subscriptions.bc_gen = {
+          isActive: false,
+          expiresIn: 0,
+          checkoutLink: null,
+          totalCredits: 0,
+          creditMemberships: []
+        };
+      }
+      
+    }
+    
+    // Mark user as virtual assistant if they are one (direct login, not assisting)
+    // virtualAssistantAccounts contains accounts where this email is listed as a VA
+    const isDirectlyVirtualAssistant = !targetUserId && virtualAssistantAccounts.length > 0 && !isAdmin;
+    
     const responseData = { 
-      user: { ...session.user, isAdmin, team: userTeam },
+      user: { 
+        ...session.user, 
+        isAdmin: isDirectlyVirtualAssistant ? false : isAdmin, // VAs cannot be admins
+        team: userTeam,
+        isVirtualAssistant: isDirectlyVirtualAssistant || session.user?.isVirtualAssistant || false
+      },
       memberships: memberships.data,
       subscriptions,
       virtualAssistantFor: virtualAssistantAccounts
     };
     
-    console.log('[VA Debug] Returning user data:', {
-      isVirtualAssistant: responseData.user?.isVirtualAssistant,
-      assistingFor: responseData.user?.assistingFor,
-      email: responseData.user?.email,
-      isAdmin: responseData.user?.isAdmin
-    });
     
     return new Response(JSON.stringify(responseData), {
       status: 200,
@@ -1536,9 +1691,11 @@ async function handleGetVirtualAssistants(request, env) {
   }
   
   try {
-    // Get user's virtual assistants
+    // Get user's virtual assistants with roles
     const query = `
-      SELECT id, email, status, created_at, expires_at
+      SELECT id, email, status, 
+             has_comment_bot_access, has_dashboard_access, has_bc_gen_access,
+             created_at, expires_at
       FROM virtual_assistants
       WHERE user_id = ?
       ORDER BY created_at DESC
@@ -1546,16 +1703,21 @@ async function handleGetVirtualAssistants(request, env) {
     
     const result = await env.USERS_DB.prepare(query).bind(session.user.id).all();
     
-    console.log('Virtual assistants for user', session.user.email, ':', result.results);
     
-    // Update status based on expiration
+    // Update status based on expiration and convert role integers to booleans
     const now = new Date();
     const assistants = result.results.map(assistant => {
       const expiresAt = new Date(assistant.expires_at);
       if (expiresAt < now && assistant.status === 'active') {
         assistant.status = 'expired';
       }
-      return assistant;
+      // Convert 0/1 to boolean for roles
+      return {
+        ...assistant,
+        has_comment_bot_access: assistant.has_comment_bot_access === 1,
+        has_dashboard_access: assistant.has_dashboard_access === 1,
+        has_bc_gen_access: assistant.has_bc_gen_access === 1
+      };
     });
     
     return new Response(JSON.stringify({ assistants }), {
@@ -1591,7 +1753,7 @@ async function handleAddVirtualAssistant(request, env) {
   }
   
   try {
-    const { email } = await request.json();
+    const { email, hasCommentBotAccess = false, hasDashboardAccess = false, hasBCGenAccess = false } = await request.json();
     
     if (!email || !/.+@.+\..+/.test(email)) {
       return new Response(JSON.stringify({ error: 'Invalid email address' }), {
@@ -1640,18 +1802,29 @@ async function handleAddVirtualAssistant(request, env) {
       });
     }
     
-    // Create virtual assistant
+    // Create virtual assistant with roles
     const id = generateRandomString(36);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
     
     const insertQuery = `
-      INSERT INTO virtual_assistants (id, user_id, email, status, created_at, expires_at)
-      VALUES (?, ?, ?, 'active', ?, ?)
+      INSERT INTO virtual_assistants (
+        id, user_id, email, status, 
+        has_comment_bot_access, has_dashboard_access, has_bc_gen_access,
+        created_at, expires_at
+      )
+      VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)
     `;
     
     await env.USERS_DB.prepare(insertQuery)
-      .bind(id, session.user.id, email, now.toISOString(), expiresAt.toISOString())
+      .bind(
+        id, session.user.id, email, 
+        hasCommentBotAccess ? 1 : 0, 
+        hasDashboardAccess ? 1 : 0, 
+        hasBCGenAccess ? 1 : 0,
+        now.toISOString(), 
+        expiresAt.toISOString()
+      )
       .run();
     
     return new Response(JSON.stringify({
@@ -1660,6 +1833,9 @@ async function handleAddVirtualAssistant(request, env) {
         id,
         email,
         status: 'active',
+        hasCommentBotAccess,
+        hasDashboardAccess,
+        hasBCGenAccess,
         created_at: now.toISOString(),
         expires_at: expiresAt.toISOString()
       }
@@ -1810,7 +1986,7 @@ async function handleEditVirtualAssistant(request, env) {
   }
   
   try {
-    const { assistantId, newEmail } = await request.json();
+    const { assistantId, newEmail, hasCommentBotAccess = false, hasDashboardAccess = false, hasBCGenAccess = false } = await request.json();
     
     if (!assistantId || !newEmail) {
       return new Response(JSON.stringify({ error: 'Assistant ID and new email required' }), {
@@ -1852,15 +2028,25 @@ async function handleEditVirtualAssistant(request, env) {
       });
     }
     
-    // Update the email
+    // Update the email and roles
     const updateQuery = `
       UPDATE virtual_assistants
-      SET email = ?
+      SET email = ?,
+          has_comment_bot_access = ?,
+          has_dashboard_access = ?,
+          has_bc_gen_access = ?
       WHERE id = ? AND user_id = ?
     `;
     
     await env.USERS_DB.prepare(updateQuery)
-      .bind(newEmail, assistantId, session.user.id)
+      .bind(
+        newEmail, 
+        hasCommentBotAccess ? 1 : 0,
+        hasDashboardAccess ? 1 : 0,
+        hasBCGenAccess ? 1 : 0,
+        assistantId, 
+        session.user.id
+      )
       .run();
     
     return new Response(JSON.stringify({
@@ -2402,7 +2588,6 @@ async function handleStartVirtualAssistantMode(request, env) {
       .bind(JSON.stringify(updatedUserData), sessionId)
       .run();
     
-    console.log('[VA] Started virtual assistant mode for target user:', targetUserId);
     
     return new Response(JSON.stringify({ 
       success: true,
@@ -2456,7 +2641,6 @@ async function handleEndVirtualAssistantMode(request, env) {
       .bind(JSON.stringify(userData), sessionId)
       .run();
     
-    console.log('[VA] Ended virtual assistant mode');
     
     return new Response(JSON.stringify({ 
       success: true,
@@ -2500,9 +2684,6 @@ async function requireAuth(request, env, handler) {
   
   if (virtualAssistantMode && virtualAssistantMode.targetUserId) {
     const targetUserId = virtualAssistantMode.targetUserId;
-    console.log('[VA] requireAuth: Processing virtual assistant request');
-    console.log('[VA] requireAuth: Target user ID:', targetUserId);
-    console.log('[VA] requireAuth: Current user email:', session.user.email);
     
     // Verify the current user is a virtual assistant for the target user
     const vaQuery = `
@@ -2517,10 +2698,8 @@ async function requireAuth(request, env, handler) {
       .bind(targetUserId, session.user.email)
       .first();
       
-    console.log('[VA] requireAuth: Virtual assistant query result:', vaResult);
       
     if (!vaResult) {
-      console.log('[VA] requireAuth: Virtual assistant authorization failed');
       return new Response(JSON.stringify({ 
         error: 'Not authorized as virtual assistant for this user'
       }), {
@@ -2529,7 +2708,6 @@ async function requireAuth(request, env, handler) {
       });
     }
     
-    console.log('[VA] requireAuth: Virtual assistant authorization successful');
     
     // Get the target user's session to access their data
     const targetSessionQuery = `
@@ -2566,17 +2744,6 @@ async function requireAuth(request, env, handler) {
         }
       };
       
-      console.log('[VA] requireAuth: Modified session for virtual assistant access');
-      console.log('[VA] requireAuth: Target user ID:', targetUserId);
-      console.log('[VA] requireAuth: Has access token:', !!session.access_token);
-      console.log('[VA] requireAuth: Modified complete session structure:', {
-        user_id: session.user_id,
-        user: {
-          id: session.user?.id,
-          email: session.user?.email,
-          isVirtualAssistant: session.user?.isVirtualAssistant
-        }
-      });
     }
   }
   

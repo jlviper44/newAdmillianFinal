@@ -37,9 +37,27 @@ export function useAuth() {
   const isAuthenticated = computed(() => !!user.value)
   
   // Subscription-specific computed properties
-  const hasCommentBotAccess = computed(() => subscriptions.value?.comment_bot?.isActive || false)
-  const hasBcGenAccess = computed(() => subscriptions.value?.bc_gen?.isActive || false)
-  const hasDashboardAccess = computed(() => subscriptions.value?.dashboard?.isActive || false)
+  // If user is a VA in assisting mode, use their specific permissions
+  const hasCommentBotAccess = computed(() => {
+    if (user.value?.isVirtualAssistant && user.value?.vaPermissions) {
+      return user.value.vaPermissions.hasCommentBotAccess || false
+    }
+    return subscriptions.value?.comment_bot?.isActive || false
+  })
+  
+  const hasBcGenAccess = computed(() => {
+    if (user.value?.isVirtualAssistant && user.value?.vaPermissions) {
+      return user.value.vaPermissions.hasBCGenAccess || false
+    }
+    return subscriptions.value?.bc_gen?.isActive || false
+  })
+  
+  const hasDashboardAccess = computed(() => {
+    if (user.value?.isVirtualAssistant && user.value?.vaPermissions) {
+      return user.value.vaPermissions.hasDashboardAccess || false
+    }
+    return subscriptions.value?.dashboard?.isActive || false
+  })
   const hasAnyAccess = computed(() => hasCommentBotAccess.value || hasBcGenAccess.value || hasDashboardAccess.value)
   
   // Credit-specific computed properties
@@ -90,13 +108,13 @@ export function useAuth() {
         const data = await response.json()
         if (data.user) {
           user.value = data.user
-          // Check if this is a virtual assistant access
-          isAssistingUser.value = data.user.isVirtualAssistant || false
+          // Check if this is a virtual assistant accessing another user's account
+          // assistingFor is only set when actively assisting, not when just being a VA
+          isAssistingUser.value = !!data.user.assistingFor
+          
         }
         if (data.subscriptions) {
           subscriptions.value = data.subscriptions
-          console.log('[VA Debug] Subscriptions loaded:', data.subscriptions)
-          console.log('[VA Debug] Dashboard access:', data.subscriptions?.dashboard?.isActive)
         }
         if (data.virtualAssistantFor) {
           virtualAssistantFor.value = data.virtualAssistantFor
