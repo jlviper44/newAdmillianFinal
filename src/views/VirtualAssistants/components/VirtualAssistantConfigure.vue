@@ -590,6 +590,7 @@ const refreshData = async () => {
             :rules="emailRules"
             :error-messages="error.addAssistant"
             @keyup.enter="addVirtualAssistant"
+            @input="error.addAssistant = null"
             class="mb-4"
           ></v-text-field>
           

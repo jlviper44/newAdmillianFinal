@@ -912,8 +912,12 @@ async function handleCheckAccess(request, env) {
          m.product_id === env.WHOP_VIRTUAL_ASSISTANT_PRODUCT_ID)
       ) || [];
       
-      const virtualAssistantTotalCredits = virtualAssistantCredits.reduce((sum, m) => 
-        sum + (parseInt(m.metadata.Quantity) || 0), 0);
+      const virtualAssistantTotalCredits = virtualAssistantCredits.reduce((sum, m) => {
+        const quantity = m.metadata?.Quantity !== undefined ? 
+          parseInt(m.metadata.Quantity) : 
+          (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+        return sum + quantity;
+      }, 0);
       
       return new Response(JSON.stringify({ 
         user: { ...session.user, isAdmin: true, team: userTeam },
@@ -1141,12 +1145,24 @@ async function handleCheckAccess(request, env) {
     ) || [];
     
     // Calculate total credits for each type
-    const commentBotTotalCredits = commentBotCredits.reduce((sum, m) => 
-      sum + (parseInt(m.metadata.Quantity) || 0), 0);
-    const bcGenTotalCredits = bcGenCredits.reduce((sum, m) => 
-      sum + (parseInt(m.metadata.Quantity) || 0), 0);
-    const virtualAssistantTotalCredits = virtualAssistantCredits.reduce((sum, m) => 
-      sum + (parseInt(m.metadata.Quantity) || 0), 0);
+    const commentBotTotalCredits = commentBotCredits.reduce((sum, m) => {
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      return sum + quantity;
+    }, 0);
+    const bcGenTotalCredits = bcGenCredits.reduce((sum, m) => {
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      return sum + quantity;
+    }, 0);
+    const virtualAssistantTotalCredits = virtualAssistantCredits.reduce((sum, m) => {
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      return sum + quantity;
+    }, 0);
     
     // Build subscriptions object
     const subscriptions = {
@@ -1573,16 +1589,26 @@ async function handleUseCredits(request, env) {
     const memberships = { data: allMemberships };
     
     // Filter memberships with credits for the specific product type
-    const creditMemberships = memberships.data?.filter(m => 
-      m.metadata?.Quantity && 
-      parseInt(m.metadata.Quantity) > 0 &&
-      (m.metadata?.ProductType === productType || m.product_id === productId)
-    ) || [];
+    const creditMemberships = memberships.data?.filter(m => {
+      // Check for Quantity (allow InitialQuantity as fallback for initial memberships)
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      
+      return quantity > 0 &&
+        (m.metadata?.ProductType === productType || m.product_id === productId);
+    }) || [];
     
     // Sort by quantity (ascending) to use smaller quantities first
-    creditMemberships.sort((a, b) => 
-      parseInt(a.metadata.Quantity) - parseInt(b.metadata.Quantity)
-    );
+    creditMemberships.sort((a, b) => {
+      const aQuantity = a.metadata?.Quantity !== undefined ? 
+        parseInt(a.metadata.Quantity) : 
+        (a.metadata?.InitialQuantity !== undefined ? parseInt(a.metadata.InitialQuantity) : 0);
+      const bQuantity = b.metadata?.Quantity !== undefined ? 
+        parseInt(b.metadata.Quantity) : 
+        (b.metadata?.InitialQuantity !== undefined ? parseInt(b.metadata.InitialQuantity) : 0);
+      return aQuantity - bQuantity;
+    });
     
     let remainingCredits = credits;
     const updates = [];
@@ -1591,7 +1617,11 @@ async function handleUseCredits(request, env) {
     for (const membership of creditMemberships) {
       if (remainingCredits <= 0) break;
       
-      const currentQuantity = parseInt(membership.metadata.Quantity);
+      // Use Quantity if available, otherwise use InitialQuantity for new memberships
+      const currentQuantity = membership.metadata?.Quantity !== undefined ? 
+        parseInt(membership.metadata.Quantity) : 
+        (membership.metadata?.InitialQuantity !== undefined ? parseInt(membership.metadata.InitialQuantity) : 0);
+      
       const toSubtract = Math.min(currentQuantity, remainingCredits);
       const newQuantity = currentQuantity - toSubtract;
       
@@ -1599,17 +1629,27 @@ async function handleUseCredits(request, env) {
         membershipId: membership.id,
         oldQuantity: currentQuantity,
         newQuantity: newQuantity,
-        creditsUsed: toSubtract
+        creditsUsed: toSubtract,
+        // If we're using InitialQuantity, we need to set Quantity for the first time
+        isInitialUse: membership.metadata?.Quantity === undefined
       });
       
       remainingCredits -= toSubtract;
     }
     
     if (remainingCredits > 0) {
+      console.error('Insufficient credits:', {
+        productType,
+        productId,
+        requested: credits,
+        available: credits - remainingCredits,
+        creditMembershipsCount: creditMemberships.length
+      });
       return new Response(JSON.stringify({ 
         error: 'Insufficient credits available',
         requested: credits,
-        available: credits - remainingCredits
+        available: credits - remainingCredits,
+        productType
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -2370,12 +2410,24 @@ async function handleGetVirtualAssistantData(request, env) {
     ) || [];
     
     // Calculate total credits
-    const commentBotTotalCredits = commentBotCredits.reduce((sum, m) => 
-      sum + (parseInt(m.metadata.Quantity) || 0), 0);
-    const bcGenTotalCredits = bcGenCredits.reduce((sum, m) => 
-      sum + (parseInt(m.metadata.Quantity) || 0), 0);
-    const virtualAssistantTotalCredits = virtualAssistantCredits.reduce((sum, m) => 
-      sum + (parseInt(m.metadata.Quantity) || 0), 0);
+    const commentBotTotalCredits = commentBotCredits.reduce((sum, m) => {
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      return sum + quantity;
+    }, 0);
+    const bcGenTotalCredits = bcGenCredits.reduce((sum, m) => {
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      return sum + quantity;
+    }, 0);
+    const virtualAssistantTotalCredits = virtualAssistantCredits.reduce((sum, m) => {
+      const quantity = m.metadata?.Quantity !== undefined ? 
+        parseInt(m.metadata.Quantity) : 
+        (m.metadata?.InitialQuantity !== undefined ? parseInt(m.metadata.InitialQuantity) : 0);
+      return sum + quantity;
+    }, 0);
     
     // Build subscriptions object
     const subscriptions = {
