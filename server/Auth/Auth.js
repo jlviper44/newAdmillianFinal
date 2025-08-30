@@ -6,7 +6,9 @@ const ADMIN_EMAILS = [
   'justin.m.lee.dev@gmail.com', 
   'cranapplellc@gmail.com',
   'vl@black.com',
-  'sackjulisa@gmail.com'
+  'sackjulisa@gmail.com',
+  'alexuvaro00@gmail.com',
+  'kevinpuxingzhou@gmail.com'
 ]; // Update these with actual admin emails
 
 // Pricing constants (price per credit)
@@ -1540,8 +1542,8 @@ async function handleUseCredits(request, env) {
   
   const { credits, productType = 'comment_bot', assistedUserId } = await request.json();
   
-  // Check if user is an admin - admins don't need to use credits (except for virtual assistants)
-  if (session.user && session.user.email && isAdminUser(session.user.email) && productType !== 'virtual_assistant' && !assistedUserId) {
+  // Check if user is an admin - admins don't need to use credits
+  if (session.user && session.user.email && isAdminUser(session.user.email) && !assistedUserId) {
     return new Response(JSON.stringify({ 
       success: true,
       creditsUsed: 0,
@@ -1810,36 +1812,41 @@ async function handleAddVirtualAssistant(request, env) {
       });
     }
     
-    // Check if user has credits
-    const checkAccessResponse = await handleCheckAccess(request, env);
-    const accessData = await checkAccessResponse.json();
+    // Check if user is an admin - admins bypass credit requirements
+    const isAdmin = session.user?.email && isAdminUser(session.user.email);
     
-    const virtualAssistantCredits = accessData.subscriptions?.virtual_assistant?.totalCredits || 0;
-    
-    if (virtualAssistantCredits < 1) {
-      return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    // Use a credit
-    const useCreditsResponse = await handleUseCredits(
-      new Request(request.url, {
-        method: 'POST',
-        headers: request.headers,
-        body: JSON.stringify({ credits: 1, productType: 'virtual_assistant' })
-      }),
-      env
-    );
-    
-    const useCreditsData = await useCreditsResponse.json();
-    
-    if (!useCreditsData.success) {
-      return new Response(JSON.stringify({ error: 'Failed to deduct credit' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    if (!isAdmin) {
+      // Non-admin users need to check and use credits
+      const checkAccessResponse = await handleCheckAccess(request, env);
+      const accessData = await checkAccessResponse.json();
+      
+      const virtualAssistantCredits = accessData.subscriptions?.virtual_assistant?.totalCredits || 0;
+      
+      if (virtualAssistantCredits < 1) {
+        return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Use a credit
+      const useCreditsResponse = await handleUseCredits(
+        new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify({ credits: 1, productType: 'virtual_assistant' })
+        }),
+        env
+      );
+      
+      const useCreditsData = await useCreditsResponse.json();
+      
+      if (!useCreditsData.success) {
+        return new Response(JSON.stringify({ error: 'Failed to deduct credit' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
     
     // Create virtual assistant with roles
@@ -1921,17 +1928,22 @@ async function handleExtendVirtualAssistant(request, env) {
       });
     }
     
-    // Check if user has credits
-    const checkAccessResponse = await handleCheckAccess(request, env);
-    const accessData = await checkAccessResponse.json();
+    // Check if user is an admin - admins bypass credit requirements
+    const isAdmin = session.user?.email && isAdminUser(session.user.email);
     
-    const virtualAssistantCredits = accessData.subscriptions?.virtual_assistant?.totalCredits || 0;
-    
-    if (virtualAssistantCredits < 1) {
-      return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    if (!isAdmin) {
+      // Non-admin users need to check and use credits
+      const checkAccessResponse = await handleCheckAccess(request, env);
+      const accessData = await checkAccessResponse.json();
+      
+      const virtualAssistantCredits = accessData.subscriptions?.virtual_assistant?.totalCredits || 0;
+      
+      if (virtualAssistantCredits < 1) {
+        return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
     
     // Get current assistant to verify ownership and get current expiration
@@ -1952,23 +1964,25 @@ async function handleExtendVirtualAssistant(request, env) {
       });
     }
     
-    // Use a credit
-    const useCreditsResponse = await handleUseCredits(
-      new Request(request.url, {
-        method: 'POST',
-        headers: request.headers,
-        body: JSON.stringify({ credits: 1, productType: 'virtual_assistant' })
-      }),
-      env
-    );
-    
-    const useCreditsData = await useCreditsResponse.json();
-    
-    if (!useCreditsData.success) {
-      return new Response(JSON.stringify({ error: 'Failed to deduct credit' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    if (!isAdmin) {
+      // Non-admin users need to use a credit
+      const useCreditsResponse = await handleUseCredits(
+        new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify({ credits: 1, productType: 'virtual_assistant' })
+        }),
+        env
+      );
+      
+      const useCreditsData = await useCreditsResponse.json();
+      
+      if (!useCreditsData.success) {
+        return new Response(JSON.stringify({ error: 'Failed to deduct credit' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
     
     // Calculate new expiration date (add 30 days to current expiration)
