@@ -111,7 +111,10 @@ export function useAuth() {
           // Check if this is a virtual assistant accessing another user's account
           // assistingFor is only set when actively assisting, not when just being a VA
           isAssistingUser.value = !!data.user.assistingFor
-          
+          // Log for debugging
+          if (data.user.assistingFor) {
+            console.log('Virtual Assistant Mode Active - Assisting:', data.user.assistingFor)
+          }
         }
         if (data.subscriptions) {
           subscriptions.value = data.subscriptions

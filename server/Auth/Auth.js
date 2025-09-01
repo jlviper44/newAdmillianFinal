@@ -800,7 +800,8 @@ async function handleCheckAccess(request, env) {
               id: targetUserId,
               ...userData,
               isVirtualAssistant: true,
-              assistingFor: userData.email,
+              assistingFor: userData.email || userData.name || `User #${targetUserId}`,
+              originalEmail: virtualAssistantMode.originalEmail, // Preserve the VA's original email
               // Include VA permissions directly in user object
               vaPermissions: {
                 hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
@@ -877,7 +878,8 @@ async function handleCheckAccess(request, env) {
         id: targetUserId,
         ...targetUserData,
         isVirtualAssistant: true,
-        assistingFor: targetUserData.email,
+        assistingFor: targetUserData.name || targetUserData.email || `User #${targetUserId}`,
+        originalEmail: virtualAssistantMode.originalEmail, // Preserve the VA's original email
         // Include VA permissions directly in user object
         vaPermissions: {
           hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
@@ -1304,7 +1306,9 @@ async function handleCheckAccess(request, env) {
         ...session.user, 
         isAdmin: isDirectlyVirtualAssistant ? false : isAdmin, // VAs cannot be admins
         team: userTeam,
-        isVirtualAssistant: isDirectlyVirtualAssistant || session.user?.isVirtualAssistant || false
+        isVirtualAssistant: isDirectlyVirtualAssistant || session.user?.isVirtualAssistant || false,
+        // Explicitly preserve assistingFor when in virtual assistant mode
+        assistingFor: session.user?.assistingFor || null
       },
       memberships: memberships.data,
       subscriptions,

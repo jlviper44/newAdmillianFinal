@@ -72,7 +72,7 @@
             Currently Assisting
           </v-list-item-title>
           <v-list-item-subtitle class="text-caption">
-            {{ user.assistingFor || `User #${getTargetUserId()}` }}
+            {{ user.assistingFor || user.email || `User #${user.id}` }}
             <br>
             <span class="text-primary">Click to exit virtual assistant mode</span>
           </v-list-item-subtitle>
@@ -92,7 +92,7 @@
         >
           <v-list-item-title>Stop Assisting</v-list-item-title>
           <v-list-item-subtitle class="text-caption">
-            Return to your own account
+            Currently assisting: {{ user.assistingFor || user.email || `User #${user.id}` }}
           </v-list-item-subtitle>
         </v-list-item>
         
