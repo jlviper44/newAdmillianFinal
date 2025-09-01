@@ -9,6 +9,7 @@ const ADMIN_EMAILS = [
   'sackjulisa@gmail.com',
   'alexuvaro00@gmail.com',
   'kevinpuxingzhou@gmail.com',
+  'antonloth79028@gmail.com'
 ]; // Update these with actual admin emails
 
 // Pricing constants (price per credit)
