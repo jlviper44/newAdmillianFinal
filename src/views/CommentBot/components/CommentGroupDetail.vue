@@ -16,6 +16,44 @@ const emit = defineEmits(['close']);
 const closeDialog = () => {
   emit('close');
 };
+
+// Download comment group as JSON
+const downloadCommentGroup = () => {
+  // Transform legends to match the expected import format
+  const transformedLegends = (props.commentGroup.legends || []).map(legend => {
+    return {
+      conversations: (legend.conversations || []).map((message, index) => {
+        // Assign users A, B, C in rotation
+        const user = String.fromCharCode(65 + (index % 3)); // A, B, or C
+        return {
+          user: user,
+          text: message
+        };
+      })
+    };
+  });
+  
+  // Prepare the data in the same format as expected for upload
+  const exportData = {
+    name: props.commentGroup.name,
+    description: props.commentGroup.description,
+    legends: transformedLegends
+  };
+  
+  // Convert to JSON string with pretty formatting
+  const jsonString = JSON.stringify(exportData, null, 2);
+  
+  // Create a blob and download link
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${props.commentGroup.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_comment_group.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 </script>
 
 <template>
@@ -50,8 +88,17 @@ const closeDialog = () => {
       <v-divider class="my-4"></v-divider>
       
       <!-- Conversation Templates -->
-      <div class="d-flex align-center mb-4">
+      <div class="d-flex align-center justify-space-between mb-4">
         <div class="text-h6">Conversation Templates</div>
+        <v-btn
+          color="primary"
+          variant="outlined"
+          size="small"
+          prepend-icon="mdi-download"
+          @click="downloadCommentGroup"
+        >
+          Download JSON
+        </v-btn>
       </div>
       
       <v-expansion-panels 
