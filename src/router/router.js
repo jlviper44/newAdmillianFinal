@@ -6,6 +6,8 @@ import Settings from '@/views/Settings/Settings.vue';
 import Dashboard from '@/views/Dashboard/Dashboard.vue';
 import VirtualAssistants from '@/views/VirtualAssistants/VirtualAssistants.vue';
 import AuthCallback from '@/views/AuthCallback.vue';
+import LinkSplitter from '@/views/Dashboard/LinkSplitter/LinkSplitter.vue';
+import LinkRedirect from '@/views/LinkRedirect.vue';
 import { useAuth } from '@/composables/useAuth';
 
 const routes = [
@@ -83,6 +85,27 @@ const routes = [
       requiresSubscription: 'dashboard'
     }
   },
+  {
+    path: '/link-splitter',
+    name: 'LinkSplitter',
+    component: LinkSplitter,
+    meta: {
+      title: 'Link Splitter',
+      requiresAuth: true,
+      requiresAccess: true,
+      requiresSubscription: 'dashboard'
+    }
+  },
+  // Link redirect route - MUST be before auth callback
+  {
+    path: '/l/:code',
+    name: 'LinkRedirect',
+    component: LinkRedirect,
+    meta: {
+      title: 'Redirecting...',
+      requiresAuth: false
+    }
+  },
   // Auth callback route
   {
     path: '/auth/callback/:provider',
@@ -156,6 +179,7 @@ router.beforeEach(async (to, from, next) => {
       }
       
       if (!hasRequiredAccess) {
+        console.log(`Access denied to ${to.path} - Required: ${to.meta.requiresSubscription}, Has Dashboard: ${hasDashboardAccess.value}, Has Comment Bot: ${hasCommentBotAccess.value}, Has BC Gen: ${hasBcGenAccess.value}`);
         next('/');
         return;
       }

@@ -1,12 +1,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useTheme } from 'vuetify';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
 import { usersApi } from '@/services/api';
 import UserMenu from '@/components/UserMenu.vue';
 
 const router = useRouter();
+const route = useRoute();
 const theme = useTheme();
 const isDarkMode = ref(false);
 const scrollY = ref(0);
@@ -26,6 +27,11 @@ const isAdmin = computed(() => {
   return isAdminUser && !isVA;
 });
 
+// Check if we should show navigation (hide on LinkRedirect page)
+const shouldShowNavigation = computed(() => {
+  return isAuthenticated.value && route.name !== 'LinkRedirect';
+});
+
 
 // All routes
 const allRoutes = [
@@ -33,6 +39,12 @@ const allRoutes = [
     title: 'Dashboard', 
     icon: 'mdi-view-dashboard', 
     path: '/dashboard',
+    requiresSubscription: 'dashboard'
+  },
+  { 
+    title: 'Link Splitter', 
+    icon: 'mdi-link-variant', 
+    path: '/link-splitter',
     requiresSubscription: 'dashboard'
   },
   { 
@@ -136,7 +148,7 @@ const updateOpenedGroups = () => {
   const path = router.currentRoute.value.path;
   const newOpened = [];
   
-  if (path.includes('/dashboard')) {
+  if (path.includes('/dashboard') || path.includes('/link-splitter')) {
     newOpened.push('dashboard');
   }
   if (path.includes('/comments')) {
@@ -235,6 +247,7 @@ const getCurrentPageTitle = () => {
     return 'Dashboard';
   }
   
+  if (path === '/link-splitter') return 'Link Splitter';
   if (path === '/comments') return 'Comment Bot';
   if (path === '/bc-gen') return 'BC Gen';
   if (path === '/virtual-assistants') return 'Virtual Assistants';
@@ -247,7 +260,7 @@ const getCurrentPageTitle = () => {
 // Update mobile active tab based on route
 const updateMobileActiveTab = () => {
   const path = router.currentRoute.value.path;
-  if (path.includes('/dashboard')) mobileActiveTab.value = 'dashboard';
+  if (path.includes('/dashboard') || path.includes('/link-splitter')) mobileActiveTab.value = 'dashboard';
   else if (path.includes('/comments')) mobileActiveTab.value = 'comments';
   else if (path.includes('/bc-gen')) mobileActiveTab.value = 'bcgen';
   else if (path.includes('/profile')) mobileActiveTab.value = 'profile';
@@ -303,7 +316,7 @@ onUnmounted(() => {
   <v-app>
     <!-- Mobile App Bar - Simplified and Clean -->
     <v-app-bar
-      v-if="isAuthenticated && $vuetify.display.smAndDown"
+      v-if="shouldShowNavigation && $vuetify.display.smAndDown"
       elevation="0"
       :height="56"
       class="mobile-app-bar"
@@ -326,7 +339,7 @@ onUnmounted(() => {
 
     <!-- Desktop App Bar - Keep existing futuristic design -->
     <v-app-bar
-      v-if="isAuthenticated && $vuetify.display.mdAndUp"
+      v-if="shouldShowNavigation && $vuetify.display.mdAndUp"
       elevation="0"
       height="70"
       class="futuristic-app-bar header-entrance"
@@ -407,7 +420,7 @@ onUnmounted(() => {
 
     <!-- Mobile Bottom Navigation -->
     <v-bottom-navigation
-      v-if="isAuthenticated && $vuetify.display.smAndDown"
+      v-if="shouldShowNavigation && $vuetify.display.smAndDown"
       v-model="mobileActiveTab"
       :bg-color="isDarkMode ? '#1a1a2e' : '#ffffff'"
       grow
@@ -494,6 +507,12 @@ onUnmounted(() => {
               @click="navigateToAndClose('/dashboard?tab=shopify')"
               prepend-icon="mdi-shopping"
               title="Shopify Stores"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              @click="navigateToAndClose('/link-splitter')"
+              prepend-icon="mdi-link-variant"
+              title="Link Splitter"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
@@ -743,7 +762,7 @@ onUnmounted(() => {
     
     <!-- Desktop Navigation Drawer -->
     <v-navigation-drawer
-      v-if="isAuthenticated && $vuetify.display.mdAndUp"
+      v-if="shouldShowNavigation && $vuetify.display.mdAndUp"
       v-model="drawer"
       :rail="!drawer"
       permanent
@@ -806,6 +825,15 @@ onUnmounted(() => {
             prepend-icon="mdi-shopping"
             title="Shopify Stores"
             :active="isTabActive('/dashboard', 'shopify')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            to="/link-splitter"
+            prepend-icon="mdi-link-variant"
+            title="Link Splitter"
+            :active="activeRoute === '/link-splitter'"
             class="ml-2"
             rounded="lg"
           ></v-list-item>

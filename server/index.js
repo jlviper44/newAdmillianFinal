@@ -9,11 +9,20 @@ import { handleShopifyStoresData } from './Dashboard/ShopifyStores/ShopifyStores
 import handleCampaignsAPI from './Dashboard/Campaigns/Campaigns';
 import { handleLogsData } from './Dashboard/Logs/Logs';
 import { handleTeams } from './Teams/Teams';
+import { handleLinkSplitter } from './Dashboard/LinkSplitter/LinkSplitterHandler';
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    
+    // PRIORITY: Handle /l/ routes before ANYTHING else, including assets
+    // This ensures short links work like Bitly
+    // BUT make sure to exclude /link-splitter which contains /l
+    if (path.startsWith('/l/') && !path.startsWith('/link-splitter')) {
+      console.log('Intercepting short link BEFORE assets:', path);
+      return handleLinkSplitter(request, env, path, null);
+    }
     
     try {
       // Clean expired sessions periodically (on 1% of requests)
@@ -198,6 +207,13 @@ export default {
         return requireAuth(request, env, async (req, env, session) => {
           req.ctx = { ...req.ctx, session };
           return handleLogsData(req, env);
+        });
+      }
+      
+      // Route LinkSplitter API requests (protected)
+      if (path.startsWith('/api/link-splitter')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          return handleLinkSplitter(req, env, path, session);
         });
       }
       

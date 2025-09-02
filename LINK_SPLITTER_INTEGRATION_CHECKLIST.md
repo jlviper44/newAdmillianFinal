@@ -4,7 +4,7 @@
 Direct code merge of the link-splitter functionality into the Dashboard monolithic application (no separate Worker deployment).
 
 ## Quick Summary
-The link-splitter from `/Users/jlee/Downloads/Transfer` will be integrated directly into the Dashboard by:
+The link-splitter from `/Users/jlee/Desktop/Work/newAdmillianFinal/Transfer` will be integrated directly into the Dashboard by:
 1. **Converting Worker code to Express.js** - Port all functions to Node.js/Express
 2. **Using SQLite instead of KV/Durable Objects** - Store all data in campaigns.db
 3. **Integrating with existing auth** - Use Dashboard's current authentication

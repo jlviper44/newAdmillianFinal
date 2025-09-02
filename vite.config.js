@@ -20,6 +20,9 @@ export default defineConfig({
 			'@': fileURLToPath(new URL('./src', import.meta.url)),
 		},
 	},
+	server: {
+		// Remove proxy for /l routes - let Vue Router handle them
+	},
   optimizeDeps: {
     exclude: [
       // Exclude CodeMirror packages to prevent bundling issues
