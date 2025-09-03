@@ -1656,12 +1656,14 @@ async function handleUseCredits(request, env) {
     console.log(`[VA Credit Use] Target session has access token: ${!!targetAccessToken}`);
   }
   
-  // Check if user is an admin - admins don't need to use credits
-  if (targetSession.user && targetSession.user.email && isAdminUser(targetSession.user.email) && !assistedUserId) {
+  // Check if target user (or assisted user) is an admin - admins don't need to use credits
+  // This applies whether the admin is accessing directly OR being assisted by a VA
+  const targetUserEmail = targetSession.user?.email;
+  if (targetUserEmail && isAdminUser(targetUserEmail)) {
     return new Response(JSON.stringify({ 
       success: true,
       creditsUsed: 0,
-      message: 'Admin user - no credits deducted',
+      message: assistedUserId ? 'Admin user being assisted - no credits deducted' : 'Admin user - no credits deducted',
       updates: []
     }), {
       status: 200,

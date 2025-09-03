@@ -1213,6 +1213,349 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
 }
 
 /**
+ * Update campaign ID
+ */
+async function updateCampaignId(db, oldCampaignId, request, env) {
+  try {
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    
+    // Check if campaign exists and user has permission
+    let existingCampaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        existingCampaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(oldCampaignId, ...memberIds, teamId).first();
+      } else {
+        existingCampaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(oldCampaignId, teamId).first();
+      }
+    } else {
+      existingCampaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(oldCampaignId, userId).first();
+    }
+    
+    if (!existingCampaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const { newId } = await request.json();
+    
+    if (!newId || typeof newId !== 'string' || newId.trim() === '') {
+      return new Response(
+        JSON.stringify({ error: 'Invalid new campaign ID' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Check if new ID already exists
+    const existingNewId = await db.prepare('SELECT id FROM campaigns WHERE id = ?').bind(newId).first();
+    if (existingNewId) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign ID already exists' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Update the campaign ID
+    await db.prepare(`
+      UPDATE campaigns 
+      SET id = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `).bind(newId, oldCampaignId).run();
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Campaign ID updated successfully',
+        newId: newId
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    console.error('Error updating campaign ID:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to update campaign ID',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Update launch ID
+ */
+async function updateLaunchId(db, campaignId, oldLaunchId, request, env) {
+  console.log('=== updateLaunchId called ===');
+  console.log('Campaign ID:', campaignId);
+  console.log('Old Launch ID:', oldLaunchId, 'Type:', typeof oldLaunchId);
+  
+  try {
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    
+    // Check if campaign exists and user has permission
+    let campaign;
+    if (teamId) {
+      // If user is in a team, get all team members
+      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+      
+      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+        const memberIds = teamMembersResult.results.map(m => m.user_id);
+        const placeholders = memberIds.map(() => '?').join(',');
+        campaign = await db.prepare(
+          `SELECT * FROM campaigns WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+        ).bind(campaignId, ...memberIds, teamId).first();
+      } else {
+        campaign = await db.prepare(
+          'SELECT * FROM campaigns WHERE id = ? AND team_id = ?'
+        ).bind(campaignId, teamId).first();
+      }
+    } else {
+      campaign = await db.prepare(
+        'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
+      ).bind(campaignId, userId).first();
+    }
+    
+    if (!campaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const { newLaunchId } = await request.json();
+    console.log('New Launch ID:', newLaunchId, 'Type:', typeof newLaunchId);
+    
+    // Prevent renaming launch 0 (default launch)
+    if (oldLaunchId === '0' || oldLaunchId === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Cannot rename the default launch (Launch 0)' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Validate new launch ID - now accepting strings
+    if (!newLaunchId || typeof newLaunchId !== 'string' || newLaunchId.trim() === '') {
+      return new Response(
+        JSON.stringify({ error: 'Invalid new launch ID' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Validate launch ID format (alphanumeric and underscores only, no dashes)
+    if (!/^[a-zA-Z0-9_]+$/.test(newLaunchId)) {
+      return new Response(
+        JSON.stringify({ error: 'Launch ID can only contain letters, numbers, and underscores' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Parse current launches
+    let launches = JSON.parse(campaign.launches || '{}');
+    console.log('Current launches:', Object.keys(launches));
+    console.log('Checking for old launch:', oldLaunchId, 'Exists:', launches.hasOwnProperty(oldLaunchId));
+    
+    // Check if old launch exists - convert to string for consistent comparison
+    const oldLaunchIdStr = oldLaunchId.toString();
+    if (!launches.hasOwnProperty(oldLaunchIdStr)) {
+      console.log(`Launch ${oldLaunchIdStr} not found in launches:`, Object.keys(launches));
+      return new Response(
+        JSON.stringify({ error: 'Launch not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Check if new launch ID already exists
+    if (launches.hasOwnProperty(newLaunchId.toString())) {
+      return new Response(
+        JSON.stringify({ error: 'Launch ID already exists' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Move launch data to new ID
+    launches[newLaunchId] = launches[oldLaunchIdStr];
+    delete launches[oldLaunchIdStr];
+    
+    // Update max launch number if needed (only for numeric IDs)
+    let maxLaunchNumber = campaign.max_launch_number || 0;
+    const newLaunchIdNum = parseInt(newLaunchId);
+    if (!isNaN(newLaunchIdNum) && newLaunchIdNum > maxLaunchNumber) {
+      maxLaunchNumber = newLaunchIdNum;
+    }
+    
+    // Update campaign in database
+    await db.prepare(`
+      UPDATE campaigns 
+      SET launches = ?, max_launch_number = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `).bind(JSON.stringify(launches), maxLaunchNumber, campaignId).run();
+    
+    // Get the TikTok store to update Shopify pages
+    const tiktokStore = await db.prepare(
+      'SELECT * FROM shopify_stores WHERE id = ?'
+    ).bind(campaign.tiktok_store_id).first();
+    
+    if (tiktokStore && tiktokStore.access_token) {
+      try {
+        // Delete old page
+        const oldPageHandle = `${campaignId}-${oldLaunchIdStr}`;
+        await deleteShopifyPage(tiktokStore, oldPageHandle);
+        
+        // Create new page if launch is active
+        if (launches[newLaunchId].isActive) {
+          const newPageHandle = `${campaignId}-${newLaunchId}`;
+          
+          // Get redirect store domain if using template redirect
+          let redirectStoreDomain = null;
+          if (campaign.redirect_type !== 'custom' && campaign.redirect_store_id) {
+            const redirectStore = await db.prepare(
+              'SELECT store_url FROM shopify_stores WHERE id = ?'
+            ).bind(campaign.redirect_store_id).first();
+            
+            if (redirectStore && redirectStore.store_url) {
+              redirectStoreDomain = redirectStore.store_url.replace(/^https?:\/\//, '');
+              if (!redirectStoreDomain.includes('.myshopify.com')) {
+                redirectStoreDomain = `${redirectStoreDomain}.myshopify.com`;
+              }
+            }
+          }
+          
+          // Parse campaign data for page update
+          const campaignData = {
+            ...campaign,
+            redirect_store_domain: redirectStoreDomain
+          };
+          
+          await createTikTokValidationPage(tiktokStore, campaignData, campaignId, newLaunchId, newPageHandle);
+        }
+      } catch (error) {
+        console.error('Error updating Shopify pages for launch ID change:', error);
+        // Continue even if Shopify update fails
+      }
+    }
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Launch ID updated successfully',
+        oldLaunchId: oldLaunchIdStr,
+        newLaunchId: newLaunchId
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    console.error('Error updating launch ID:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to update launch ID',
+        message: error.message 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Delete a Shopify page by handle
+ */
+async function deleteShopifyPage(store, pageHandle) {
+  try {
+    let apiDomain = store.store_url.replace(/^https?:\/\//, '');
+    if (!apiDomain.includes('.myshopify.com')) {
+      apiDomain = `${apiDomain}.myshopify.com`;
+    }
+    
+    // First check if page exists
+    const checkUrl = `https://${apiDomain}/admin/api/2024-01/pages.json?handle=${pageHandle}`;
+    const checkResponse = await fetch(checkUrl, {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!checkResponse.ok) {
+      console.log(`Page ${pageHandle} not found or unable to access`);
+      return;
+    }
+    
+    const data = await checkResponse.json();
+    if (data.pages && data.pages.length > 0) {
+      const pageId = data.pages[0].id;
+      
+      // Delete the page
+      const deleteUrl = `https://${apiDomain}/admin/api/2024-01/pages/${pageId}.json`;
+      await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          'X-Shopify-Access-Token': store.access_token
+        }
+      });
+      
+      console.log(`Deleted Shopify page: ${pageHandle}`);
+    }
+  } catch (error) {
+    console.error('Error deleting Shopify page:', error);
+    throw error;
+  }
+}
+
+/**
  * Manage campaign launches (add, toggle)
  */
 async function manageCampaignLaunches(db, campaignId, request, env) {
@@ -1286,7 +1629,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
         break;
         
       case 'toggle':
-        const launchNum = parseInt(launchData.launchNumber);
+        const launchNum = launchData.launchNumber.toString(); // Keep as string
         if (launches[launchNum]) {
           launches[launchNum].isActive = !launches[launchNum].isActive;
           result = {
@@ -1316,7 +1659,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
                 tiktok_store_id: campaign.tiktok_store_id
               });
               
-              const pageHandle = `cloak-${campaignId}-${launchNum}`;
+              const pageHandle = `${campaignId}-${launchNum}`;
               
               // Get redirect store domain if using template redirect
               let redirectStoreDomain = null;
@@ -2463,7 +2806,7 @@ async function generateCampaignLink(db, request, env) {
     }
     
     // Generate the link with proper store URL
-    const pageHandle = `cloak-${campaignId}-${launch}`;
+    const pageHandle = `${campaignId}-${launch}`;
     const linkUrl = `https://${storeUrl}/pages/${pageHandle}`;
     
     try {
@@ -2966,9 +3309,18 @@ export default async function handleCampaignsAPI(request, env, path) {
       case subPath === 'status' && request.method === 'PUT':
         return await toggleCampaignStatus(db, campaignId, request, env);
       
+      // Update campaign ID
+      case subPath === 'update-id' && request.method === 'PUT':
+        return await updateCampaignId(db, campaignId, request, env);
+      
       // Manage launches
       case subPath === 'launches' && request.method === 'POST':
         return await manageCampaignLaunches(db, campaignId, request, env);
+      
+      // Update launch ID - /api/campaigns/{campaignId}/launches/{oldLaunchId}/update-id
+      case pathParts[3] === 'launches' && pathParts[5] === 'update-id' && request.method === 'PUT':
+        const oldLaunchId = decodeURIComponent(pathParts[4]);
+        return await updateLaunchId(db, campaignId, oldLaunchId, request, env);
       
       // Get traffic statistics
       case subPath === 'traffic-stats' && request.method === 'GET':

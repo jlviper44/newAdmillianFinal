@@ -567,9 +567,50 @@
             <v-card variant="flat" class="pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
               <h3 class="text-subtitle-1 mb-1 font-weight-medium">{{ currentCampaign?.name }}</h3>
               <div class="text-body-2">
-                <span>Campaign ID: {{ currentCampaign?.id }}</span>
-                <span class="mx-2">•</span>
-                <span>Total Launches: {{ currentLaunches.length }}</span>
+                <div class="d-flex align-center">
+                  <span>Campaign ID: </span>
+                  <v-text-field
+                    v-if="editingCampaignId"
+                    v-model="tempCampaignId"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    single-line
+                    class="mx-2"
+                    style="max-width: 300px; min-width: 250px;"
+                    @keyup.enter="saveCampaignId"
+                    @keyup.esc="cancelEditCampaignId"
+                  >
+                    <template v-slot:append>
+                      <v-btn
+                        icon="mdi-check"
+                        variant="text"
+                        size="x-small"
+                        color="green"
+                        @click="saveCampaignId"
+                      />
+                      <v-btn
+                        icon="mdi-close"
+                        variant="text"
+                        size="x-small"
+                        color="red"
+                        @click="cancelEditCampaignId"
+                      />
+                    </template>
+                  </v-text-field>
+                  <span v-else class="d-flex align-center">
+                    {{ currentCampaign?.id }}
+                    <v-btn
+                      icon="mdi-pencil"
+                      variant="text"
+                      size="x-small"
+                      class="ml-1"
+                      @click="startEditCampaignId"
+                    />
+                  </span>
+                  <span class="mx-2">•</span>
+                  <span>Total Launches: {{ currentLaunches.length }}</span>
+                </div>
               </div>
               
               <v-alert
@@ -647,7 +688,7 @@
               <div class="d-flex flex-column ga-2">
                 <v-card
                   v-for="(launch, index) in currentLaunches" 
-                  :key="index"
+                  :key="launch.number"
                   :color="launch.isActive ? ($vuetify.theme.current.dark ? 'grey-darken-2' : 'grey-lighten-5') : ($vuetify.theme.current.dark ? 'grey-darken-3' : 'grey-lighten-4')"
                   :variant="launch.isActive ? 'outlined' : 'flat'"
                   :style="launch.isActive ? 'border-color: rgb(168, 85, 247);' : ''"
@@ -658,9 +699,49 @@
                     <!-- Launch info -->
                     <div class="flex-grow-1" style="min-width: 0;">
                       <div class="d-flex align-center gap-2 mb-1 flex-wrap">
-                        <span class="text-body-1 font-weight-medium" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-2' : 'text-grey-darken-4'">
-                          Launch {{ index }}
-                          <span v-if="index === 0" class="text-caption ml-1">(Default)</span>
+                        <span class="text-body-1 font-weight-medium d-flex align-center" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-2' : 'text-grey-darken-4'">
+                          Launch: 
+                          <v-text-field
+                            v-if="editingLaunchId === launch.number"
+                            v-model="tempLaunchId"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                            single-line
+                            class="mx-2"
+                            style="max-width: 350px; min-width: 250px;"
+                            @keyup.enter="saveLaunchId(launch.number)"
+                            @keyup.esc="cancelEditLaunchId"
+                          >
+                            <template v-slot:append>
+                              <v-btn
+                                icon="mdi-check"
+                                variant="text"
+                                size="x-small"
+                                color="green"
+                                @click="saveLaunchId(launch.number)"
+                              />
+                              <v-btn
+                                icon="mdi-close"
+                                variant="text"
+                                size="x-small"
+                                color="red"
+                                @click="cancelEditLaunchId"
+                              />
+                            </template>
+                          </v-text-field>
+                          <span v-else class="d-flex align-center">
+                            {{ launch.number }}
+                            <v-btn
+                              v-if="launch.number !== '0' && launch.number !== 0"
+                              icon="mdi-pencil"
+                              variant="text"
+                              size="x-small"
+                              class="ml-1"
+                              @click="startEditLaunchId(launch.number)"
+                            />
+                          </span>
+                          <span v-if="launch.number === '0' || launch.number === 0" class="text-caption ml-1">(Default - Cannot be renamed)</span>
                         </span>
                         
                         <v-chip 
@@ -700,8 +781,8 @@
                         color="purple"
                         variant="flat"
                         size="small"
-                        @click="generateLaunchLink(index)"
-                        :loading="generatingLinkFor === index"
+                        @click="generateLaunchLink(launch.number)"
+                        :loading="generatingLinkFor === launch.number"
                         :prepend-icon="launch.generatedAt ? 'mdi-refresh' : 'mdi-link'"
                         class="mx-1 my-1"
                       >
@@ -712,7 +793,7 @@
                         color="blue"
                         variant="tonal"
                         size="small"
-                        @click="copyTestLink(index)"
+                        @click="copyTestLink(launch.number)"
                         :disabled="!launch.generatedAt"
                         prepend-icon="mdi-test-tube"
                         class="mx-1 my-1"
@@ -724,8 +805,8 @@
                         :color="launch.isActive ? 'grey' : 'green'"
                         variant="flat"
                         size="small"
-                        @click="toggleLaunch(index)"
-                        :loading="togglingLaunch === index"
+                        @click="toggleLaunch(launch.number)"
+                        :loading="togglingLaunch === launch.number"
                         :prepend-icon="launch.isActive ? 'mdi-pause' : 'mdi-play'"
                         class="mx-1 my-1"
                       >
@@ -875,6 +956,14 @@ const currentCampaign = ref(null);
 const currentLaunches = ref([]);
 const generatedLink = ref('');
 const expandedPanels = ref([]);
+
+// Campaign ID editing
+const editingCampaignId = ref(false);
+const tempCampaignId = ref('');
+
+// Launch ID editing
+const editingLaunchId = ref(null);
+const tempLaunchId = ref('');
 
 // Launch management
 const newLaunchCount = ref(1);
@@ -1225,24 +1314,32 @@ const openLaunchesModal = async (campaign) => {
       // Continue without traffic data
     }
     
-    // Convert launches object to array and sort by number
+    // Convert launches object to array and sort
     if (data.launches && Object.keys(data.launches).length > 0) {
       const launchesArray = Object.entries(data.launches)
         .map(([num, launch]) => ({
           ...launch,
-          number: parseInt(num),
+          number: num,  // Keep as string, don't parse to int
           traffic: trafficData[num] || 0  // Add traffic count from logs
         }))
-        .sort((a, b) => a.number - b.number);
+        .sort((a, b) => {
+          // Sort numerically if both are numbers, otherwise alphabetically
+          const aNum = parseInt(a.number);
+          const bNum = parseInt(b.number);
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return aNum - bNum;
+          }
+          return a.number.toString().localeCompare(b.number.toString());
+        });
       currentLaunches.value = launchesArray;
     } else {
       // Initialize with default launch if none exist
       currentLaunches.value = [{
-        number: 0,
+        number: '0',  // Keep as string
         isActive: true,
         createdAt: new Date().toISOString(),
         generatedAt: null,
-        traffic: trafficData[0] || 0
+        traffic: trafficData['0'] || 0
       }];
     }
     
@@ -1286,6 +1383,100 @@ const addNewLaunches = async () => {
   }
 };
 
+// Campaign ID editing functions
+const startEditCampaignId = () => {
+  tempCampaignId.value = currentCampaign.value.id;
+  editingCampaignId.value = true;
+};
+
+const cancelEditCampaignId = () => {
+  editingCampaignId.value = false;
+  tempCampaignId.value = '';
+};
+
+const saveCampaignId = async () => {
+  if (!tempCampaignId.value || tempCampaignId.value === currentCampaign.value.id) {
+    cancelEditCampaignId();
+    return;
+  }
+  
+  try {
+    // Update campaign with new ID
+    const result = await campaignsApi.updateCampaignId(currentCampaign.value.id, tempCampaignId.value);
+    if (result.success) {
+      showSuccess('Campaign ID updated successfully');
+      currentCampaign.value.id = tempCampaignId.value;
+      editingCampaignId.value = false;
+      // Refresh campaigns list
+      await fetchCampaigns(true);
+    } else {
+      showError(result.message || 'Failed to update campaign ID');
+    }
+  } catch (error) {
+    showError('Failed to update campaign ID: ' + error.message);
+  }
+};
+
+// Launch ID editing functions
+const startEditLaunchId = (launchNumber) => {
+  tempLaunchId.value = launchNumber.toString();
+  editingLaunchId.value = launchNumber;
+};
+
+const cancelEditLaunchId = () => {
+  editingLaunchId.value = null;
+  tempLaunchId.value = '';
+};
+
+const saveLaunchId = async (oldLaunchNumber) => {
+  const newLaunchId = tempLaunchId.value.trim();
+  
+  // Validation
+  if (!newLaunchId || newLaunchId === oldLaunchNumber.toString()) {
+    cancelEditLaunchId();
+    return;
+  }
+  
+  // Basic validation - allow alphanumeric and underscores only (no dashes)
+  if (!/^[a-zA-Z0-9_]+$/.test(newLaunchId)) {
+    showError('Launch ID can only contain letters, numbers, and underscores');
+    return;
+  }
+  
+  // Check if the new launch ID already exists (but not the same as old one)
+  if (oldLaunchNumber.toString() !== newLaunchId && currentLaunches.value.some(l => l.number.toString() === newLaunchId)) {
+    showError('Launch ID already exists');
+    return;
+  }
+  
+  try {
+    // Update launch ID
+    const result = await campaignsApi.updateLaunchId(currentCampaign.value.id, oldLaunchNumber, newLaunchId);
+    if (result.success) {
+      showSuccess('Launch ID updated successfully');
+      
+      // Update local state
+      const launchIndex = currentLaunches.value.findIndex(l => l.number.toString() === oldLaunchNumber.toString());
+      if (launchIndex !== -1) {
+        currentLaunches.value[launchIndex].number = newLaunchId;
+      }
+      
+      editingLaunchId.value = null;
+      tempLaunchId.value = '';
+      
+      // Refresh the modal
+      await openLaunchesModal(currentCampaign.value);
+      
+      // Refresh campaigns list
+      await fetchCampaigns(true);
+    } else {
+      showError(result.message || 'Failed to update launch ID');
+    }
+  } catch (error) {
+    showError('Failed to update launch ID: ' + error.message);
+  }
+};
+
 
 const toggleLaunch = async (launchNumber) => {
   togglingLaunch.value = launchNumber;
@@ -1297,7 +1488,7 @@ const toggleLaunch = async (launchNumber) => {
     
     if (result.success) {
       // Update local state
-      const launchIndex = currentLaunches.value.findIndex(l => l.number === launchNumber);
+      const launchIndex = currentLaunches.value.findIndex(l => l.number.toString() === launchNumber.toString());
       if (launchIndex !== -1) {
         currentLaunches.value[launchIndex].isActive = result.result?.isActive || !currentLaunches.value[launchIndex].isActive;
       }
@@ -1350,7 +1541,7 @@ const generateLaunchLink = async (launchNumber) => {
       }
       
       // Update the generatedAt timestamp in local state
-      const launchIndex = currentLaunches.value.findIndex(l => l.number === launchNumber);
+      const launchIndex = currentLaunches.value.findIndex(l => l.number.toString() === launchNumber.toString());
       if (launchIndex !== -1) {
         currentLaunches.value[launchIndex].generatedAt = new Date().toISOString();
       }
@@ -1384,7 +1575,7 @@ const generateLaunchLink = async (launchNumber) => {
 const copyTestLink = async (launchNumber) => {
   try {
     // Generate the base link URL
-    const pageHandle = `cloak-${currentCampaign.value.id}-${launchNumber}`;
+    const pageHandle = `${currentCampaign.value.id}-${launchNumber}`;
     
     // Get the TikTok store URL
     const tiktokStore = stores.value.find(s => s.id === currentCampaign.value.tiktokStoreId);

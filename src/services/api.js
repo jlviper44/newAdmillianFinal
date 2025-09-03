@@ -316,6 +316,12 @@ export const campaignsApi = {
   // Update campaign status
   updateCampaignStatus: (id, status) => api.put(`/campaigns/${id}/status`, { status }),
   
+  // Update campaign ID
+  updateCampaignId: (oldId, newId) => api.put(`/campaigns/${oldId}/update-id`, { newId }),
+  
+  // Update launch ID
+  updateLaunchId: (campaignId, oldLaunchId, newLaunchId) => api.put(`/campaigns/${campaignId}/launches/${encodeURIComponent(oldLaunchId)}/update-id`, { newLaunchId }),
+  
   // Manage campaign launches
   manageLaunches: (id, action, launchData) => api.post(`/campaigns/${id}/launches`, { action, launchData }),
   
