@@ -411,16 +411,86 @@ export default class BCGen {
         return { error: 'No valid session for credit deduction' };
       }
 
-      // Check if user is an admin - admins don't need to deduct credits (unless using virtual assistant)
-      if (session.user && session.user.email && isAdminUser(session.user.email) && !assistedUserId) {
-        console.log(`Admin user ${session.user.email} - skipping credit deduction`);
-        return { success: true };
+      // Check if this is a virtual assistant in assist mode
+      let targetAccessToken = session.access_token;
+      
+      // Check for VA mode in user_data (this is where it's actually stored)
+      const userData = session.user_data ? JSON.parse(session.user_data) : {};
+      const virtualAssistantMode = userData.virtualAssistantMode;
+      const targetUserId = virtualAssistantMode?.targetUserId;
+      
+      if (targetUserId) {
+        // VA is in assist mode - need to use the target user's credits
+        console.log(`[VA BC Gen Credit Use] Virtual assistant ${virtualAssistantMode.originalEmail} attempting to use BC Gen credits for user ${targetUserId}`);
+        
+        // Get VA permissions from the database
+        const vaQuery = `
+          SELECT * FROM virtual_assistants 
+          WHERE user_id = ? 
+          AND email = ?
+          AND status = 'active'
+          AND expires_at > datetime('now')
+        `;
+        
+        const vaEmail = virtualAssistantMode.originalEmail || userData.email;
+        const vaResult = await this.env.USERS_DB.prepare(vaQuery)
+          .bind(targetUserId, vaEmail)
+          .first();
+          
+        if (!vaResult) {
+          console.error(`Virtual assistant ${vaEmail} not authorized for user ${targetUserId}`);
+          return { error: 'Not authorized as virtual assistant for this user' };
+        }
+        
+        // Verify VA has BC Gen permission
+        const vaPermissions = {
+          hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
+          hasDashboardAccess: vaResult.has_dashboard_access === 1,
+          hasBCGenAccess: vaResult.has_bc_gen_access === 1
+        };
+        if (!vaPermissions.hasBCGenAccess) {
+          console.error(`Virtual assistant ${virtualAssistantMode.originalEmail} - no BC Gen access`);
+          return { error: 'Virtual assistant does not have BC Gen permission' };
+        }
+        
+        // Get the target user's session to use their access token
+        const targetSessionQuery = `
+          SELECT * FROM sessions 
+          WHERE user_id = ? 
+          ORDER BY updated_at DESC 
+          LIMIT 1
+        `;
+        
+        const targetSessionResult = await this.env.USERS_DB.prepare(targetSessionQuery)
+          .bind(targetUserId)
+          .first();
+          
+        if (!targetSessionResult || !targetSessionResult.access_token) {
+          console.error('Target user has no active session for BC Gen credit operations');
+          return { error: 'Target user has no active session for credit operations' };
+        }
+        
+        targetAccessToken = targetSessionResult.access_token;
+        console.log(`VA ${virtualAssistantMode.originalEmail} using BC Gen credits for user ${targetUserId}`);
+        
+        // Check if target user is admin
+        const targetUserData = targetSessionResult.user_data ? JSON.parse(targetSessionResult.user_data) : {};
+        if (targetUserData.email && isAdminUser(targetUserData.email)) {
+          console.log(`Target user ${targetUserData.email} is admin - skipping credit deduction`);
+          return { success: true };
+        }
+      } else {
+        // Regular user or admin check
+        if (session.user && session.user.email && isAdminUser(session.user.email) && !assistedUserId) {
+          console.log(`Admin user ${session.user.email} - skipping credit deduction`);
+          return { success: true };
+        }
       }
 
-      // Get user's memberships from Whop
+      // Get user's memberships from Whop - using target user's token
       const membershipResponse = await fetch('https://api.whop.com/api/v5/me/memberships', {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${targetAccessToken}`
         }
       });
       

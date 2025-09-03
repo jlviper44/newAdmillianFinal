@@ -766,9 +766,12 @@ async function handleCheckAccess(request, env) {
     }
     
     // Get the target user's session to access their data
+    // First try to get the most recent session with a valid access token
     const targetSessionQuery = `
       SELECT * FROM sessions 
       WHERE user_id = ? 
+      AND access_token IS NOT NULL
+      AND access_token != ''
       ORDER BY updated_at DESC 
       LIMIT 1
     `;
@@ -778,31 +781,44 @@ async function handleCheckAccess(request, env) {
       .first();
       
     if (!targetSession || !targetSession.access_token) {
-      // Target user has no active session, but virtual assistant should still be able to access
-      // Return basic user info without fresh subscription data
-      
-      // Get basic user data from any session
-      const basicUserQuery = `
-        SELECT user_data FROM sessions 
+      // Target user has no active session with access token
+      // Try to get any session to at least have user data
+      const anySessionQuery = `
+        SELECT * FROM sessions 
         WHERE user_id = ? 
+        ORDER BY updated_at DESC 
         LIMIT 1
       `;
       
-      const basicUserSession = await env.USERS_DB.prepare(basicUserQuery)
+      const anySession = await env.USERS_DB.prepare(anySessionQuery)
         .bind(targetUserId)
         .first();
         
-      if (basicUserSession) {
+      // We need access token to fetch memberships, but we can still show basic info
+      
+      if (anySession) {
         try {
-          const userData = JSON.parse(basicUserSession.user_data);
+          const userData = anySession.user_data ? JSON.parse(anySession.user_data) : {};
+          
+          // Try to get subscription data from stored session data if available
+          // Many sessions store subscription info in user_data
+          let storedSubscriptions = null;
+          if (anySession.subscriptions) {
+            try {
+              storedSubscriptions = JSON.parse(anySession.subscriptions);
+            } catch (e) {
+              // No stored subscriptions
+            }
+          }
+          
+          // Return user info with best available subscription data
           return new Response(JSON.stringify({ 
             user: {
               id: targetUserId,
               ...userData,
               isVirtualAssistant: true,
               assistingFor: userData.email || userData.name || `User #${targetUserId}`,
-              originalEmail: virtualAssistantMode.originalEmail, // Preserve the VA's original email
-              // Include VA permissions directly in user object
+              originalEmail: virtualAssistantMode.originalEmail,
               vaPermissions: {
                 hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
                 hasDashboardAccess: vaResult.has_dashboard_access === 1,
@@ -810,33 +826,42 @@ async function handleCheckAccess(request, env) {
               }
             },
             memberships: [],
-            subscriptions: {
-              // Grant access based on virtual assistant permissions
+            subscriptions: storedSubscriptions || {
+              // If no stored subscriptions, we cannot determine actual subscription status
+              // Show as inactive but with VA permissions noted
               comment_bot: { 
-                isActive: vaResult.has_comment_bot_access === 1, 
-                expiresIn: vaResult.has_comment_bot_access === 1 ? 365 : 0, 
+                isActive: false, // Cannot verify without access token
+                expiresIn: 0,
                 checkoutLink: null,
                 totalCredits: vaResult.has_comment_bot_access === 1 ? 999999 : 0,
-                creditMemberships: []
+                creditMemberships: [],
+                hasVAPermission: vaResult.has_comment_bot_access === 1,
+                isStale: true // Indicates this is not fresh data
               },
               bc_gen: { 
-                isActive: vaResult.has_bc_gen_access === 1, 
-                expiresIn: vaResult.has_bc_gen_access === 1 ? 365 : 0, 
+                isActive: false, // Cannot verify without access token
+                expiresIn: 0,
                 checkoutLink: null,
                 totalCredits: vaResult.has_bc_gen_access === 1 ? 999999 : 0,
-                creditMemberships: []
+                creditMemberships: [],
+                hasVAPermission: vaResult.has_bc_gen_access === 1,
+                isStale: true
               },
               dashboard: { 
-                isActive: vaResult.has_dashboard_access === 1, 
-                expiresIn: vaResult.has_dashboard_access === 1 ? 365 : 0, 
-                checkoutLink: null
+                isActive: false, // Cannot verify without access token
+                expiresIn: 0,
+                checkoutLink: null,
+                hasVAPermission: vaResult.has_dashboard_access === 1,
+                isStale: true
               },
               virtual_assistant: {
                 isActive: false,
                 expiresIn: 0,
                 checkoutLink: null,
                 totalCredits: 0,
-                creditMemberships: []
+                creditMemberships: [],
+                hasVAPermission: false,
+                isStale: true
               }
             },
             virtualAssistantFor: []
@@ -845,7 +870,7 @@ async function handleCheckAccess(request, env) {
             headers: { 'Content-Type': 'application/json' }
           });
         } catch (e) {
-          console.error('[VA] Error parsing basic user data:', e);
+          console.error('[VA] Error parsing user data:', e);
         }
       }
       
@@ -1262,39 +1287,39 @@ async function handleCheckAccess(request, env) {
       
     }
     
-    // Apply role-based filtering for virtual assistants
+    // For virtual assistants, preserve the actual subscription status of the target user
+    // but add permission flags for access control
     if (targetUserId && session.virtualAssistantPermissions) {
+      console.log('[VA] Before permission flags - subscriptions:', {
+        comment_bot_active: subscriptions.comment_bot?.isActive,
+        dashboard_active: subscriptions.dashboard?.isActive,
+        bc_gen_active: subscriptions.bc_gen?.isActive
+      });
+      
       const perms = session.virtualAssistantPermissions;
       
-      // Filter subscriptions based on permissions
-      if (!perms.hasCommentBotAccess) {
-        subscriptions.comment_bot = {
-          isActive: false,
-          expiresIn: 0,
-          checkoutLink: null,
-          totalCredits: 0,
-          creditMemberships: []
-        };
-      }
+      // Add permission flags to each subscription without modifying the actual status
+      // This allows the UI to show the real subscription status while enforcing access control
+      subscriptions.comment_bot.hasVAPermission = perms.hasCommentBotAccess;
+      subscriptions.dashboard.hasVAPermission = perms.hasDashboardAccess;
+      subscriptions.bc_gen.hasVAPermission = perms.hasBCGenAccess;
       
-      if (!perms.hasDashboardAccess) {
-        subscriptions.dashboard = {
-          isActive: false,
-          expiresIn: 0,
-          checkoutLink: null
-        };
-      }
+      // VAs should never have access to virtual assistant management
+      subscriptions.virtual_assistant = {
+        isActive: false,
+        expiresIn: 0,
+        checkoutLink: null,
+        totalCredits: 0,
+        creditMemberships: [],
+        hasVAPermission: false
+      };
       
-      if (!perms.hasBCGenAccess) {
-        subscriptions.bc_gen = {
-          isActive: false,
-          expiresIn: 0,
-          checkoutLink: null,
-          totalCredits: 0,
-          creditMemberships: []
-        };
-      }
-      
+      console.log('[VA] After permission flags - subscriptions:', {
+        comment_bot_active: subscriptions.comment_bot?.isActive,
+        dashboard_active: subscriptions.dashboard?.isActive,
+        bc_gen_active: subscriptions.bc_gen?.isActive,
+        permissions: perms
+      });
     }
     
     // Mark user as virtual assistant if they are one (direct login, not assisting)
@@ -1547,8 +1572,92 @@ async function handleUseCredits(request, env) {
   
   const { credits, productType = 'comment_bot', assistedUserId } = await request.json();
   
+  // Check if this is a virtual assistant in assist mode
+  let targetSession = session;
+  let targetAccessToken = session.access_token;
+  
+  // Check for VA mode in user_data (this is where it's actually stored)
+  const userData = session.user_data ? JSON.parse(session.user_data) : {};
+  const virtualAssistantMode = userData.virtualAssistantMode;
+  const targetUserId = virtualAssistantMode?.targetUserId;
+  
+  if (targetUserId) {
+    // VA is in assist mode - need to use the target user's credits
+    console.log(`[VA Credit Use] Virtual assistant ${virtualAssistantMode.originalEmail} attempting to use credits for user ${targetUserId}`);
+    
+    // Get VA permissions from the database
+    const vaQuery = `
+      SELECT * FROM virtual_assistants 
+      WHERE user_id = ? 
+      AND email = ?
+      AND status = 'active'
+      AND expires_at > datetime('now')
+    `;
+    
+    const vaEmail = virtualAssistantMode.originalEmail || session.user?.email;
+    const vaResult = await env.USERS_DB.prepare(vaQuery)
+      .bind(targetUserId, vaEmail)
+      .first();
+      
+    if (!vaResult) {
+      return new Response(JSON.stringify({ 
+        error: 'Not authorized as virtual assistant for this user'
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Verify VA has permission for this product type
+    const vaPermissions = {
+      hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
+      hasDashboardAccess: vaResult.has_dashboard_access === 1,
+      hasBCGenAccess: vaResult.has_bc_gen_access === 1
+    };
+    if (productType === 'comment_bot' && !vaPermissions.hasCommentBotAccess) {
+      return new Response(JSON.stringify({ error: 'Virtual assistant does not have Comment Bot access' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } else if (productType === 'bc_gen' && !vaPermissions.hasBCGenAccess) {
+      return new Response(JSON.stringify({ error: 'Virtual assistant does not have BC Gen access' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } else if (productType === 'virtual_assistant') {
+      return new Response(JSON.stringify({ error: 'Virtual assistants cannot manage other virtual assistants' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Get the target user's session to use their access token
+    const targetSessionQuery = `
+      SELECT * FROM sessions 
+      WHERE user_id = ? 
+      ORDER BY updated_at DESC 
+      LIMIT 1
+    `;
+    
+    const targetSessionResult = await env.USERS_DB.prepare(targetSessionQuery)
+      .bind(targetUserId)
+      .first();
+      
+    if (!targetSessionResult || !targetSessionResult.access_token) {
+      return new Response(JSON.stringify({ error: 'Target user has no active session for credit operations' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    targetSession = targetSessionResult;
+    targetAccessToken = targetSessionResult.access_token;
+    console.log(`[VA Credit Use] Switching to target user session. VA: ${virtualAssistantMode.originalEmail}, Target User: ${targetUserId}`);
+    console.log(`[VA Credit Use] Target session has access token: ${!!targetAccessToken}`);
+  }
+  
   // Check if user is an admin - admins don't need to use credits
-  if (session.user && session.user.email && isAdminUser(session.user.email) && !assistedUserId) {
+  if (targetSession.user && targetSession.user.email && isAdminUser(targetSession.user.email) && !assistedUserId) {
     return new Response(JSON.stringify({ 
       success: true,
       creditsUsed: 0,
@@ -1583,8 +1692,9 @@ async function handleUseCredits(request, env) {
     : env.WHOP_VIRTUAL_ASSISTANT_PRODUCT_ID;
   
   try {
-    // Get all user's memberships with pagination support
-    const allMemberships = await fetchAllMemberships(session.access_token);
+    // Get all user's memberships with pagination support - using target user's token
+    console.log(`[Credit Deduction] Fetching memberships with token for user: ${targetUserId || 'self'}`);
+    const allMemberships = await fetchAllMemberships(targetAccessToken);
     
     if (!allMemberships) {
       return new Response(JSON.stringify({ error: 'Failed to fetch memberships' }), {

@@ -37,9 +37,11 @@ export function useAuth() {
   const isAuthenticated = computed(() => !!user.value)
   
   // Subscription-specific computed properties
-  // If user is a VA in assisting mode, use their specific permissions
+  // If user is a VA in assisting mode, check permissions first
   const hasCommentBotAccess = computed(() => {
     if (user.value?.isVirtualAssistant && user.value?.vaPermissions) {
+      // VA must have permission - subscription check happens at credit deduction time
+      // If VA has permission, allow access (subscription will be checked when using credits)
       return user.value.vaPermissions.hasCommentBotAccess || false
     }
     return subscriptions.value?.comment_bot?.isActive || false
@@ -47,6 +49,8 @@ export function useAuth() {
   
   const hasBcGenAccess = computed(() => {
     if (user.value?.isVirtualAssistant && user.value?.vaPermissions) {
+      // VA must have permission - subscription check happens at credit deduction time
+      // If VA has permission, allow access (subscription will be checked when using credits)
       return user.value.vaPermissions.hasBCGenAccess || false
     }
     return subscriptions.value?.bc_gen?.isActive || false
@@ -54,6 +58,8 @@ export function useAuth() {
   
   const hasDashboardAccess = computed(() => {
     if (user.value?.isVirtualAssistant && user.value?.vaPermissions) {
+      // VA must have permission - subscription check happens at credit deduction time
+      // If VA has permission, allow access (subscription will be checked when using credits)
       return user.value.vaPermissions.hasDashboardAccess || false
     }
     return subscriptions.value?.dashboard?.isActive || false
