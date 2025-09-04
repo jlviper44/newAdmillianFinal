@@ -1,6 +1,7 @@
 <template>
-  <v-container class="fill-height d-flex align-center justify-center" style="min-height: 100vh; background-color: #f5f5f5;">
-    <v-card max-width="400" class="pa-6 text-center" elevation="4">
+  <v-container class="fill-height d-flex align-center justify-center">
+    <v-card class="pa-6 text-center" max-width="400" elevation="4">
+      <!-- Loading State -->
       <v-progress-circular
         v-if="loading"
         indeterminate
@@ -9,6 +10,7 @@
         class="mb-4"
       ></v-progress-circular>
       
+      <!-- Error State -->
       <v-icon
         v-else-if="error"
         size="64"
@@ -16,6 +18,7 @@
         class="mb-4"
       >mdi-alert-circle</v-icon>
       
+      <!-- Success State -->
       <v-icon
         v-else
         size="64"
@@ -27,7 +30,7 @@
         {{ loading ? 'Authenticating...' : error ? 'Authentication Failed' : 'Authentication Successful' }}
       </h2>
       
-      <p class="text-body-1 mb-4">
+      <p class="text-body-1 mb-4 text-medium-emphasis">
         {{ loading ? 'Please wait while we complete your sign in.' : error || 'You can close this window.' }}
       </p>
       
@@ -126,12 +129,6 @@ const retry = () => {
 }
 
 onMounted(() => {
-  // Add immediate feedback
-  document.body.style.backgroundColor = '#f5f5f5'
   processCallback()
-})
-
-onBeforeUnmount(() => {
-  document.body.style.backgroundColor = ''
 })
 </script>

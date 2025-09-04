@@ -11,6 +11,14 @@
   "observability": {
     "enabled": true
   },
+  "triggers": {
+    "crons": [
+      "0 * * * *",
+      "0 0 * * *",
+      "0 0 * * 0",
+      "0 0 1 * *"
+    ]
+  },
   "d1_databases": [
     {
       "binding": "COMMENT_BOT_DB",
@@ -41,6 +49,12 @@
       "database_name": "logs",
       "database_id": "f8dab513-9543-469e-aac7-3f9bf0b6be84",
       "preview_database_id": "logs"
+    },
+    {
+      "binding": "LINKSPLITTER_DB",
+      "database_name": "linksplitter",
+      "database_id": "9d305f17-aa7b-4a53-a755-aa9099542a07",
+      "preview_database_id": "linksplitter"
     }
   ],
   "vars": {

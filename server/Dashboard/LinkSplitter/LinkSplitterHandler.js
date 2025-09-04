@@ -847,6 +847,26 @@ export async function handleLinkSplitter(request, env, path, session) {
         ORDER BY clicks DESC
       `).bind(projectId, startDate, endDate).all();
       
+      // Get recent clicks for activity log
+      const recentClicksResult = await database.prepare(`
+        SELECT 
+          id,
+          session_id,
+          ip_address,
+          country,
+          city,
+          device_type,
+          clicked_url,
+          referrer,
+          fraud_score,
+          is_bot,
+          clicked_at
+        FROM link_clicks
+        WHERE project_id = ? AND clicked_at BETWEEN ? AND ?
+        ORDER BY clicked_at DESC
+        LIMIT 100
+      `).bind(projectId, startDate, endDate).all();
+      
       return new Response(JSON.stringify({
         stats,
         devices: devicesResult.results || [],
@@ -854,6 +874,7 @@ export async function handleLinkSplitter(request, env, path, session) {
         referrers: referrersResult.results || [],
         timeline: timelineResult.results || [],
         urlPerformance: urlPerformanceResult.results || [],
+        recentClicks: recentClicksResult.results || [],
         period: { start: startDate, end: endDate }
       }), {
         headers: { 'Content-Type': 'application/json' }

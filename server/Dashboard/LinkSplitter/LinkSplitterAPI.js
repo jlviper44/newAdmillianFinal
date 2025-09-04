@@ -708,6 +708,26 @@ router.get('/api/link-splitter/analytics/:projectId', requireAuth, (req, res) =>
       ORDER BY clicks DESC
     `).all(projectId, startDate, endDate);
     
+    // Get recent clicks for activity log
+    const recentClicks = db.prepare(`
+      SELECT 
+        id,
+        session_id,
+        ip_address,
+        country,
+        city,
+        device_type,
+        clicked_url,
+        referrer,
+        fraud_score,
+        is_bot,
+        clicked_at
+      FROM link_clicks
+      WHERE project_id = ? AND clicked_at BETWEEN ? AND ?
+      ORDER BY clicked_at DESC
+      LIMIT 100
+    `).all(projectId, startDate, endDate);
+    
     res.json({
       stats,
       devices,
@@ -715,6 +735,7 @@ router.get('/api/link-splitter/analytics/:projectId', requireAuth, (req, res) =>
       referrers,
       timeline,
       urlPerformance,
+      recentClicks,
       period: { start: startDate, end: endDate }
     });
   } catch (error) {
