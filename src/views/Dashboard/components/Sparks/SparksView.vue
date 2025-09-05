@@ -130,8 +130,8 @@
                 <v-img
                   :src="item.thumbnail || defaultThumbnail"
                   :alt="item.name"
-                  width="50"
-                  height="50"
+                  width="100"
+                  height="100"
                   cover
                   class="rounded cursor-pointer"
                   @click="showLargePreview(item)"
@@ -362,7 +362,6 @@
           />
           <div class="mt-4">
             <p><strong>Spark Code:</strong> {{ previewSpark?.spark_code }}</p>
-            <p><strong>Offer:</strong> {{ previewSpark?.offer_name }}</p>
             <p><strong>Status:</strong> {{ previewSpark?.status }}</p>
             <v-btn
               :href="previewSpark?.tiktok_link"
@@ -456,18 +455,6 @@
             <v-row>
               <v-col cols="12" md="6">
                 <v-select
-                  v-model="sparkForm.offer"
-                  label="Offer Template"
-                  :items="offerTemplates"
-                  item-title="name"
-                  item-value="id"
-                  required
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-select
                   v-model="sparkForm.status"
                   label="Status"
                   :items="[
@@ -555,20 +542,7 @@
             </v-row>
             
             <v-row>
-              <!-- Offer and Status Selection -->
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="bulkAddForm.offer"
-                  label="Offer Template"
-                  :items="offerTemplates"
-                  item-title="name"
-                  item-value="id"
-                  variant="outlined"
-                  density="compact"
-                  class="mb-4"
-                />
-              </v-col>
-              
+              <!-- Status Selection -->
               <v-col cols="12" md="6">
                 <v-select
                   v-model="bulkAddForm.status"
@@ -602,57 +576,54 @@
               
               <!-- Spark Codes Textarea (RIGHT) -->
               <v-col cols="12" md="6">
-                <div class="d-flex flex-column">
-                  <div class="d-flex align-center mb-2">
-                    <v-text-field
-                      v-model="sparkCodePrefix"
-                      label="Spark Code Prefix"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      placeholder="e.g., SC"
-                      class="mr-2"
-                      style="max-width: 200px"
-                    />
-                    <v-btn
-                      variant="tonal"
-                      size="small"
-                      @click="autoFillSparkCodes"
-                      :disabled="!sparkCodePrefix || !bulkAddForm.tiktokLinks"
-                    >
-                      Auto Fill
-                    </v-btn>
-                  </div>
-                  <v-textarea
-                    v-model="bulkAddForm.sparkCodes"
-                    label="Spark Codes (one per line)"
-                    variant="outlined"
-                    density="compact"
-                    rows="8"
-                    hint="Enter one spark code per line or use auto-fill"
-                    placeholder="SC001&#10;SC002&#10;SC003"
-                  />
-                </div>
+                <v-textarea
+                  v-model="bulkAddForm.sparkCodes"
+                  label="Spark Codes (one per line)"
+                  variant="outlined"
+                  density="compact"
+                  rows="8"
+                  hint="Enter one spark code per line"
+                  placeholder="SC001&#10;SC002&#10;SC003"
+                />
               </v-col>
             </v-row>
             
             <!-- Preview Section -->
-            <v-alert 
+            <v-card 
               v-if="bulkAddPreview.length > 0"
-              type="info"
-              variant="tonal"
               class="mt-4"
+              variant="tonal"
+              color="info"
             >
-              <strong>Preview:</strong> Will create {{ bulkAddPreview.length }} spark(s)
-              <ul class="mt-2">
-                <li v-for="(item, index) in bulkAddPreview.slice(0, 3)" :key="index">
-                  {{ item.name }} - {{ item.sparkCode }}
-                </li>
-                <li v-if="bulkAddPreview.length > 3">
-                  ... and {{ bulkAddPreview.length - 3 }} more
-                </li>
-              </ul>
-            </v-alert>
+              <v-card-title class="text-h6">
+                Preview: {{ bulkAddPreview.length }} spark(s) will be created
+              </v-card-title>
+              <v-card-text>
+                <v-list density="compact" class="preview-list">
+                  <v-list-item
+                    v-for="(item, index) in bulkAddPreview.slice(0, 10)"
+                    :key="index"
+                    class="px-0"
+                  >
+                    <template v-slot:prepend>
+                      <span class="text-caption text-grey mr-3">{{ index + 1 }}.</span>
+                    </template>
+                    <v-list-item-title class="text-body-1">
+                      <strong>{{ item.name }}</strong>
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      <v-chip size="x-small" variant="flat" class="mr-2">{{ item.sparkCode }}</v-chip>
+                      <span class="text-caption">{{ item.tiktokLink.substring(0, 50) }}{{ item.tiktokLink.length > 50 ? '...' : '' }}</span>
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                  <v-list-item v-if="bulkAddPreview.length > 10" class="text-center">
+                    <v-list-item-title class="text-caption text-grey">
+                      ... and {{ bulkAddPreview.length - 10 }} more
+                    </v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-card-text>
+            </v-card>
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -774,7 +745,6 @@ const sparkForm = ref({
   tiktokLink: '',
   sparkCode: '',
   type: 'auto',
-  offer: '',
   status: 'active'
 });
 
@@ -783,7 +753,6 @@ const bulkAddForm = ref({
   baseName: '',
   type: 'auto',
   creator: undefined,
-  offer: '',
   status: 'active',
   sparkCodes: '',
   tiktokLinks: ''
@@ -791,7 +760,6 @@ const bulkAddForm = ref({
 
 const bulkAddPreview = ref([]);
 const bulkAddLoading = ref(false);
-const sparkCodePrefix = ref('');
 
 // Payment state
 const defaultRate = ref(1);
@@ -806,13 +774,12 @@ const snackbarColor = ref('success');
 // Table headers
 const headers = ref([
   { title: 'Date', key: 'created_at' },
-  { title: 'Preview', key: 'thumbnail', sortable: false, width: '60px' },
+  { title: 'Preview', key: 'thumbnail', sortable: false, width: '120px' },
   { title: 'TikTok Link', key: 'tiktok_link', sortable: false },
   { title: 'Spark Code', key: 'spark_code' },
   { title: 'Status', key: 'status' },
   { title: 'Type', key: 'type' },
   { title: 'Creator', key: 'creator' },
-  { title: 'Offer', key: 'offer_name' },
   { title: 'Name', key: 'name' },
   { title: 'Actions', key: 'actions', sortable: false }
 ]);
@@ -1019,7 +986,6 @@ const openCreateModal = () => {
     tiktokLink: '',
     sparkCode: '',
     type: 'auto',
-    offer: '',
     status: 'active'
   };
   showCreateModal.value = true;
@@ -1033,7 +999,6 @@ const editSpark = (spark) => {
     tiktokLink: spark.tiktok_link || '',
     sparkCode: spark.spark_code || '',
     type: spark.type || 'auto',
-    offer: spark.offer || '',
     status: spark.status || 'active'
   };
   showCreateModal.value = true;
@@ -1042,7 +1007,7 @@ const editSpark = (spark) => {
 const saveSpark = async () => {
   try {
     // Validate required fields including creator
-    if (!sparkForm.value.name || !sparkForm.value.tiktokLink || !sparkForm.value.sparkCode || !sparkForm.value.offer || sparkForm.value.creator === undefined) {
+    if (!sparkForm.value.name || !sparkForm.value.tiktokLink || !sparkForm.value.sparkCode || sparkForm.value.creator === undefined) {
       showError('Please fill in all required fields including creator');
       return;
     }
@@ -1054,7 +1019,7 @@ const saveSpark = async () => {
       tiktokLink: sparkForm.value.tiktokLink,
       sparkCode: sparkForm.value.sparkCode,
       type: sparkForm.value.type || 'auto',
-      offer: sparkForm.value.offer,
+      offer: '',  // Default empty offer
       status: sparkForm.value.status || 'active'
     };
     
@@ -1113,51 +1078,12 @@ const bulkAdd = () => {
     baseName: '',
     type: 'auto',
     creator: undefined,
-    offer: '',
     status: 'active',
     sparkCodes: '',
     tiktokLinks: ''
   };
   bulkAddPreview.value = [];
-  sparkCodePrefix.value = '';
   showBulkAddModal.value = true;
-};
-
-const autoFillSparkCodes = () => {
-  const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
-  if (tiktokLinks.length === 0) {
-    showError('Please enter TikTok links first');
-    return;
-  }
-  
-  if (!sparkCodePrefix.value) {
-    showError('Please enter a spark code prefix');
-    return;
-  }
-  
-  // Extract any numbers from the prefix to use as starting point
-  const prefixMatch = sparkCodePrefix.value.match(/^(.*?)(\d+)$/);
-  let basePrefix = sparkCodePrefix.value;
-  let startNumber = 1;
-  
-  if (prefixMatch) {
-    basePrefix = prefixMatch[1];
-    startNumber = parseInt(prefixMatch[2]);
-  }
-  
-  // Generate spark codes based on the number of TikTok links
-  const sparkCodes = [];
-  for (let i = 0; i < tiktokLinks.length; i++) {
-    const number = startNumber + i;
-    // Pad numbers with leading zeros if original had them
-    const paddedNumber = prefixMatch && prefixMatch[2].length > 1 
-      ? number.toString().padStart(prefixMatch[2].length, '0')
-      : number.toString();
-    sparkCodes.push(`${basePrefix}${paddedNumber}`);
-  }
-  
-  bulkAddForm.value.sparkCodes = sparkCodes.join('\n');
-  showInfo(`Auto-filled ${sparkCodes.length} spark codes`);
 };
 
 const onTikTokLinksChange = () => {
@@ -1179,18 +1105,35 @@ const previewBulkAdd = () => {
     return;
   }
   
-  bulkAddPreview.value = tiktokLinks.map((link, index) => ({
-    name: `${bulkAddForm.value.baseName}-${index + 1}`,
-    tiktokLink: link.trim(),
-    sparkCode: sparkCodes[index]?.trim() || `${bulkAddForm.value.baseName}-${index + 1}`
-  }));
+  // Parse the base name to extract prefix and number
+  const baseNameMatch = bulkAddForm.value.baseName.match(/^(.*?)(\d+)$/);
+  let namePrefix = bulkAddForm.value.baseName;
+  let startNumber = 1;
+  
+  if (baseNameMatch) {
+    namePrefix = baseNameMatch[1];
+    startNumber = parseInt(baseNameMatch[2]);
+  }
+  
+  bulkAddPreview.value = tiktokLinks.map((link, index) => {
+    const currentNumber = startNumber + index;
+    const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1 
+      ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
+      : currentNumber.toString();
+    
+    return {
+      name: `${namePrefix}${paddedNumber}`,
+      tiktokLink: link.trim(),
+      sparkCode: sparkCodes[index]?.trim() || `${namePrefix}${paddedNumber}`
+    };
+  });
   
   showInfo(`Ready to create ${bulkAddPreview.value.length} sparks`);
 };
 
 const saveBulkAdd = async () => {
   // Validate required fields
-  if (!bulkAddForm.value.baseName || !bulkAddForm.value.offer || bulkAddForm.value.creator === undefined) {
+  if (!bulkAddForm.value.baseName || bulkAddForm.value.creator === undefined) {
     showError('Please fill in all required fields');
     return;
   }
@@ -1210,18 +1153,33 @@ const saveBulkAdd = async () => {
   
   bulkAddLoading.value = true;
   
+  // Parse the base name to extract prefix and number
+  const baseNameMatch = bulkAddForm.value.baseName.match(/^(.*?)(\d+)$/);
+  let namePrefix = bulkAddForm.value.baseName;
+  let startNumber = 1;
+  
+  if (baseNameMatch) {
+    namePrefix = baseNameMatch[1];
+    startNumber = parseInt(baseNameMatch[2]);
+  }
+  
   try {
     let successCount = 0;
     let failedCount = 0;
     
     for (let i = 0; i < tiktokLinks.length; i++) {
+      const currentNumber = startNumber + i;
+      const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1 
+        ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
+        : currentNumber.toString();
+      
       const sparkData = {
-        name: `${bulkAddForm.value.baseName}-${i + 1}`,
+        name: `${namePrefix}${paddedNumber}`,
         creator: bulkAddForm.value.creator || '',
         tiktokLink: tiktokLinks[i].trim(),
         sparkCode: sparkCodes[i]?.trim() || `AUTO-${i + 1}`,
         type: bulkAddForm.value.type,
-        offer: bulkAddForm.value.offer,
+        offer: '',  // Default empty offer
         status: bulkAddForm.value.status
       };
       
@@ -1340,5 +1298,20 @@ code {
 
 :deep(.v-data-table__th) {
   font-weight: 600 !important;
+}
+
+.preview-list {
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: transparent;
+}
+
+.preview-list .v-list-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 12px 0;
+}
+
+.preview-list .v-list-item:last-child {
+  border-bottom: none;
 }
 </style>
