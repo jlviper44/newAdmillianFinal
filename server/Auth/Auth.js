@@ -800,6 +800,9 @@ async function handleCheckAccess(request, env) {
         try {
           const userData = anySession.user_data ? JSON.parse(anySession.user_data) : {};
           
+          // Check if the target user is an admin
+          const targetIsAdmin = userData.email && isAdminUser(userData.email);
+          
           // Try to get subscription data from stored session data if available
           // Many sessions store subscription info in user_data
           let storedSubscriptions = null;
@@ -816,6 +819,7 @@ async function handleCheckAccess(request, env) {
             user: {
               id: targetUserId,
               ...userData,
+              isAdmin: targetIsAdmin,
               isVirtualAssistant: true,
               assistingFor: userData.email || userData.name || `User #${targetUserId}`,
               originalEmail: virtualAssistantMode.originalEmail,
@@ -829,26 +833,27 @@ async function handleCheckAccess(request, env) {
             subscriptions: storedSubscriptions || {
               // If no stored subscriptions, we cannot determine actual subscription status
               // Show as inactive but with VA permissions noted
+              // If target user is admin, show unlimited credits
               comment_bot: { 
-                isActive: false, // Cannot verify without access token
+                isActive: targetIsAdmin || false, // Admins always have access
                 expiresIn: 0,
                 checkoutLink: null,
-                totalCredits: vaResult.has_comment_bot_access === 1 ? 999999 : 0,
+                totalCredits: targetIsAdmin ? 999999 : (vaResult.has_comment_bot_access === 1 ? 999999 : 0),
                 creditMemberships: [],
                 hasVAPermission: vaResult.has_comment_bot_access === 1,
                 isStale: true // Indicates this is not fresh data
               },
               bc_gen: { 
-                isActive: false, // Cannot verify without access token
+                isActive: targetIsAdmin || false, // Admins always have access
                 expiresIn: 0,
                 checkoutLink: null,
-                totalCredits: vaResult.has_bc_gen_access === 1 ? 999999 : 0,
+                totalCredits: targetIsAdmin ? 999999 : (vaResult.has_bc_gen_access === 1 ? 999999 : 0),
                 creditMemberships: [],
                 hasVAPermission: vaResult.has_bc_gen_access === 1,
                 isStale: true
               },
               dashboard: { 
-                isActive: false, // Cannot verify without access token
+                isActive: targetIsAdmin || false, // Admins always have access
                 expiresIn: 0,
                 checkoutLink: null,
                 hasVAPermission: vaResult.has_dashboard_access === 1,
@@ -1643,15 +1648,36 @@ async function handleUseCredits(request, env) {
       .bind(targetUserId)
       .first();
       
-    if (!targetSessionResult || !targetSessionResult.access_token) {
+    if (!targetSessionResult) {
+      return new Response(JSON.stringify({ error: 'Target user not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Parse target user data to check if they're an admin
+    let targetUserData = {};
+    try {
+      targetUserData = targetSessionResult.user_data ? JSON.parse(targetSessionResult.user_data) : {};
+    } catch (e) {
+      console.error('Error parsing target user data:', e);
+    }
+    
+    // Check if target user is an admin before requiring access token
+    const targetIsAdmin = targetUserData.email && isAdminUser(targetUserData.email);
+    
+    if (!targetSessionResult.access_token && !targetIsAdmin) {
       return new Response(JSON.stringify({ error: 'Target user has no active session for credit operations' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
     }
     
-    targetSession = targetSessionResult;
-    targetAccessToken = targetSessionResult.access_token;
+    targetSession = {
+      ...targetSessionResult,
+      user: targetUserData // Ensure user data is available
+    };
+    targetAccessToken = targetSessionResult.access_token || null;
     console.log(`[VA Credit Use] Switching to target user session. VA: ${virtualAssistantMode.originalEmail}, Target User: ${targetUserId}`);
     console.log(`[VA Credit Use] Target session has access token: ${!!targetAccessToken}`);
   }
