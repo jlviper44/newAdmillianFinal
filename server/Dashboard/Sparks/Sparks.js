@@ -86,6 +86,8 @@ async function initializeSparksTable(db) {
           user_id TEXT NOT NULL,
           team_id TEXT,
           name TEXT NOT NULL,
+          creator TEXT DEFAULT '',
+          type TEXT DEFAULT 'auto',
           tiktok_link TEXT NOT NULL,
           spark_code TEXT NOT NULL,
           offer TEXT NOT NULL,
@@ -116,12 +118,14 @@ async function initializeSparksTable(db) {
       CREATE INDEX IF NOT EXISTS idx_sparks_user_id ON sparks(user_id)
     `).run();
     
-    // Add user_id and team_id columns if they don't exist (for existing tables)
+    // Add user_id, team_id, creator, and type columns if they don't exist (for existing tables)
     try {
       // Check if columns exist
       const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
       const hasUserIdColumn = tableInfo.results.some(col => col.name === 'user_id');
       const hasTeamIdColumn = tableInfo.results.some(col => col.name === 'team_id');
+      const hasCreatorColumn = tableInfo.results.some(col => col.name === 'creator');
+      const hasTypeColumn = tableInfo.results.some(col => col.name === 'type');
       
       if (!hasUserIdColumn) {
         console.log('Adding user_id column to existing sparks table...');
@@ -138,8 +142,20 @@ async function initializeSparksTable(db) {
         await db.prepare(`ALTER TABLE sparks ADD COLUMN team_id TEXT`).run();
         console.log('Added team_id column to sparks table');
       }
+      
+      if (!hasCreatorColumn) {
+        console.log('Adding creator column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN creator TEXT DEFAULT ''`).run();
+        console.log('Added creator column to sparks table');
+      }
+      
+      if (!hasTypeColumn) {
+        console.log('Adding type column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN type TEXT DEFAULT 'auto'`).run();
+        console.log('Added type column to sparks table');
+      }
     } catch (error) {
-      console.error('Error checking/adding user_id/team_id columns:', error);
+      console.error('Error checking/adding columns:', error);
       // Continue execution as this might not be critical
     }
 
@@ -978,13 +994,15 @@ async function createSpark(request, db, corsHeaders, env) {
     // Insert into database
     await db.prepare(`
       INSERT INTO sparks 
-      (id, user_id, team_id, name, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, team_id, name, creator, type, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
       userId,
       teamId,
       sparkData.name,
+      sparkData.creator || '',  // Empty string for "None"
+      sparkData.type || 'auto',
       sparkData.tiktokLink,
       sparkData.sparkCode,
       sparkData.offer,
@@ -1179,11 +1197,13 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     // Update the spark
     await db.prepare(`
       UPDATE sparks 
-      SET name = ?, tiktok_link = ?, spark_code = ?, offer = ?, offer_name = ?, 
-          thumbnail = ?, status = ?
+      SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?, 
+          offer = ?, offer_name = ?, thumbnail = ?, status = ?
       WHERE id = ?
     `).bind(
       sparkData.name,
+      sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),  // Preserve existing or use empty string
+      sparkData.type || existingSpark.type || 'auto',
       sparkData.tiktokLink,
       sparkData.sparkCode,
       sparkData.offer,
