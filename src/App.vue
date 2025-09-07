@@ -27,6 +27,42 @@ const isAdmin = computed(() => {
   return isAdminUser && !isVA;
 });
 
+// Dashboard tab permissions for Virtual Assistants
+const canViewMetrics = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardMetrics === true;
+});
+
+const canViewCampaigns = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardCampaigns === true;
+});
+
+const canViewSparks = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardSparks === true;
+});
+
+const canViewTemplates = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardTemplates === true;
+});
+
+const canViewShopify = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardShopify === true;
+});
+
+const canViewLogs = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardLogs === true;
+});
+
+const canViewLinkSplitter = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardLinkSplitter === true;
+});
+
 // Check if we should show navigation (hide on LinkRedirect page)
 const shouldShowNavigation = computed(() => {
   return isAuthenticated.value && route.name !== 'LinkRedirect';
@@ -479,46 +515,52 @@ onUnmounted(() => {
           <!-- Dashboard Menu -->
           <v-list v-if="activePopupMenu === 'dashboard'" density="comfortable">
             <v-list-item
-              v-if="!user?.isVirtualAssistant"
+              v-if="canViewMetrics"
               @click="navigateToAndClose('/dashboard?tab=metrics')"
               prepend-icon="mdi-chart-areaspline"
               title="Metrics"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              v-if="canViewCampaigns"
               @click="navigateToAndClose('/dashboard?tab=campaigns')"
               prepend-icon="mdi-bullhorn"
               title="Campaigns"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              v-if="canViewSparks"
               @click="navigateToAndClose('/dashboard?tab=sparks')"
               prepend-icon="mdi-lightning-bolt"
               title="Sparks"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              v-if="canViewTemplates"
               @click="navigateToAndClose('/dashboard?tab=templates')"
               prepend-icon="mdi-file-document-multiple"
               title="Templates"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              v-if="canViewShopify"
               @click="navigateToAndClose('/dashboard?tab=shopify')"
               prepend-icon="mdi-shopping"
               title="Shopify Stores"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
-              @click="navigateToAndClose('/link-splitter')"
-              prepend-icon="mdi-link-variant"
-              title="Link Splitter"
-              class="mobile-popup-item"
-            ></v-list-item>
-            <v-list-item
+              v-if="canViewLogs"
               @click="navigateToAndClose('/dashboard?tab=logs')"
               prepend-icon="mdi-format-list-bulleted"
               title="Logs"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
+              v-if="canViewLinkSplitter"
+              @click="navigateToAndClose('/dashboard?tab=linksplitter')"
+              prepend-icon="mdi-link-variant"
+              title="Link Splitter"
               class="mobile-popup-item"
             ></v-list-item>
           </v-list>
@@ -784,7 +826,7 @@ onUnmounted(() => {
           </template>
           
           <v-list-item
-            v-if="!user?.isVirtualAssistant"
+            v-if="canViewMetrics"
             to="/dashboard?tab=metrics"
             prepend-icon="mdi-chart-areaspline"
             title="Metrics"
@@ -794,6 +836,7 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
+            v-if="canViewCampaigns"
             to="/dashboard?tab=campaigns"
             prepend-icon="mdi-bullhorn"
             title="Campaigns"
@@ -803,6 +846,7 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
+            v-if="canViewSparks"
             to="/dashboard?tab=sparks"
             prepend-icon="mdi-lightning-bolt"
             title="Sparks"
@@ -812,6 +856,7 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
+            v-if="canViewTemplates"
             to="/dashboard?tab=templates"
             prepend-icon="mdi-file-document-multiple"
             title="Templates"
@@ -821,6 +866,7 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
+            v-if="canViewShopify"
             to="/dashboard?tab=shopify"
             prepend-icon="mdi-shopping"
             title="Shopify Stores"
@@ -830,19 +876,21 @@ onUnmounted(() => {
           ></v-list-item>
           
           <v-list-item
-            to="/link-splitter"
-            prepend-icon="mdi-link-variant"
-            title="Link Splitter"
-            :active="activeRoute === '/link-splitter'"
+            v-if="canViewLogs"
+            to="/dashboard?tab=logs"
+            prepend-icon="mdi-format-list-bulleted"
+            title="Logs"
+            :active="isTabActive('/dashboard', 'logs')"
             class="ml-2"
             rounded="lg"
           ></v-list-item>
           
           <v-list-item
-            to="/dashboard?tab=logs"
-            prepend-icon="mdi-format-list-bulleted"
-            title="Logs"
-            :active="isTabActive('/dashboard', 'logs')"
+            v-if="canViewLinkSplitter"
+            to="/dashboard?tab=linksplitter"
+            prepend-icon="mdi-link-variant"
+            title="Link Splitter"
+            :active="isTabActive('/dashboard', 'linksplitter')"
             class="ml-2"
             rounded="lg"
           ></v-list-item>

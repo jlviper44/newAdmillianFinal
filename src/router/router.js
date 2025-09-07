@@ -6,7 +6,6 @@ import Settings from '@/views/Settings/Settings.vue';
 import Dashboard from '@/views/Dashboard/Dashboard.vue';
 import VirtualAssistants from '@/views/VirtualAssistants/VirtualAssistants.vue';
 import AuthCallback from '@/views/AuthCallback.vue';
-import LinkSplitter from '@/views/Dashboard/LinkSplitter/LinkSplitter.vue';
 import LinkRedirect from '@/views/LinkRedirect.vue';
 import { useAuth } from '@/composables/useAuth';
 
@@ -80,17 +79,6 @@ const routes = [
     component: Dashboard,
     meta: {
       title: 'Dashboard',
-      requiresAuth: true,
-      requiresAccess: true,
-      requiresSubscription: 'dashboard'
-    }
-  },
-  {
-    path: '/link-splitter',
-    name: 'LinkSplitter',
-    component: LinkSplitter,
-    meta: {
-      title: 'Link Splitter',
       requiresAuth: true,
       requiresAccess: true,
       requiresSubscription: 'dashboard'

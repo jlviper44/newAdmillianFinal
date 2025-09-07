@@ -87,6 +87,9 @@ async function initializeAuthTables(env) {
     // Migrate existing virtual assistants to add role columns if they don't exist
     await migrateVirtualAssistantsRoles(env);
     
+    // Migrate to add granular Dashboard permissions
+    await migrateDashboardPermissions(env);
+    
     return true;
   } catch (error) {
     console.error('Error initializing auth tables:', error);
@@ -157,6 +160,122 @@ async function migrateVirtualAssistantsRoles(env) {
     }
   } catch (error) {
     console.error('Error during virtual assistants migration:', error);
+    // Non-critical error, continue
+  }
+}
+
+// Migrate virtual assistants table to add granular Dashboard permissions
+async function migrateDashboardPermissions(env) {
+  try {
+    // Check if Dashboard permission columns exist by trying to query them
+    const testQuery = `
+      SELECT dashboard_metrics, dashboard_campaigns, dashboard_sparks, 
+             dashboard_templates, dashboard_shopify, dashboard_logs 
+      FROM virtual_assistants 
+      LIMIT 1
+    `;
+    
+    try {
+      await env.USERS_DB.prepare(testQuery).first();
+      // Columns exist, no migration needed
+      return;
+    } catch (error) {
+      // Columns don't exist, need to add them
+      console.log('Migrating virtual_assistants table to add granular Dashboard permissions...');
+      
+      // Add dashboard_metrics permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_metrics BOOLEAN DEFAULT 0
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_campaigns permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_campaigns BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_sparks permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_sparks BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_templates permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_templates BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_shopify permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_shopify BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_logs permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_logs BOOLEAN DEFAULT 0
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_link_splitter permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_link_splitter BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Update existing records - if they have dashboard access, give them access to non-admin tabs
+      await env.USERS_DB.prepare(`
+        UPDATE virtual_assistants 
+        SET dashboard_metrics = 0,
+            dashboard_campaigns = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
+            dashboard_sparks = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
+            dashboard_templates = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
+            dashboard_shopify = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
+            dashboard_logs = 0,
+            dashboard_link_splitter = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END
+        WHERE dashboard_campaigns IS NULL 
+           OR dashboard_sparks IS NULL 
+           OR dashboard_templates IS NULL
+           OR dashboard_shopify IS NULL
+           OR dashboard_metrics IS NULL
+           OR dashboard_logs IS NULL
+           OR dashboard_link_splitter IS NULL
+      `).run();
+      
+      console.log('Dashboard permissions migration completed successfully');
+    }
+  } catch (error) {
+    console.error('Error during Dashboard permissions migration:', error);
     // Non-critical error, continue
   }
 }
@@ -594,7 +713,14 @@ async function getVirtualAssistantAccounts(env, userEmail) {
         created_at,
         has_comment_bot_access,
         has_dashboard_access,
-        has_bc_gen_access
+        has_bc_gen_access,
+        dashboard_metrics,
+        dashboard_campaigns,
+        dashboard_sparks,
+        dashboard_templates,
+        dashboard_shopify,
+        dashboard_logs,
+        dashboard_link_splitter
       FROM virtual_assistants
       WHERE LOWER(email) = LOWER(?) 
         AND status = 'active'
@@ -636,7 +762,14 @@ async function getVirtualAssistantAccounts(env, userEmail) {
             created_at: row.created_at,
             has_comment_bot_access: row.has_comment_bot_access,
             has_dashboard_access: row.has_dashboard_access,
-            has_bc_gen_access: row.has_bc_gen_access
+            has_bc_gen_access: row.has_bc_gen_access,
+            dashboard_metrics: row.dashboard_metrics,
+            dashboard_campaigns: row.dashboard_campaigns,
+            dashboard_sparks: row.dashboard_sparks,
+            dashboard_templates: row.dashboard_templates,
+            dashboard_shopify: row.dashboard_shopify,
+            dashboard_logs: row.dashboard_logs,
+            dashboard_link_splitter: row.dashboard_link_splitter
           });
         } else {
         }
@@ -826,7 +959,14 @@ async function handleCheckAccess(request, env) {
               vaPermissions: {
                 hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
                 hasDashboardAccess: vaResult.has_dashboard_access === 1,
-                hasBCGenAccess: vaResult.has_bc_gen_access === 1
+                hasBCGenAccess: vaResult.has_bc_gen_access === 1,
+                dashboardMetrics: vaResult.dashboard_metrics === 1,
+                dashboardCampaigns: vaResult.dashboard_campaigns === 1,
+                dashboardSparks: vaResult.dashboard_sparks === 1,
+                dashboardTemplates: vaResult.dashboard_templates === 1,
+                dashboardShopify: vaResult.dashboard_shopify === 1,
+                dashboardLogs: vaResult.dashboard_logs === 1,
+                dashboardLinkSplitter: vaResult.dashboard_link_splitter === 1
               }
             },
             memberships: [],
@@ -914,13 +1054,27 @@ async function handleCheckAccess(request, env) {
         vaPermissions: {
           hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
           hasDashboardAccess: vaResult.has_dashboard_access === 1,
-          hasBCGenAccess: vaResult.has_bc_gen_access === 1
+          hasBCGenAccess: vaResult.has_bc_gen_access === 1,
+          dashboardMetrics: vaResult.dashboard_metrics === 1,
+          dashboardCampaigns: vaResult.dashboard_campaigns === 1,
+          dashboardSparks: vaResult.dashboard_sparks === 1,
+          dashboardTemplates: vaResult.dashboard_templates === 1,
+          dashboardShopify: vaResult.dashboard_shopify === 1,
+          dashboardLogs: vaResult.dashboard_logs === 1,
+          dashboardLinkSplitter: vaResult.dashboard_link_splitter === 1
         }
       },
       virtualAssistantPermissions: {
         hasCommentBotAccess: vaResult.has_comment_bot_access === 1,
         hasDashboardAccess: vaResult.has_dashboard_access === 1,
-        hasBCGenAccess: vaResult.has_bc_gen_access === 1
+        hasBCGenAccess: vaResult.has_bc_gen_access === 1,
+        dashboardMetrics: vaResult.dashboard_metrics === 1,
+        dashboardCampaigns: vaResult.dashboard_campaigns === 1,
+        dashboardSparks: vaResult.dashboard_sparks === 1,
+        dashboardTemplates: vaResult.dashboard_templates === 1,
+        dashboardShopify: vaResult.dashboard_shopify === 1,
+        dashboardLogs: vaResult.dashboard_logs === 1,
+        dashboardLinkSplitter: vaResult.dashboard_link_splitter === 1
       }
     };
     
@@ -1880,6 +2034,9 @@ async function handleGetVirtualAssistants(request, env) {
     const query = `
       SELECT id, email, status, 
              has_comment_bot_access, has_dashboard_access, has_bc_gen_access,
+             dashboard_metrics, dashboard_campaigns, dashboard_sparks,
+             dashboard_templates, dashboard_shopify, dashboard_logs,
+             dashboard_link_splitter,
              created_at, expires_at
       FROM virtual_assistants
       WHERE user_id = ?
@@ -1901,7 +2058,15 @@ async function handleGetVirtualAssistants(request, env) {
         ...assistant,
         has_comment_bot_access: assistant.has_comment_bot_access === 1,
         has_dashboard_access: assistant.has_dashboard_access === 1,
-        has_bc_gen_access: assistant.has_bc_gen_access === 1
+        has_bc_gen_access: assistant.has_bc_gen_access === 1,
+        // Dashboard permissions
+        dashboard_metrics: assistant.dashboard_metrics === 1,
+        dashboard_campaigns: assistant.dashboard_campaigns === 1,
+        dashboard_sparks: assistant.dashboard_sparks === 1,
+        dashboard_templates: assistant.dashboard_templates === 1,
+        dashboard_shopify: assistant.dashboard_shopify === 1,
+        dashboard_logs: assistant.dashboard_logs === 1,
+        dashboard_link_splitter: assistant.dashboard_link_splitter === 1
       };
     });
     
@@ -1938,7 +2103,20 @@ async function handleAddVirtualAssistant(request, env) {
   }
   
   try {
-    const { email, hasCommentBotAccess = false, hasDashboardAccess = false, hasBCGenAccess = false } = await request.json();
+    const { 
+      email, 
+      hasCommentBotAccess = false, 
+      hasDashboardAccess = false, 
+      hasBCGenAccess = false,
+      // Dashboard permissions - no defaults, use what's sent
+      dashboardMetrics,
+      dashboardCampaigns,
+      dashboardSparks,
+      dashboardTemplates,
+      dashboardShopify,
+      dashboardLogs,
+      dashboardLinkSplitter
+    } = await request.json();
     
     if (!email || !/.+@.+\..+/.test(email)) {
       return new Response(JSON.stringify({ error: 'Invalid email address' }), {
@@ -2001,9 +2179,12 @@ async function handleAddVirtualAssistant(request, env) {
       INSERT INTO virtual_assistants (
         id, user_id, email, status, 
         has_comment_bot_access, has_dashboard_access, has_bc_gen_access,
+        dashboard_metrics, dashboard_campaigns, dashboard_sparks,
+        dashboard_templates, dashboard_shopify, dashboard_logs,
+        dashboard_link_splitter,
         created_at, expires_at
       )
-      VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     await env.USERS_DB.prepare(insertQuery)
@@ -2012,6 +2193,13 @@ async function handleAddVirtualAssistant(request, env) {
         hasCommentBotAccess ? 1 : 0, 
         hasDashboardAccess ? 1 : 0, 
         hasBCGenAccess ? 1 : 0,
+        dashboardMetrics === true ? 1 : 0,
+        dashboardCampaigns === true ? 1 : 0,
+        dashboardSparks === true ? 1 : 0,
+        dashboardTemplates === true ? 1 : 0,
+        dashboardShopify === true ? 1 : 0,
+        dashboardLogs === true ? 1 : 0,
+        dashboardLinkSplitter === true ? 1 : 0,
         now.toISOString(), 
         expiresAt.toISOString()
       )
@@ -2023,9 +2211,16 @@ async function handleAddVirtualAssistant(request, env) {
         id,
         email,
         status: 'active',
-        hasCommentBotAccess,
-        hasDashboardAccess,
-        hasBCGenAccess,
+        has_comment_bot_access: hasCommentBotAccess === true,
+        has_dashboard_access: hasDashboardAccess === true,
+        has_bc_gen_access: hasBCGenAccess === true,
+        dashboard_metrics: dashboardMetrics === true,
+        dashboard_campaigns: dashboardCampaigns === true,
+        dashboard_sparks: dashboardSparks === true,
+        dashboard_templates: dashboardTemplates === true,
+        dashboard_shopify: dashboardShopify === true,
+        dashboard_logs: dashboardLogs === true,
+        dashboard_link_splitter: dashboardLinkSplitter === true,
         created_at: now.toISOString(),
         expires_at: expiresAt.toISOString()
       }
@@ -2183,7 +2378,21 @@ async function handleEditVirtualAssistant(request, env) {
   }
   
   try {
-    const { assistantId, newEmail, hasCommentBotAccess = false, hasDashboardAccess = false, hasBCGenAccess = false } = await request.json();
+    const { 
+      assistantId, 
+      newEmail, 
+      hasCommentBotAccess = false, 
+      hasDashboardAccess = false, 
+      hasBCGenAccess = false,
+      // Dashboard permissions - no defaults, use what's sent
+      dashboardMetrics,
+      dashboardCampaigns,
+      dashboardSparks,
+      dashboardTemplates,
+      dashboardShopify,
+      dashboardLogs,
+      dashboardLinkSplitter
+    } = await request.json();
     
     if (!assistantId || !newEmail) {
       return new Response(JSON.stringify({ error: 'Assistant ID and new email required' }), {
@@ -2231,7 +2440,14 @@ async function handleEditVirtualAssistant(request, env) {
       SET email = ?,
           has_comment_bot_access = ?,
           has_dashboard_access = ?,
-          has_bc_gen_access = ?
+          has_bc_gen_access = ?,
+          dashboard_metrics = ?,
+          dashboard_campaigns = ?,
+          dashboard_sparks = ?,
+          dashboard_templates = ?,
+          dashboard_shopify = ?,
+          dashboard_logs = ?,
+          dashboard_link_splitter = ?
       WHERE id = ? AND user_id = ?
     `;
     
@@ -2241,6 +2457,13 @@ async function handleEditVirtualAssistant(request, env) {
         hasCommentBotAccess ? 1 : 0,
         hasDashboardAccess ? 1 : 0,
         hasBCGenAccess ? 1 : 0,
+        dashboardMetrics === true ? 1 : 0,
+        dashboardCampaigns === true ? 1 : 0,
+        dashboardSparks === true ? 1 : 0,
+        dashboardTemplates === true ? 1 : 0,
+        dashboardShopify === true ? 1 : 0,
+        dashboardLogs === true ? 1 : 0,
+        dashboardLinkSplitter === true ? 1 : 0,
         assistantId, 
         session.user.id
       )
@@ -2965,5 +3188,6 @@ export {
   requireAuth,
   getSession,
   cleanExpiredSessions,
-  isAdminUser
+  isAdminUser,
+  initializeAuthTables
 };

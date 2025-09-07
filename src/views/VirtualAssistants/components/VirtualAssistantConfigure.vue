@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { usersApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
@@ -26,7 +26,15 @@ const assistants = ref([]);
 const assistantRoles = ref({
   hasCommentBotAccess: false,
   hasDashboardAccess: false,
-  hasBCGenAccess: false
+  hasBCGenAccess: false,
+  // Dashboard permissions
+  dashboardMetrics: false,
+  dashboardCampaigns: false,
+  dashboardSparks: false,
+  dashboardTemplates: false,
+  dashboardShopify: false,
+  dashboardLogs: false,
+  dashboardLinkSplitter: false
 });
 
 // Confirmation dialogs
@@ -38,7 +46,16 @@ const editEmail = ref('');
 const editRoles = ref({
   hasCommentBotAccess: false,
   hasDashboardAccess: false,
-  hasBCGenAccess: false
+  hasBCGenAccess: false,
+  // Dashboard permissions  
+  dashboardMetrics: false,
+  dashboardCampaigns: false,
+  dashboardSparks: false,
+  dashboardTemplates: false,
+  dashboardShopify: false,
+  dashboardLogs: false,
+  dashboardLinkSplitter: false,
+  dashboardLinkSplitter: false
 });
 
 // Validation
@@ -112,7 +129,14 @@ const addVirtualAssistant = async () => {
       assistantRoles.value = {
         hasCommentBotAccess: false,
         hasDashboardAccess: false,
-        hasBCGenAccess: false
+        hasBCGenAccess: false,
+        dashboardMetrics: false,
+        dashboardCampaigns: false,
+        dashboardSparks: false,
+        dashboardTemplates: false,
+        dashboardShopify: false,
+        dashboardLogs: false,
+        dashboardLinkSplitter: false
       };
       showAddDialog.value = false;
     } else {
@@ -142,9 +166,16 @@ const confirmEdit = (assistant) => {
   selectedAssistant.value = assistant;
   editEmail.value = assistant.email;
   editRoles.value = {
-    hasCommentBotAccess: assistant.has_comment_bot_access || false,
-    hasDashboardAccess: assistant.has_dashboard_access || false,
-    hasBCGenAccess: assistant.has_bc_gen_access || false
+    hasCommentBotAccess: assistant.has_comment_bot_access === true,
+    hasDashboardAccess: assistant.has_dashboard_access === true,
+    hasBCGenAccess: assistant.has_bc_gen_access === true,
+    dashboardMetrics: assistant.dashboard_metrics === true,
+    dashboardCampaigns: assistant.dashboard_campaigns === true,
+    dashboardSparks: assistant.dashboard_sparks === true,
+    dashboardTemplates: assistant.dashboard_templates === true,
+    dashboardShopify: assistant.dashboard_shopify === true,
+    dashboardLogs: assistant.dashboard_logs === true,
+    dashboardLinkSplitter: assistant.dashboard_link_splitter === true
   };
   showEditDialog.value = true;
 };
@@ -198,6 +229,13 @@ const editAssistant = async () => {
         assistant.has_comment_bot_access = editRoles.value.hasCommentBotAccess;
         assistant.has_dashboard_access = editRoles.value.hasDashboardAccess;
         assistant.has_bc_gen_access = editRoles.value.hasBCGenAccess;
+        assistant.dashboard_metrics = editRoles.value.dashboardMetrics;
+        assistant.dashboard_campaigns = editRoles.value.dashboardCampaigns;
+        assistant.dashboard_sparks = editRoles.value.dashboardSparks;
+        assistant.dashboard_templates = editRoles.value.dashboardTemplates;
+        assistant.dashboard_shopify = editRoles.value.dashboardShopify;
+        assistant.dashboard_logs = editRoles.value.dashboardLogs;
+        assistant.dashboard_link_splitter = editRoles.value.dashboardLinkSplitter;
       }
       
       // Close dialog
@@ -207,7 +245,14 @@ const editAssistant = async () => {
       editRoles.value = {
         hasCommentBotAccess: false,
         hasDashboardAccess: false,
-        hasBCGenAccess: false
+        hasBCGenAccess: false,
+        dashboardMetrics: false,
+        dashboardCampaigns: false,
+        dashboardSparks: false,
+        dashboardTemplates: false,
+        dashboardShopify: false,
+        dashboardLogs: false,
+        dashboardLinkSplitter: false
       };
     } else {
       throw new Error(response.error || 'Failed to edit virtual assistant');
@@ -299,6 +344,33 @@ const refreshData = async () => {
     fetchVirtualAssistants()
   ]);
 };
+
+// Watch for Dashboard Access toggle to reset Dashboard tab permissions
+watch(() => assistantRoles.value.hasDashboardAccess, (newValue) => {
+  if (!newValue) {
+    // If Dashboard Access is disabled, disable all Dashboard tabs
+    assistantRoles.value.dashboardMetrics = false;
+    assistantRoles.value.dashboardCampaigns = false;
+    assistantRoles.value.dashboardSparks = false;
+    assistantRoles.value.dashboardTemplates = false;
+    assistantRoles.value.dashboardShopify = false;
+    assistantRoles.value.dashboardLogs = false;
+    assistantRoles.value.dashboardLinkSplitter = false;
+  }
+});
+
+watch(() => editRoles.value.hasDashboardAccess, (newValue) => {
+  if (!newValue) {
+    // If Dashboard Access is disabled, disable all Dashboard tabs
+    editRoles.value.dashboardMetrics = false;
+    editRoles.value.dashboardCampaigns = false;
+    editRoles.value.dashboardSparks = false;
+    editRoles.value.dashboardTemplates = false;
+    editRoles.value.dashboardShopify = false;
+    editRoles.value.dashboardLogs = false;
+    editRoles.value.dashboardLinkSplitter = false;
+  }
+});
 </script>
 
 <template>
@@ -604,7 +676,7 @@ const refreshData = async () => {
             ></v-checkbox>
             <v-checkbox
               v-model="assistantRoles.hasDashboardAccess"
-              label="Dashboard Access"
+              label="Dashboard Access (General)"
               density="compact"
               hide-details
             ></v-checkbox>
@@ -614,6 +686,55 @@ const refreshData = async () => {
               density="compact"
               hide-details
             ></v-checkbox>
+            
+            <!-- Dashboard Tab Permissions -->
+            <div v-if="assistantRoles.hasDashboardAccess" class="ml-8 mt-2">
+              <p class="text-caption text-medium-emphasis mb-1">Dashboard Tabs</p>
+              <v-checkbox
+                v-model="assistantRoles.dashboardCampaigns"
+                label="Campaigns"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="assistantRoles.dashboardSparks"
+                label="Sparks"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="assistantRoles.dashboardTemplates"
+                label="Templates"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="assistantRoles.dashboardShopify"
+                label="Shopify Stores"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="assistantRoles.dashboardLinkSplitter"
+                label="Link Splitter"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="assistantRoles.dashboardMetrics"
+                label="Metrics (Admin)"
+                density="compact"
+                hide-details
+                class="text-warning"
+              ></v-checkbox>
+              <v-checkbox
+                v-model="assistantRoles.dashboardLogs"
+                label="Logs (Admin)"
+                density="compact"
+                hide-details
+                class="text-warning"
+              ></v-checkbox>
+            </div>
           </div>
         </v-card-text>
         <v-card-actions>
@@ -776,7 +897,7 @@ const refreshData = async () => {
             ></v-checkbox>
             <v-checkbox
               v-model="editRoles.hasDashboardAccess"
-              label="Dashboard Access"
+              label="Dashboard Access (General)"
               density="compact"
               hide-details
             ></v-checkbox>
@@ -786,6 +907,55 @@ const refreshData = async () => {
               density="compact"
               hide-details
             ></v-checkbox>
+            
+            <!-- Dashboard Tab Permissions -->
+            <div v-if="editRoles.hasDashboardAccess" class="ml-8 mt-2">
+              <p class="text-caption text-medium-emphasis mb-1">Dashboard Tabs</p>
+              <v-checkbox
+                v-model="editRoles.dashboardCampaigns"
+                label="Campaigns"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardSparks"
+                label="Sparks"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardTemplates"
+                label="Templates"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardShopify"
+                label="Shopify Stores"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardLinkSplitter"
+                label="Link Splitter"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardMetrics"
+                label="Metrics (Admin)"
+                density="compact"
+                hide-details
+                class="text-warning"
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardLogs"
+                label="Logs (Admin)"
+                density="compact"
+                hide-details
+                class="text-warning"
+              ></v-checkbox>
+            </div>
           </div>
         </v-card-text>
         <v-card-actions>

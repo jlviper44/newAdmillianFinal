@@ -1,5 +1,5 @@
 import { handleCommentBotData } from './CommentBot/CommentBot';
-import { handleAuth, requireAuth, cleanExpiredSessions } from './Auth/Auth';
+import { handleAuth, requireAuth, cleanExpiredSessions, initializeAuthTables } from './Auth/Auth';
 import { handleSQLData } from './SQL/SQL';
 import BCGen from './BCGen/BCGen';
 import { handleMetricsRequest, Metrics } from './Dashboard/Metrics/Metrics';
@@ -15,6 +15,12 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    
+    // Initialize database on first request (migrations will run once)
+    if (!env.DB_INITIALIZED) {
+      await initializeAuthTables(env);
+      env.DB_INITIALIZED = true;
+    }
     
     // PRIORITY: Handle /l/ routes before ANYTHING else, including assets
     // This ensures short links work like Bitly
