@@ -10,6 +10,7 @@ import handleCampaignsAPI from './Dashboard/Campaigns/Campaigns';
 import { handleLogsData } from './Dashboard/Logs/Logs';
 import { handleTeams } from './Teams/Teams';
 import { handleLinkSplitter } from './Dashboard/LinkSplitter/LinkSplitterHandler';
+import { handleLaunchTracker } from './Dashboard/LaunchTracker/LaunchTrackerD1';
 
 export default {
   async fetch(request, env, ctx) {
@@ -220,6 +221,14 @@ export default {
       if (path.startsWith('/api/link-splitter')) {
         return requireAuth(request, env, async (req, env, session) => {
           return handleLinkSplitter(req, env, path, session);
+        });
+      }
+      
+      // Route Launch Tracker API requests (protected)
+      if (path.startsWith('/api/tracker')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          req.ctx = { ...req.ctx, session };
+          return handleLaunchTracker(req, env);
         });
       }
       

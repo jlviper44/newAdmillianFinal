@@ -18,11 +18,17 @@
                   v-model="selectedCampaignId"
                   label="Select Campaign"
                   :items="campaignOptions"
-                  item-title="displayName"
+                  item-title="name"
                   item-value="id"
                   @update:model-value="selectCampaign"
                   :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
-                />
+                >
+                  <template v-slot:selection="{ item }">
+                    <div class="d-flex align-center">
+                      <span class="font-weight-medium">{{ item.title }}</span>
+                    </div>
+                  </template>
+                </v-select>
               </v-col>
               <v-col cols="12" md="6" v-if="currentCampaign">
                 <div class="text-body-2">
@@ -318,7 +324,7 @@
                   <v-btn
                     color="green"
                     variant="flat"
-                    @click="openAddEntryDialog"
+                    @click="showAddEntryDialog = true"
                     prepend-icon="mdi-plus"
                   >
                     Add Entry
@@ -426,12 +432,6 @@
             :items-per-page="20"
             class="tracker-table"
           >
-            <template v-slot:item.campaignId="{ item }">
-              <span class="font-weight-medium">{{ item.campaignId }}</span>
-            </template>
-            <template v-slot:item.campaignName="{ item }">
-              <span class="text-caption">{{ item.campaignName || '-' }}</span>
-            </template>
             <template v-slot:item.status="{ item }">
               <v-chip
                 :color="getStatusColor(item.status)"
@@ -481,31 +481,22 @@
               {{ editingEntry ? 'Edit Entry' : 'Add New Entry' }}
             </v-card-title>
             <v-card-text>
-              <v-form ref="entryFormRef">
+              <v-form ref="entryForm">
                 <v-row>
                   <v-col cols="12" md="6">
                     <v-text-field
                       v-model="entryForm.va"
-                      label="VA Name (Email)"
+                      label="VA Name"
                       required
                       :rules="[v => !!v || 'VA name is required']"
-                      :readonly="!isUserAdmin"
-                      :hint="!isUserAdmin ? 'Auto-populated with your email' : 'Enter VA email'"
-                      persistent-hint
                     />
                   </v-col>
                   <v-col cols="12" md="6">
-                    <v-autocomplete
+                    <v-text-field
                       v-model="entryForm.campaignId"
-                      label="Campaign"
-                      :items="campaignOptions"
-                      item-value="id"
-                      item-title="displayName"
+                      label="Campaign ID"
                       required
-                      :rules="[v => !!v || 'Campaign is required']"
-                      clearable
-                      hint="Select or type to search"
-                      persistent-hint
+                      :rules="[v => !!v || 'Campaign ID is required']"
                     />
                   </v-col>
                   <v-col cols="12" md="4">
@@ -603,7 +594,7 @@
             <v-card-actions>
               <v-spacer />
               <v-btn
-                variant="text"
+                text
                 @click="closeEntryDialog"
               >
                 Cancel
@@ -643,14 +634,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { campaignsApi, shopifyApi } from '@/services/api';
 import logsAPI from '@/services/logsAPI';
 import launchTrackerAPI from '@/services/launchTrackerAPI';
-import { useAuth } from '@/composables/useAuth';
-
-// Get auth user
-const { user, isAuthenticated } = useAuth();
 
 // Tab control
 const activeTab = ref('launches');
@@ -706,7 +693,6 @@ const trackerLoading = ref(false);
 const showAddEntryDialog = ref(false);
 const editingEntry = ref(null);
 const savingEntry = ref(false);
-const entryFormRef = ref(null);
 
 // Tracker filters
 const trackerFilters = ref({
@@ -716,8 +702,8 @@ const trackerFilters = ref({
   launchTarget: null
 });
 
-// Entry form - using reactive for better reactivity
-const entryForm = reactive({
+// Entry form
+const entryForm = ref({
   va: '',
   campaignId: '',
   bcGeo: '',
@@ -744,7 +730,6 @@ const trackerHeaders = [
   { title: 'VA', key: 'va' },
   { title: 'Time', key: 'timestamp' },
   { title: 'Campaign ID', key: 'campaignId' },
-  { title: 'Campaign Name', key: 'campaignName' },
   { title: 'BC GEO', key: 'bcGeo' },
   { title: 'BC Type', key: 'bcType' },
   { title: 'WH Obj', key: 'whObj' },
@@ -764,8 +749,7 @@ const trackerHeaders = [
 const campaignOptions = computed(() => {
   return campaigns.value.map(c => ({
     id: c.id,
-    name: c.name,
-    displayName: `${c.name} (${c.id})`
+    name: `${c.name} (${c.id})`
   }));
 });
 
@@ -796,23 +780,12 @@ const trackerTotals = computed(() => {
 });
 
 const calculatedAmountLost = computed(() => {
-  return (parseFloat(entryForm.bcSpend) || 0) - (parseFloat(entryForm.adSpend) || 0);
+  return (parseFloat(entryForm.value.bcSpend) || 0) - (parseFloat(entryForm.value.adSpend) || 0);
 });
 
 const calculatedRealSpend = computed(() => {
-  return (parseFloat(entryForm.adSpend) || 0) - calculatedAmountLost.value;
+  return (parseFloat(entryForm.value.adSpend) || 0) - calculatedAmountLost.value;
 });
-
-// Check if user is admin (admins can edit VA field)
-const isUserAdmin = computed(() => {
-  return user.value?.isAdmin || false;
-});
-
-// Helper to get campaign name by ID
-const getCampaignName = (campaignId) => {
-  const campaign = campaigns.value.find(c => c.id === campaignId);
-  return campaign ? campaign.name : '';
-};
 
 // ========== EXISTING LAUNCH MANAGEMENT METHODS ==========
 const fetchCampaigns = async () => {
@@ -1139,15 +1112,9 @@ const loadTrackerData = async () => {
   trackerLoading.value = true;
   try {
     const data = await launchTrackerAPI.getEntries(selectedTrackerWeek.value);
-    console.log('Loaded tracker data:', data);
-    // Add campaign name to each entry
-    trackerEntries.value = (data.entries || []).map(entry => ({
-      ...entry,
-      campaignName: getCampaignName(entry.campaignId)
-    }));
+    trackerEntries.value = data.entries || [];
     filterTrackerData();
   } catch (error) {
-    console.error('Error loading tracker data:', error);
     showError('Failed to load tracker data');
     trackerEntries.value = [];
   } finally {
@@ -1188,31 +1155,9 @@ const exportTrackerData = async () => {
   }
 };
 
-const openAddEntryDialog = () => {
-  // Reset form with user's email as VA name
-  Object.assign(entryForm, {
-    va: user.value?.email || '',  // Auto-populate with user's email
-    campaignId: selectedCampaignId.value || '',  // Auto-populate with current campaign if selected
-    bcGeo: '',
-    bcType: '',
-    whObj: '',
-    launchTarget: '',
-    status: '',
-    ban: '',
-    adSpend: 0,
-    bcSpend: 0,
-    offer: '',
-    notes: ''
-  });
-  editingEntry.value = null;
-  showAddEntryDialog.value = true;
-};
-
 const editTrackerEntry = (entry) => {
   editingEntry.value = entry;
-  // Don't copy campaignName to the form (it's a computed field)
-  const { campaignName, ...entryData } = entry;
-  Object.assign(entryForm, entryData);
+  entryForm.value = { ...entry };
   showAddEntryDialog.value = true;
 };
 
@@ -1229,39 +1174,26 @@ const deleteTrackerEntry = async (entry) => {
 };
 
 const saveTrackerEntry = async () => {
-  // Validate form if ref is available
-  if (entryFormRef.value) {
-    const { valid } = await entryFormRef.value.validate();
-    if (!valid) {
-      showError('Please fill in all required fields');
-      return;
-    }
-  }
-  
   savingEntry.value = true;
   try {
-    console.log('Saving entry:', entryForm);
-    
     if (editingEntry.value) {
       // Update existing entry
       await launchTrackerAPI.updateEntry(
         editingEntry.value.id,
-        entryForm,
+        entryForm.value,
         selectedTrackerWeek.value
       );
       showSuccess('Entry updated successfully');
     } else {
       // Create new entry
-      const result = await launchTrackerAPI.createEntry(entryForm);
-      console.log('Entry created:', result);
+      await launchTrackerAPI.createEntry(entryForm.value);
       showSuccess('Entry added successfully');
     }
     
     closeEntryDialog();
     await loadTrackerData();
   } catch (error) {
-    console.error('Save error:', error);
-    showError('Failed to save entry: ' + (error.message || 'Unknown error'));
+    showError('Failed to save entry');
   } finally {
     savingEntry.value = false;
   }
@@ -1270,7 +1202,7 @@ const saveTrackerEntry = async () => {
 const closeEntryDialog = () => {
   showAddEntryDialog.value = false;
   editingEntry.value = null;
-  Object.assign(entryForm, {
+  entryForm.value = {
     va: '',
     campaignId: '',
     bcGeo: '',
@@ -1283,7 +1215,7 @@ const closeEntryDialog = () => {
     bcSpend: 0,
     offer: '',
     notes: ''
-  });
+  };
 };
 
 // Helper functions
