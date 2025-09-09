@@ -38,6 +38,11 @@ const canViewCampaigns = computed(() => {
   return user.value?.vaPermissions?.dashboardCampaigns === true;
 });
 
+const canViewLaunches = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardLaunches === true;
+});
+
 const canViewSparks = computed(() => {
   if (!user.value?.isVirtualAssistant) return true;
   return user.value?.vaPermissions?.dashboardSparks === true;
@@ -529,6 +534,13 @@ onUnmounted(() => {
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              v-if="canViewLaunches"
+              @click="navigateToAndClose('/dashboard?tab=launches')"
+              prepend-icon="mdi-rocket-launch"
+              title="Launches"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
               v-if="canViewSparks"
               @click="navigateToAndClose('/dashboard?tab=sparks')"
               prepend-icon="mdi-lightning-bolt"
@@ -841,6 +853,16 @@ onUnmounted(() => {
             prepend-icon="mdi-bullhorn"
             title="Campaigns"
             :active="isTabActive('/dashboard', 'campaigns')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+          
+          <v-list-item
+            v-if="canViewLaunches"
+            to="/dashboard?tab=launches"
+            prepend-icon="mdi-rocket-launch"
+            title="Launches"
+            :active="isTabActive('/dashboard', 'launches')"
             class="ml-2"
             rounded="lg"
           ></v-list-item>

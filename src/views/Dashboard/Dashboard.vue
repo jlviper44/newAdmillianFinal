@@ -26,23 +26,8 @@
         </v-col>
       </v-row>
 
-      <!-- Tab Navigation -->
-      <v-row v-if="hasAnyTabPermission">
-        <v-col cols="12">
-          <v-tabs v-model="selectedTab" class="mb-4">
-            <v-tab v-if="canViewCampaigns" value="campaigns">Campaigns</v-tab>
-            <v-tab v-if="canViewSparks" value="sparks">Sparks</v-tab>
-            <v-tab v-if="canViewTemplates" value="templates">Templates</v-tab>
-            <v-tab v-if="canViewShopify" value="shopify">Shopify Stores</v-tab>
-            <v-tab v-if="canViewMetrics" value="metrics">Metrics</v-tab>
-            <v-tab v-if="canViewLogs" value="logs">Logs</v-tab>
-            <v-tab v-if="canViewLinkSplitter" value="linksplitter">Link Splitter</v-tab>
-          </v-tabs>
-        </v-col>
-      </v-row>
-      
       <!-- No Permission Message -->
-      <v-row v-else>
+      <v-row v-if="!hasAnyTabPermission">
         <v-col cols="12">
           <v-alert
             type="warning"
@@ -66,6 +51,11 @@
           <!-- Campaigns Tab (Check permissions for VAs) -->
           <div v-if="selectedTab === 'campaigns' && canViewCampaigns">
             <CampaignsView />
+          </div>
+          
+          <!-- Launches Tab (Check permissions for VAs) -->
+          <div v-if="selectedTab === 'launches' && canViewLaunches">
+            <LaunchesView />
           </div>
           
           <!-- Sparks Tab (Check permissions for VAs) -->
@@ -119,6 +109,7 @@ import SparksView from './components/Sparks/SparksView.vue';
 import TemplatesView from './components/Templates/TemplatesView.vue';
 import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
 import CampaignsView from './components/Campaigns/CampaignsView.vue';
+import LaunchesView from './components/Launches/LaunchesView.vue';
 import LogsView from './components/Logs/LogsView.vue';
 import LinkSplitterView from './components/LinkSplitter/LinkSplitter.vue';
 
@@ -131,6 +122,7 @@ const selectedTab = ref('metrics');
 const tabTitles = {
   metrics: 'Metrics',
   campaigns: 'Campaigns',
+  launches: 'Launches',
   sparks: 'Sparks',
   templates: 'Templates',
   shopify: 'Shopify Stores',
@@ -152,6 +144,11 @@ const canViewMetrics = computed(() => {
 const canViewCampaigns = computed(() => {
   if (!user.value?.isVirtualAssistant) return true;
   return user.value?.vaPermissions?.dashboardCampaigns === true;
+});
+
+const canViewLaunches = computed(() => {
+  if (!user.value?.isVirtualAssistant) return true;
+  return user.value?.vaPermissions?.dashboardLaunches === true;
 });
 
 const canViewSparks = computed(() => {
@@ -186,6 +183,7 @@ const hasTabPermission = (tab) => {
   switch(tab) {
     case 'metrics': return canViewMetrics.value;
     case 'campaigns': return canViewCampaigns.value;
+    case 'launches': return canViewLaunches.value;
     case 'sparks': return canViewSparks.value;
     case 'templates': return canViewTemplates.value;
     case 'shopify': return canViewShopify.value;
@@ -201,6 +199,7 @@ const hasAnyTabPermission = computed(() => {
   
   return canViewMetrics.value || 
          canViewCampaigns.value || 
+         canViewLaunches.value ||
          canViewSparks.value || 
          canViewTemplates.value || 
          canViewShopify.value || 
@@ -210,7 +209,7 @@ const hasAnyTabPermission = computed(() => {
 
 // Find the first tab that the user has permission to view
 const getDefaultTab = () => {
-  const tabs = ['campaigns', 'sparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter'];
+  const tabs = ['campaigns', 'launches', 'sparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter'];
   for (const tab of tabs) {
     if (hasTabPermission(tab)) {
       return tab;
@@ -255,6 +254,7 @@ onMounted(async () => {
       dashboardTabs: {
         metrics: user.value.vaPermissions?.dashboardMetrics,
         campaigns: user.value.vaPermissions?.dashboardCampaigns,
+        launches: user.value.vaPermissions?.dashboardLaunches,
         sparks: user.value.vaPermissions?.dashboardSparks,
         templates: user.value.vaPermissions?.dashboardTemplates,
         shopify: user.value.vaPermissions?.dashboardShopify,

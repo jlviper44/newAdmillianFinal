@@ -3,6 +3,11 @@
  * Manages all campaign-related API endpoints using native SQL
  */
 
+// Import Launches module for launch-related operations
+import LaunchesModule from '../Launches/Launches.js';
+import { getUserInfoFromSession as getSessionInfo, getUserTeamId } from '../Launches/utils.js';
+
+
 /**
  * Initialize campaigns table if it doesn't exist
  */
@@ -229,9 +234,7 @@ function generateId() {
     .join('');
 }
 
-/**
- * Get user's team ID from the database
- */
+/* REMOVED - Using getUserTeamId from utils.js instead
 async function getUserTeamId(env, userId) {
   try {
     const result = await env.USERS_DB.prepare(
@@ -244,6 +247,7 @@ async function getUserTeamId(env, userId) {
     return null;
   }
 }
+*/
 
 /**
  * Get user info from user_id
@@ -378,7 +382,7 @@ async function listCampaigns(db, request, env) {
     }
     
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -553,7 +557,7 @@ async function getCampaign(db, campaignId, request, env) {
     }
     
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     let campaign;
     if (teamId) {
@@ -649,7 +653,7 @@ async function getCampaign(db, campaignId, request, env) {
 async function createCampaign(db, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     const campaignData = await request.json();
     
@@ -816,7 +820,7 @@ async function createCampaign(db, request, env) {
 async function updateCampaign(db, campaignId, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if campaign exists and user has permission
     let existingCampaign;
@@ -981,7 +985,7 @@ async function updateCampaign(db, campaignId, request, env) {
 async function deleteCampaign(db, campaignId, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if campaign exists and user has access
     const existingCampaign = await checkCampaignAccess(db, env, campaignId, userId, teamId);
@@ -1031,7 +1035,7 @@ async function deleteCampaign(db, campaignId, request, env) {
 async function toggleCampaignActive(db, campaignId, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if campaign exists and user has access
     const existingCampaign = await checkCampaignAccess(db, env, campaignId, userId, teamId);
@@ -1088,7 +1092,7 @@ async function toggleCampaignActive(db, campaignId, request, env) {
 async function toggleCampaignStatus(db, campaignId, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if campaign exists and user has permission
     let existingCampaign;
@@ -1218,7 +1222,7 @@ async function toggleCampaignStatus(db, campaignId, request, env) {
 async function updateCampaignId(db, oldCampaignId, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if campaign exists and user has permission
     let existingCampaign;
@@ -1310,9 +1314,8 @@ async function updateCampaignId(db, oldCampaignId, request, env) {
   }
 }
 
-/**
- * Update launch ID
- */
+/* MIGRATED TO LAUNCHES MODULE
+// Update launch ID
 async function updateLaunchId(db, campaignId, oldLaunchId, request, env) {
   console.log('=== updateLaunchId called ===');
   console.log('Campaign ID:', campaignId);
@@ -1320,7 +1323,7 @@ async function updateLaunchId(db, campaignId, oldLaunchId, request, env) {
   
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if campaign exists and user has permission
     let campaign;
@@ -1508,10 +1511,10 @@ async function updateLaunchId(db, campaignId, oldLaunchId, request, env) {
     );
   }
 }
+*/
 
-/**
- * Delete a Shopify page by handle
- */
+/* MIGRATED TO LAUNCHES MODULE
+// Delete a Shopify page by handle
 async function deleteShopifyPage(store, pageHandle) {
   try {
     let apiDomain = store.store_url.replace(/^https?:\/\//, '');
@@ -1554,10 +1557,10 @@ async function deleteShopifyPage(store, pageHandle) {
     throw error;
   }
 }
+*/
 
-/**
- * Manage campaign launches (add, toggle)
- */
+/* MIGRATED TO LAUNCHES MODULE
+// Manage campaign launches (add, toggle)
 async function manageCampaignLaunches(db, campaignId, request, env) {
   console.log('=== manageCampaignLaunches called ===');
   console.log('Campaign ID:', campaignId);
@@ -1565,7 +1568,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
   
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     const requestData = await request.json();
     const { action, launchData } = requestData;
@@ -1751,6 +1754,7 @@ async function manageCampaignLaunches(db, campaignId, request, env) {
     );
   }
 }
+*/
 
 /**
  * Generate page content for simplified redirect page
@@ -2666,7 +2670,7 @@ async function createRedirectStoreOfferPage(db, campaign, campaignId, launchNumb
 async function generateCampaignLink(db, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     const requestData = await request.json();
     const { campaignId, launchNumber } = requestData;
@@ -2967,10 +2971,9 @@ async function generateCampaignLink(db, request, env) {
   }
 }
 
-/**
- * Update campaign traffic counts
- * This is called when logging clicks to update the traffic counters
- */
+/* MIGRATED TO LAUNCHES MODULE
+// Update campaign traffic counts
+// This is called when logging clicks to update the traffic counters
 async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber = null) {
   try {
     // Update campaign-level traffic
@@ -3068,11 +3071,11 @@ async function updateCampaignTraffic(db, campaignId, trafficType, launchNumber =
     return { success: false, error: error.message };
   }
 }
+*/
 
-/**
- * Get campaign data for client-side tracking
- * This endpoint doesn't require authentication
- */
+/* MIGRATED TO LAUNCHES MODULE
+// Get campaign data for client-side tracking
+// This endpoint doesn't require authentication
 async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
   try {
     // Fetch campaign from database (no user_id check for public access)
@@ -3153,6 +3156,7 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
     );
   }
 }
+*/
 
 /**
  * Get campaign traffic statistics
@@ -3160,7 +3164,7 @@ async function getCampaignDataForClient(db, campaignId, launchNumber, request) {
 async function getCampaignTrafficStats(db, campaignId, request, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Fetch campaign with permission check
     let campaign;
@@ -3236,7 +3240,15 @@ async function getCampaignTrafficStats(db, campaignId, request, env) {
  * Main handler function for campaign endpoints
  */
 // Export functions for use by other modules
-export { updateCampaignTraffic, updateTikTokPageContent, createRedirectStoreOfferPage };
+export { updateTikTokPageContent, createRedirectStoreOfferPage, createTikTokValidationPage };
+// Re-export updateCampaignTraffic from Launches module
+export const updateCampaignTraffic = LaunchesModule.updateCampaignTraffic;
+
+// Initialize the Launches module with Shopify handlers
+LaunchesModule.setShopifyHandlers({
+  createTikTokValidationPage,
+  updateTikTokPageContent
+});
 
 export default async function handleCampaignsAPI(request, env, path) {
   const db = env.DASHBOARD_DB;
@@ -3315,12 +3327,12 @@ export default async function handleCampaignsAPI(request, env, path) {
       
       // Manage launches
       case subPath === 'launches' && request.method === 'POST':
-        return await manageCampaignLaunches(db, campaignId, request, env);
+        return await LaunchesModule.manageCampaignLaunches(db, campaignId, request, env);
       
       // Update launch ID - /api/campaigns/{campaignId}/launches/{oldLaunchId}/update-id
       case pathParts[3] === 'launches' && pathParts[5] === 'update-id' && request.method === 'PUT':
         const oldLaunchId = decodeURIComponent(pathParts[4]);
-        return await updateLaunchId(db, campaignId, oldLaunchId, request, env);
+        return await LaunchesModule.updateLaunchId(db, campaignId, oldLaunchId, request, env);
       
       // Get traffic statistics
       case subPath === 'traffic-stats' && request.method === 'GET':
@@ -3330,7 +3342,7 @@ export default async function handleCampaignsAPI(request, env, path) {
       case pathParts[2] === 'client' && pathParts.length === 5 && request.method === 'GET':
         const clientCampaignId = pathParts[3];
         const launchNumber = pathParts[4];
-        return await getCampaignDataForClient(db, clientCampaignId, launchNumber, request);
+        return await LaunchesModule.getCampaignDataForClient(db, clientCampaignId, launchNumber, request);
       
       default:
         console.log('No matching route found for:', {
