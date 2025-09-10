@@ -891,18 +891,6 @@ async function createSpark(request, db, corsHeaders, env) {
       );
     }
     
-    if (!sparkData.offer) {
-      return new Response(
-        JSON.stringify({ error: 'Offer template is required' }),
-        { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders 
-          } 
-        }
-      );
-    }
     
     // Generate ID if not provided (8 characters alphanumeric)
     const id = sparkData.id || 'spark' + Math.random().toString(36).substring(2, 10);
@@ -1005,7 +993,7 @@ async function createSpark(request, db, corsHeaders, env) {
       sparkData.type || 'auto',
       sparkData.tiktokLink,
       sparkData.sparkCode,
-      sparkData.offer,
+      sparkData.offer || '',
       offerName,
       thumbnail,
       status,
@@ -1113,18 +1101,6 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       );
     }
     
-    if (!sparkData.offer) {
-      return new Response(
-        JSON.stringify({ error: 'Offer template is required' }),
-        { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders 
-          } 
-        }
-      );
-    }
     
     // Handle offer name update
     let offerName = existingSpark.offer_name;
@@ -1206,7 +1182,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       sparkData.type || existingSpark.type || 'auto',
       sparkData.tiktokLink,
       sparkData.sparkCode,
-      sparkData.offer,
+      sparkData.offer || '',
       offerName,
       thumbnail,
       sparkData.status || existingSpark.status,

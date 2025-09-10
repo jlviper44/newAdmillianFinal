@@ -1,24 +1,10 @@
 <template>
   <v-container fluid class="sparks-container">
-    <!-- Header with Title and Export -->
-    <v-card class="mb-4" elevation="0">
-      <v-card-title class="d-flex justify-space-between align-center">
-        <h2 class="text-h4">Spark Campaign Tracker</h2>
-        <v-btn
-          variant="tonal"
-          color="primary"
-          @click="exportToCSV"
-          prepend-icon="mdi-download"
-        >
-          Export CSV
-        </v-btn>
-      </v-card-title>
-    </v-card>
-
     <!-- Tab Navigation -->
     <v-tabs v-model="activeTab" class="mb-4">
       <v-tab value="sparks">Sparks</v-tab>
-      <v-tab value="payments">Payments</v-tab>
+      <v-tab v-if="!isAssistingUser" value="payments">Payments</v-tab>
+      <v-tab v-if="!isAssistingUser" value="history">Payment History</v-tab>
     </v-tabs>
 
     <!-- Sparks Tab Content -->
@@ -83,6 +69,15 @@
               </v-col>
 
               <v-col cols="auto" class="ml-auto">
+                <v-btn
+                  variant="tonal"
+                  color="primary"
+                  class="mr-2"
+                  @click="exportToCSV"
+                  prepend-icon="mdi-download"
+                >
+                  Export CSV
+                </v-btn>
                 <v-btn
                   color="primary"
                   variant="elevated"
@@ -228,12 +223,37 @@
 
       <!-- Payments Tab Content -->
       <v-window-item value="payments">
+        <!-- Undo Button -->
+        <v-slide-y-transition>
+          <v-alert
+            v-if="showUndoButton"
+            type="success"
+            variant="tonal"
+            closable
+            @click:close="showUndoButton = false"
+            class="mb-4"
+          >
+            <div class="d-flex align-center justify-space-between">
+              <span>Payment marked successfully for {{ lastPaymentAction?.creator }}</span>
+              <v-btn
+                color="warning"
+                variant="elevated"
+                size="small"
+                @click="undoLastPayment"
+                prepend-icon="mdi-undo"
+              >
+                Undo
+              </v-btn>
+            </div>
+          </v-alert>
+        </v-slide-y-transition>
+        
         <!-- Summary Cards -->
         <v-row class="mb-4">
           <v-col cols="12" md="3">
             <v-card>
               <v-card-text class="text-center">
-                <h3 class="text-h4 text-primary mb-2">$0.00</h3>
+                <h3 class="text-h4 text-primary mb-2">${{ totalOwed }}</h3>
                 <p class="text-body-2 text-grey">Total Owed</p>
               </v-card-text>
             </v-card>
@@ -241,7 +261,7 @@
           <v-col cols="12" md="3">
             <v-card>
               <v-card-text class="text-center">
-                <h3 class="text-h4 text-success mb-2">$0.00</h3>
+                <h3 class="text-h4 text-success mb-2">${{ totalPaid }}</h3>
                 <p class="text-body-2 text-grey">Total Paid</p>
               </v-card-text>
             </v-card>
@@ -250,7 +270,7 @@
             <v-card>
               <v-card-text class="text-center">
                 <h3 class="text-h4 text-warning mb-2">{{ unpaidSparks }}</h3>
-                <p class="text-body-2 text-grey">Unpaid Sparks</p>
+                <p class="text-body-2 text-grey">Unpaid Videos</p>
               </v-card-text>
             </v-card>
           </v-col>
@@ -304,40 +324,245 @@
 
         <!-- Payments List -->
         <v-card>
-          <v-card-title>Payment Summary</v-card-title>
+          <v-card-title>Payment Summary by Creator</v-card-title>
           <v-card-text>
-            <v-list>
-              <v-list-item
-                v-for="payment in payments"
-                :key="payment.id"
-                class="mb-2"
+            <v-expansion-panels
+              v-if="paymentsByCreator.length > 0"
+              variant="accordion"
+            >
+              <v-expansion-panel
+                v-for="creatorPayment in paymentsByCreator"
+                :key="creatorPayment.creator"
               >
-                <template v-slot:prepend>
-                  <v-avatar color="primary">
-                    <span>{{ payment.creator.charAt(0) }}</span>
-                  </v-avatar>
-                </template>
-
-                <v-list-item-title>{{ payment.creator }}</v-list-item-title>
-                <v-list-item-subtitle>
-                  Rate: ${{ payment.rate }}/video • Unpaid: {{ payment.unpaid }}
-                </v-list-item-subtitle>
-
-                <template v-slot:append>
-                  <div class="text-right">
-                    <div class="text-h6 text-primary">${{ payment.total }}</div>
+                <v-expansion-panel-title>
+                  <v-row align="center" class="flex-grow-0">
+                    <v-col cols="auto">
+                      <v-avatar color="primary" size="32">
+                        <span>{{ creatorPayment.creator.charAt(0) }}</span>
+                      </v-avatar>
+                    </v-col>
+                    <v-col>
+                      <div class="font-weight-medium">{{ creatorPayment.creator }}</div>
+                      <div class="text-caption text-grey">
+                        {{ creatorPayment.videos.length }} video{{ creatorPayment.videos.length !== 1 ? 's' : '' }} • 
+                        ${{ creatorPayment.rate }}/video
+                      </div>
+                    </v-col>
+                    <v-col cols="auto">
+                      <div class="text-right">
+                        <div class="text-h6 text-primary">${{ creatorPayment.total }}</div>
+                        <div class="text-caption text-grey">Total Owed</div>
+                      </div>
+                    </v-col>
+                  </v-row>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-list density="compact">
+                    <v-list-item
+                      v-for="video in creatorPayment.videos"
+                      :key="video.id"
+                      class="pl-0"
+                    >
+                      <template v-slot:prepend>
+                        <v-icon size="small" color="grey">mdi-video</v-icon>
+                      </template>
+                      <v-list-item-title>{{ video.name }}</v-list-item-title>
+                      <v-list-item-subtitle>
+                        <v-chip size="x-small" variant="flat" class="mr-2">{{ video.spark_code }}</v-chip>
+                        <span class="text-caption">{{ formatDate(video.created_at) }}</span>
+                      </v-list-item-subtitle>
+                      <template v-slot:append>
+                        <v-btn
+                          icon
+                          variant="text"
+                          size="x-small"
+                          :href="video.tiktok_link"
+                          target="_blank"
+                        >
+                          <v-icon size="small">mdi-open-in-new</v-icon>
+                        </v-btn>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                  <v-divider class="my-2"></v-divider>
+                  <div class="d-flex justify-end">
                     <v-btn
                       color="success"
                       variant="tonal"
                       size="small"
-                      @click="markPaid(payment.id)"
+                      @click="markCreatorPaid(creatorPayment.creator)"
                     >
                       Mark All Paid
                     </v-btn>
                   </div>
-                </template>
-              </v-list-item>
-            </v-list>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+            <v-alert
+              v-else
+              type="info"
+              variant="tonal"
+              class="mt-4"
+            >
+              No unpaid videos found
+            </v-alert>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
+      <!-- Payment History Tab Content -->
+      <v-window-item value="history">
+        <!-- Date Range Filter -->
+        <v-card class="mb-4">
+          <v-card-text>
+            <v-row align="center">
+              <v-col cols="12" md="3">
+                <v-text-field
+                  v-model="historyDateFrom"
+                  label="From Date"
+                  type="date"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" md="3">
+                <v-text-field
+                  v-model="historyDateTo"
+                  label="To Date"
+                  type="date"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" md="3">
+                <v-select
+                  v-model="historyCreatorFilter"
+                  :items="historyCreatorOptions"
+                  label="Creator"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="auto">
+                <v-btn
+                  color="primary"
+                  variant="tonal"
+                  @click="filterPaymentHistory"
+                  prepend-icon="mdi-filter"
+                >
+                  Apply Filter
+                </v-btn>
+              </v-col>
+              <v-col cols="auto">
+                <v-btn
+                  variant="text"
+                  @click="clearHistoryFilters"
+                  prepend-icon="mdi-filter-remove"
+                >
+                  Clear
+                </v-btn>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+
+        <!-- Payment History Summary -->
+        <v-row class="mb-4">
+          <v-col cols="12" md="4">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-success mb-2">${{ totalPaidInPeriod }}</h3>
+                <p class="text-body-2 text-grey">Total Paid in Period</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-info mb-2">{{ totalPayments }}</h3>
+                <p class="text-body-2 text-grey">Total Payments</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-primary mb-2">{{ totalVideosPaid }}</h3>
+                <p class="text-body-2 text-grey">Videos Paid</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Payment History Table -->
+        <v-card>
+          <v-card-title>
+            Payment Records
+            <v-spacer />
+            <v-btn
+              variant="tonal"
+              color="primary"
+              @click="exportPaymentHistory"
+              prepend-icon="mdi-download"
+              size="small"
+            >
+              Export History
+            </v-btn>
+          </v-card-title>
+          <v-card-text>
+            <v-data-table
+              :headers="paymentHistoryHeaders"
+              :items="paymentHistory"
+              :items-per-page="itemsPerPage"
+              :loading="isLoadingHistory"
+              class="elevation-0"
+            >
+              <!-- Payment Date Column -->
+              <template v-slot:item.paymentDate="{ item }">
+                {{ formatDate(item.paymentDate) }}
+              </template>
+
+              <!-- Creator Column with Avatar -->
+              <template v-slot:item.creator="{ item }">
+                <div class="d-flex align-center">
+                  <v-avatar size="28" color="primary" class="mr-2">
+                    <span class="text-caption">{{ item.creator.charAt(0) }}</span>
+                  </v-avatar>
+                  {{ item.creator }}
+                </div>
+              </template>
+
+              <!-- Amount Column -->
+              <template v-slot:item.amount="{ item }">
+                <span class="text-success font-weight-medium">${{ item.amount }}</span>
+              </template>
+
+              <!-- Status Column -->
+              <template v-slot:item.status="{ item }">
+                <v-chip
+                  :color="item.status === 'paid' ? 'success' : 'warning'"
+                  size="small"
+                  variant="flat"
+                >
+                  {{ item.status }}
+                </v-chip>
+              </template>
+
+              <!-- Details Column -->
+              <template v-slot:item.details="{ item }">
+                <v-btn
+                  icon
+                  variant="text"
+                  size="small"
+                  @click="showPaymentDetails(item)"
+                >
+                  <v-icon>mdi-information-outline</v-icon>
+                </v-btn>
+              </template>
+            </v-data-table>
           </v-card-text>
         </v-card>
       </v-window-item>
@@ -642,6 +867,70 @@
       </v-card>
     </v-dialog>
 
+    <!-- Payment Details Modal -->
+    <v-dialog v-model="showPaymentDetailsModal" max-width="600">
+      <v-card>
+        <v-card-title>
+          Payment Details
+          <v-spacer />
+          <v-btn icon variant="text" @click="showPaymentDetailsModal = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        <v-card-text v-if="selectedPayment">
+          <v-list density="compact">
+            <v-list-item>
+              <v-list-item-title class="font-weight-medium">Creator</v-list-item-title>
+              <v-list-item-subtitle>{{ selectedPayment.creator }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="font-weight-medium">Payment Date</v-list-item-title>
+              <v-list-item-subtitle>{{ formatDate(selectedPayment.paymentDate) }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="font-weight-medium">Amount</v-list-item-title>
+              <v-list-item-subtitle>${{ selectedPayment.amount }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="font-weight-medium">Number of Videos</v-list-item-title>
+              <v-list-item-subtitle>{{ selectedPayment.videoCount }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="font-weight-medium">Payment Method</v-list-item-title>
+              <v-list-item-subtitle>{{ selectedPayment.paymentMethod || 'N/A' }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="font-weight-medium">Notes</v-list-item-title>
+              <v-list-item-subtitle>{{ selectedPayment.notes || 'No notes' }}</v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
+          
+          <v-divider class="my-3"></v-divider>
+          
+          <div class="text-subtitle-2 mb-2">Videos Included:</div>
+          <v-list density="compact">
+            <v-list-item
+              v-for="video in selectedPayment.videos"
+              :key="video.id"
+              class="pl-0"
+            >
+              <template v-slot:prepend>
+                <v-icon size="small" color="grey">mdi-video</v-icon>
+              </template>
+              <v-list-item-title>{{ video.name }}</v-list-item-title>
+              <v-list-item-subtitle>
+                <v-chip size="x-small" variant="flat">{{ video.spark_code }}</v-chip>
+              </v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showPaymentDetailsModal = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Delete Confirmation Modal -->
     <v-dialog v-model="showDeleteModal" max-width="500">
       <v-card>
@@ -704,11 +993,25 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { sparksApi, templatesApi, usersApi } from '@/services/api';
+import { useAuth } from '@/composables/useAuth';
+
+// Get auth state
+const { user, isAssistingUser } = useAuth();
 
 // Tab state
 const activeTab = ref('sparks');
+
+// Watch for tab changes and prevent VAs from accessing payment tabs
+watch(activeTab, (newTab) => {
+  if (isAssistingUser.value && (newTab === 'payments' || newTab === 'history')) {
+    activeTab.value = 'sparks';
+    snackbarText.value = 'Payment features are not available in Virtual Assistant mode';
+    snackbarColor.value = 'warning';
+    showSnackbar.value = true;
+  }
+});
 
 // Data state
 const sparks = ref([]);
@@ -721,7 +1024,7 @@ const virtualAssistants = ref([]);
 // Filter state
 const searchQuery = ref('');
 const typeFilter = ref('all');
-const statusFilter = ref('all');
+const statusFilter = ref('active');  // Default to active
 const creatorFilter = ref('all');
 const activeOnly = ref(false);
 
@@ -763,8 +1066,32 @@ const bulkAddLoading = ref(false);
 
 // Payment state
 const defaultRate = ref(1);
-const unpaidSparks = ref(0);
-const activeCreators = ref(0);
+
+// Payment History state
+const paymentHistory = ref([]);
+const isLoadingHistory = ref(false);
+const historyDateFrom = ref('');
+const historyDateTo = ref('');
+const historyCreatorFilter = ref('all');
+const historyCreatorOptions = ref([{ title: 'All Creators', value: 'all' }]);
+const showPaymentDetailsModal = ref(false);
+const selectedPayment = ref(null);
+
+// Undo state
+const lastPaymentAction = ref(null);
+const showUndoButton = ref(false);
+const undoTimeoutId = ref(null);
+
+// Payment History Headers
+const paymentHistoryHeaders = ref([
+  { title: 'Date', key: 'paymentDate', sortable: true },
+  { title: 'Creator', key: 'creator', sortable: true },
+  { title: 'Videos', key: 'videoCount', sortable: true },
+  { title: 'Amount', key: 'amount', sortable: true },
+  { title: 'Status', key: 'status', sortable: true },
+  { title: 'Method', key: 'paymentMethod', sortable: true },
+  { title: 'Details', key: 'details', sortable: false }
+]);
 
 // Snackbar
 const showSnackbar = ref(false);
@@ -830,6 +1157,85 @@ const filteredSparks = computed(() => {
   }
 
   return filtered;
+});
+
+// Computed property for payments grouped by creator
+const paymentsByCreator = computed(() => {
+  const creatorMap = new Map();
+  
+  // Group sparks by creator (only unpaid/active ones)
+  sparks.value
+    .filter(spark => spark.creator && spark.status === 'active')
+    .forEach(spark => {
+      if (!creatorMap.has(spark.creator)) {
+        creatorMap.set(spark.creator, {
+          creator: spark.creator,
+          videos: [],
+          rate: defaultRate.value,
+          total: 0
+        });
+      }
+      creatorMap.get(spark.creator).videos.push(spark);
+    });
+  
+  // Calculate totals and apply custom rates if available
+  const paymentsList = Array.from(creatorMap.values());
+  paymentsList.forEach(payment => {
+    // Check if there's a custom rate for this creator
+    const customCreator = creators.value.find(c => c.name === payment.creator);
+    if (customCreator && customCreator.rate) {
+      payment.rate = customCreator.rate;
+    }
+    payment.total = (payment.videos.length * payment.rate).toFixed(2);
+  });
+  
+  // Sort by creator name
+  return paymentsList.sort((a, b) => a.creator.localeCompare(b.creator));
+});
+
+// Computed properties for payment summary stats
+const totalOwed = computed(() => {
+  return paymentsByCreator.value
+    .reduce((sum, payment) => sum + parseFloat(payment.total), 0)
+    .toFixed(2);
+});
+
+const totalPaid = computed(() => {
+  // Calculate based on completed sparks
+  const completedSparks = sparks.value.filter(spark => spark.status === 'completed' && spark.creator);
+  let total = 0;
+  
+  completedSparks.forEach(spark => {
+    const customCreator = creators.value.find(c => c.name === spark.creator);
+    const rate = customCreator?.rate || defaultRate.value;
+    total += rate;
+  });
+  
+  return total.toFixed(2);
+});
+
+const unpaidSparks = computed(() => {
+  return sparks.value.filter(spark => spark.status === 'active' && spark.creator).length;
+});
+
+const activeCreators = computed(() => {
+  return paymentsByCreator.value.length;
+});
+
+// Computed properties for payment history
+const totalPaidInPeriod = computed(() => {
+  return paymentHistory.value
+    .filter(p => p.status === 'paid')
+    .reduce((sum, p) => sum + parseFloat(p.amount), 0)
+    .toFixed(2);
+});
+
+const totalPayments = computed(() => {
+  return paymentHistory.value.length;
+});
+
+const totalVideosPaid = computed(() => {
+  return paymentHistory.value.reduce((sum, p) => sum + (p.videoCount || 0), 0);
 });
 
 // Methods
@@ -1240,6 +1646,263 @@ const markPaid = (paymentId) => {
   showInfo('Mark paid feature coming soon');
 };
 
+const markCreatorPaid = async (creatorName) => {
+  try {
+    // Find all active sparks for this creator
+    const creatorSparks = sparks.value.filter(
+      spark => spark.creator === creatorName && spark.status === 'active'
+    );
+    
+    // Calculate payment amount
+    const customCreator = creators.value.find(c => c.name === creatorName);
+    const rate = customCreator?.rate || defaultRate.value;
+    const totalAmount = (creatorSparks.length * rate).toFixed(2);
+    
+    // Create payment history record
+    const paymentRecord = {
+      id: `payment_${Date.now()}`,
+      creator: creatorName,
+      paymentDate: new Date().toISOString(),
+      amount: totalAmount,
+      videoCount: creatorSparks.length,
+      status: 'paid',
+      paymentMethod: 'Manual',
+      notes: `Payment for ${creatorSparks.length} videos`,
+      videos: creatorSparks.map(spark => ({
+        id: spark.id,
+        name: spark.name,
+        spark_code: spark.spark_code
+      }))
+    };
+    
+    // Store undo information
+    lastPaymentAction.value = {
+      creator: creatorName,
+      sparkIds: creatorSparks.map(s => s.id),
+      sparks: creatorSparks.map(spark => ({
+        ...spark,
+        // Store the complete spark data for undo
+      })),
+      paymentRecord: paymentRecord,
+      timestamp: Date.now()
+    };
+    
+    // Show undo button with auto-hide after 30 seconds
+    showUndoButton.value = true;
+    if (undoTimeoutId.value) {
+      clearTimeout(undoTimeoutId.value);
+    }
+    undoTimeoutId.value = setTimeout(() => {
+      showUndoButton.value = false;
+      lastPaymentAction.value = null;
+    }, 30000); // Hide after 30 seconds
+    
+    // Add to payment history (in real app, this would be saved to backend)
+    paymentHistory.value.unshift(paymentRecord);
+    
+    // Update each spark to completed status
+    for (const spark of creatorSparks) {
+      // Only send the required fields for update
+      const updateData = {
+        name: spark.name,
+        creator: spark.creator,
+        tiktokLink: spark.tiktok_link || spark.tiktokLink,
+        sparkCode: spark.spark_code || spark.sparkCode,
+        type: spark.type || 'auto',
+        offer: spark.offer || '',
+        status: 'completed'  // Change status to completed
+      };
+      
+      await sparksApi.updateSpark(spark.id, updateData);
+    }
+    
+    // Don't show success message yet - it's in the undo alert
+    
+    // Refresh the sparks list
+    fetchSparks();
+    
+    // Update history creator options
+    updateHistoryCreatorOptions();
+  } catch (error) {
+    showError('Failed to mark videos as paid: ' + (error.message || 'Unknown error'));
+  }
+};
+
+// Undo function
+const undoLastPayment = async () => {
+  if (!lastPaymentAction.value) {
+    showError('No action to undo');
+    return;
+  }
+  
+  try {
+    // Revert each spark back to active status
+    for (const spark of lastPaymentAction.value.sparks) {
+      const updateData = {
+        name: spark.name,
+        creator: spark.creator,
+        tiktokLink: spark.tiktok_link || spark.tiktokLink,
+        sparkCode: spark.spark_code || spark.sparkCode,
+        type: spark.type || 'auto',
+        offer: spark.offer || '',
+        status: 'active'  // Change back to active
+      };
+      
+      await sparksApi.updateSpark(spark.id, updateData);
+    }
+    
+    // Remove the payment record from history
+    const recordIndex = paymentHistory.value.findIndex(
+      p => p.id === lastPaymentAction.value.paymentRecord.id
+    );
+    if (recordIndex > -1) {
+      paymentHistory.value.splice(recordIndex, 1);
+    }
+    
+    showSuccess(`Undone payment for ${lastPaymentAction.value.creator} - ${lastPaymentAction.value.sparkIds.length} videos reverted to active`);
+    
+    // Clear undo state
+    showUndoButton.value = false;
+    lastPaymentAction.value = null;
+    if (undoTimeoutId.value) {
+      clearTimeout(undoTimeoutId.value);
+      undoTimeoutId.value = null;
+    }
+    
+    // Refresh the sparks list
+    fetchSparks();
+  } catch (error) {
+    showError('Failed to undo payment: ' + (error.message || 'Unknown error'));
+  }
+};
+
+// Payment History Methods
+const filterPaymentHistory = () => {
+  // In a real app, this would fetch filtered data from backend
+  // For now, we'll filter the existing payment history
+  let filtered = [...paymentHistory.value];
+  
+  if (historyDateFrom.value) {
+    filtered = filtered.filter(p => new Date(p.paymentDate) >= new Date(historyDateFrom.value));
+  }
+  
+  if (historyDateTo.value) {
+    filtered = filtered.filter(p => new Date(p.paymentDate) <= new Date(historyDateTo.value));
+  }
+  
+  if (historyCreatorFilter.value !== 'all') {
+    filtered = filtered.filter(p => p.creator === historyCreatorFilter.value);
+  }
+  
+  // Update the display (in real app, would update paymentHistory)
+  showInfo(`Showing ${filtered.length} payment records`);
+};
+
+const clearHistoryFilters = () => {
+  historyDateFrom.value = '';
+  historyDateTo.value = '';
+  historyCreatorFilter.value = 'all';
+  showInfo('Filters cleared');
+};
+
+const showPaymentDetails = (payment) => {
+  selectedPayment.value = payment;
+  showPaymentDetailsModal.value = true;
+};
+
+const exportPaymentHistory = () => {
+  const headers = ['Date', 'Creator', 'Videos', 'Amount', 'Status', 'Method', 'Notes'];
+  const rows = paymentHistory.value.map(payment => [
+    formatDate(payment.paymentDate),
+    payment.creator,
+    payment.videoCount,
+    payment.amount,
+    payment.status,
+    payment.paymentMethod || 'N/A',
+    payment.notes || ''
+  ]);
+  
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+  ].join('\n');
+  
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `payment_history_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  
+  showSuccess('Payment history exported successfully');
+};
+
+const updateHistoryCreatorOptions = () => {
+  const uniqueCreators = new Set();
+  
+  // Get creators from payment history
+  paymentHistory.value.forEach(p => uniqueCreators.add(p.creator));
+  
+  // Get creators from sparks
+  sparks.value.forEach(spark => {
+    if (spark.creator) uniqueCreators.add(spark.creator);
+  });
+  
+  historyCreatorOptions.value = [
+    { title: 'All Creators', value: 'all' },
+    ...Array.from(uniqueCreators).map(creator => ({
+      title: creator,
+      value: creator
+    }))
+  ];
+};
+
+// Load initial payment history from completed sparks
+const loadPaymentHistory = () => {
+  // Group completed sparks by creator and approximate payment date
+  const completedByCreator = new Map();
+  
+  sparks.value
+    .filter(spark => spark.creator && spark.status === 'completed')
+    .forEach(spark => {
+      const key = `${spark.creator}_${spark.updated_at?.split('T')[0] || spark.created_at?.split('T')[0]}`;
+      if (!completedByCreator.has(key)) {
+        completedByCreator.set(key, {
+          creator: spark.creator,
+          date: spark.updated_at || spark.created_at,
+          videos: []
+        });
+      }
+      completedByCreator.get(key).videos.push(spark);
+    });
+  
+  // Create payment records from grouped data
+  const historyRecords = Array.from(completedByCreator.values()).map(group => {
+    const customCreator = creators.value.find(c => c.name === group.creator);
+    const rate = customCreator?.rate || defaultRate.value;
+    
+    return {
+      id: `payment_${group.creator}_${group.date}`,
+      creator: group.creator,
+      paymentDate: group.date,
+      amount: (group.videos.length * rate).toFixed(2),
+      videoCount: group.videos.length,
+      status: 'paid',
+      paymentMethod: 'Manual',
+      notes: `Historical payment record`,
+      videos: group.videos.map(v => ({
+        id: v.id,
+        name: v.name,
+        spark_code: v.spark_code
+      }))
+    };
+  });
+  
+  paymentHistory.value = historyRecords.sort((a, b) => 
+    new Date(b.paymentDate) - new Date(a.paymentDate)
+  );
+};
+
 // Helper functions
 const showSuccess = (message) => {
   snackbarText.value = message;
@@ -1267,6 +1930,10 @@ onMounted(async () => {
     fetchOfferTemplates()
   ]);
   await fetchSparks();
+  
+  // Load payment history and update creator options
+  loadPaymentHistory();
+  updateHistoryCreatorOptions();
 });
 </script>
 

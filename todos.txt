@@ -1,0 +1,78 @@
+# ✅ To-Do List (Organized)
+
+## 1. Sparks
+
+* [x] Fix bug with bulk adding
+* [x] Add commission section to payments
+
+  * Default pay rate + commission section
+* [ ] Create invoice section
+
+  * Generates payment history for each Spark maker every Monday
+  * Track Sparks made + base pay
+  * Save invoices generated, allow editing
+  * Mark invoices as **pending / paid / voided**
+  * Track method of payment (checked by owner)
+* [x] Create history section for payments (hidden from VAs)
+
+---
+
+## 2. Launches
+
+* [ ] Remove Launch Management tab
+* [ ] Add Clock In / Out
+* [ ] Add Payroll section
+
+  * Auto-calculate pay every Monday for the previous Mon–Sun
+
+    * Use Clock In/Out data for hourly
+    * Use Launches data for commission on ad spend
+  * Example: VA1 (Tyler) worked 5h/day × 5 days @ \$5/hr → \$125 base pay
+
+    * \$1000 ad spend × 3% commission = \$30
+    * **Total = \$155**
+  * Rates should be adjustable per VA
+* [ ] Save invoices generated, allow editing
+* [ ] Mark invoices as **pending / paid / voided**
+* [ ] Track method of payment (checked by owner)
+* [ ] Allow custom date range (default: current 7-day Mon–Sun)
+* [ ] Ensure all times/payroll run on **EST**
+
+---
+
+## 3. Link Splitter
+
+* [ ] Build link splitter functionality
+
+---
+
+## 4. Campaigns
+
+* [ ] Re-introduce affiliate links
+
+  * Use link splitter for smart links to route offers properly
+  * Submitted links go into campaign
+* [ ] Re-introduce second Shopify page to host landing pages
+
+  * Option: generate landing pages on Shopify 2 like before
+  * Support **custom redirect link** OR **Shopify 2 template**
+---
+
+## 5. Invoicing (General)
+
+* [ ] Tool to generate revenue invoices
+
+  * Users can select information to include
+  * Generate invoice document
+
+---
+
+## 6. Offers Page
+
+* [ ] Grab offer link from API
+
+---
+
+## 7. Templates
+
+* [ ] Add instructions for **CTA link**

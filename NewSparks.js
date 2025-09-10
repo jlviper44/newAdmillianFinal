@@ -1,7 +1,55 @@
+// Admin emails list - users with payment access
+const ADMIN_EMAILS = [
+  'justin.m.lee.dev@gmail.com',
+  'cranapplellc@gmail.com',
+  'alexuvaro00@gmail.com',
+  'kevinpuxingzhou@gmail.com',
+  'antonloth79028@gmail.com'
+];
+
+// Helper function to get session from cookie
+function getSessionIdFromCookie(request) {
+  const cookie = request.headers.get('Cookie');
+  if (!cookie) return null;
+  
+  const match = cookie.match(/session=([^;]+)/);
+  return match ? match[1] : null;
+}
+
+// Get user session from database
+async function getUserSession(env, sessionId) {
+  if (!sessionId) return null;
+  
+  try {
+    const result = await env.USERS_DB.prepare(
+      'SELECT * FROM sessions WHERE session_id = ? AND expires_at > CURRENT_TIMESTAMP'
+    ).bind(sessionId).first();
+    
+    if (result) {
+      result.user = JSON.parse(result.user_data);
+      return result;
+    }
+  } catch (error) {
+    console.error('Error getting session:', error);
+  }
+  return null;
+}
+
+// Check if user is admin
+function isAdminUser(userEmail) {
+  return ADMIN_EMAILS.includes(userEmail);
+}
+
 export default {
     async fetch(request, env) {
       const url = new URL(request.url);
       const path = url.pathname;
+      
+      // Get user session for authentication
+      const sessionId = getSessionIdFromCookie(request);
+      const session = await getUserSession(env, sessionId);
+      const userEmail = session?.user?.email;
+      const isAdmin = userEmail ? isAdminUser(userEmail) : false;
   
       // API Routes
       if (path === '/api/ads' && request.method === 'GET') {
@@ -19,15 +67,29 @@ export default {
       } else if (path === '/api/settings' && request.method === 'GET') {
         return await getSettings(env);
       } else if (path === '/api/settings' && request.method === 'PUT') {
+        // Restrict settings update to admins only
+        if (!isAdmin) {
+          return new Response(JSON.stringify({ error: 'Unauthorized. Admin access required.' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
         return await updateSettings(request, env);
       } else if (path === '/api/payments/mark' && request.method === 'POST') {
+        // Restrict payment marking to admins only
+        if (!isAdmin) {
+          return new Response(JSON.stringify({ error: 'Unauthorized. Admin access required.' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
         return await markAsPaid(request, env);
       } else if (path === '/api/export' && request.method === 'GET') {
-        return await exportData(env);
+        return await exportData(env, hasPaymentAccess);
       }
   
-      // Return HTML for main page
-      return new Response(getHTML(), {
+      // Return HTML for main page with user context
+      return new Response(getHTML(isAdmin), {
         headers: { 'Content-Type': 'text/html' }
       });
     }
@@ -222,7 +284,7 @@ export default {
     }
   }
   
-  async function exportData(env) {
+  async function exportData(env, hasPaymentAccess = true) {
     try {
       const list = await env.ADS.list();
       const ads = [];
@@ -234,23 +296,32 @@ export default {
         }
       }
       
-      // Convert to CSV
-      const headers = ['ID', 'Name', 'Creator', 'TikTok Link', 'Post ID', 'Spark Code', 'Type', 'Status', 'Winner', 'Notes', 'Created Date', 'Paid', 'Paid Date'];
-      const rows = ads.map(ad => [
-        ad.id,
-        ad.name,
-        ad.creator,
-        ad.tiktokLink,
-        ad.postId,
-        ad.sparkCode,
-        ad.type,
-        ad.status,
-        ad.winner,
-        ad.notes,
-        ad.createdDate,
-        ad.paid,
-        ad.paidDate || ''
-      ]);
+      // Convert to CSV - hide payment columns for VA sessions
+      const headers = hasPaymentAccess 
+        ? ['ID', 'Name', 'Creator', 'TikTok Link', 'Post ID', 'Spark Code', 'Type', 'Status', 'Winner', 'Notes', 'Created Date', 'Paid', 'Paid Date']
+        : ['ID', 'Name', 'Creator', 'TikTok Link', 'Post ID', 'Spark Code', 'Type', 'Status', 'Winner', 'Notes', 'Created Date'];
+      
+      const rows = ads.map(ad => {
+        const row = [
+          ad.id,
+          ad.name,
+          ad.creator,
+          ad.tiktokLink,
+          ad.postId,
+          ad.sparkCode,
+          ad.type,
+          ad.status,
+          ad.winner,
+          ad.notes,
+          ad.createdDate
+        ];
+        
+        if (hasPaymentAccess) {
+          row.push(ad.paid, ad.paidDate || '');
+        }
+        
+        return row;
+      });
       
       const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
       
@@ -273,7 +344,7 @@ export default {
     return match ? match[1] : '';
   }
   
-  function getHTML() {
+  function getHTML(isAdmin = false) {
     return `<!DOCTYPE html>
   <html lang="en">
   <head>
@@ -779,7 +850,7 @@ export default {
           
           <div class="tabs">
               <div class="tab active" onclick="switchTab('ads')">Ads</div>
-              <div class="tab" onclick="switchTab('payments')">Payments</div>
+              ${isAdmin ? '<div class="tab" onclick="switchTab(\'payments\')">Payments</div>' : ''}
           </div>
           
           <div id="ads-section">
@@ -966,6 +1037,7 @@ export default {
           let sortColumn = 'createdDate';
           let sortDirection = 'desc';
           let currentEditCell = null;
+          const isAdmin = ${isAdmin};
           
           // Initialize
           async function init() {
@@ -1358,6 +1430,11 @@ export default {
           
           // Switch tab
           function switchTab(tab) {
+              if (!isAdmin && tab === 'payments') {
+                  showError('Payment features are restricted to administrators only.');
+                  return;
+              }
+              
               document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
               event.target.classList.add('active');
               
@@ -1398,6 +1475,10 @@ export default {
           
           // Render payment section
           function renderPaymentSection() {
+              if (!isAdmin) {
+                  document.getElementById('payments-section').innerHTML = '<div class="error">Payment features are restricted to administrators only.</div>';
+                  return;
+              }
               renderCreatorRates();
               renderCreatorPayments();
           }
@@ -1469,6 +1550,11 @@ export default {
           
           // Update default rate
           async function updateDefaultRate() {
+              if (!isAdmin) {
+                  showError('Only administrators can update payment rates.');
+                  return;
+              }
+              
               settings.defaultRate = parseFloat(document.getElementById('default-rate').value);
               await saveSettings();
               updatePaymentStats();
@@ -1477,6 +1563,11 @@ export default {
           
           // Update creator rate
           async function updateCreatorRate(creator, rate) {
+              if (!isAdmin) {
+                  showError('Only administrators can update payment rates.');
+                  return;
+              }
+              
               settings.creatorRates[creator] = parseFloat(rate);
               await saveSettings();
               updatePaymentStats();
@@ -1498,6 +1589,11 @@ export default {
           
           // Mark creator paid
           async function markCreatorPaid(creator) {
+              if (!isAdmin) {
+                  showError('Only administrators can mark payments as paid.');
+                  return;
+              }
+              
               const creatorAds = ads.filter(ad => ad.creator === creator && !ad.paid);
               const adIds = creatorAds.map(ad => ad.id);
               
