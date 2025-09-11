@@ -5,6 +5,7 @@
       <v-tab value="sparks">Sparks</v-tab>
       <v-tab v-if="!isAssistingUser" value="payments">Payments</v-tab>
       <v-tab v-if="!isAssistingUser" value="history">Payment History</v-tab>
+      <v-tab v-if="!isAssistingUser" value="invoices">Invoices</v-tab>
     </v-tabs>
 
     <!-- Sparks Tab Content -->
@@ -390,10 +391,22 @@
 
         <!-- Payment Settings -->
         <v-card class="mb-4">
-          <v-card-title>Payment Settings</v-card-title>
+          <v-card-title>
+            <span>Payment Settings</span>
+            <v-spacer />
+            <v-btn
+              color="primary"
+              variant="elevated"
+              :loading="isSavingSettings"
+              @click="savePaymentSettings"
+              prepend-icon="mdi-content-save"
+            >
+              Save Settings
+            </v-btn>
+          </v-card-title>
           <v-card-text>
             <v-row>
-              <v-col cols="12" md="6">
+              <v-col cols="12" md="4">
                 <v-text-field
                   v-model="defaultRate"
                   label="Default Rate per Video"
@@ -403,24 +416,71 @@
                   density="compact"
                 />
               </v-col>
+              <v-col cols="12" md="4">
+                <v-text-field
+                  v-model="defaultCommissionRate"
+                  label="Default Commission"
+                  :suffix="defaultCommissionType === 'percentage' ? '%' : '$'"
+                  type="number"
+                  variant="outlined"
+                  density="compact"
+                />
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-select
+                  v-model="defaultCommissionType"
+                  label="Commission Type"
+                  :items="[{title: 'Percentage', value: 'percentage'}, {title: 'Fixed Amount', value: 'fixed'}]"
+                  variant="outlined"
+                  density="compact"
+                />
+              </v-col>
             </v-row>
 
-            <h4 class="text-h6 mb-3">Creator Custom Rates</h4>
+            <h4 class="text-h6 mb-3">Creator Custom Rates & Commissions</h4>
             <v-row>
               <v-col
                 v-for="creator in creators"
                 :key="creator.id"
                 cols="12"
-                md="6"
               >
-                <v-text-field
-                  v-model="creator.rate"
-                  :label="creator.name"
-                  prefix="$"
-                  type="number"
-                  variant="outlined"
-                  density="compact"
-                />
+                <v-card variant="outlined" class="pa-3">
+                  <div class="font-weight-medium mb-2">{{ creator.name }}</div>
+                  <v-row>
+                    <v-col cols="12" md="4">
+                      <v-text-field
+                        v-model="creator.rate"
+                        label="Rate per Video"
+                        prefix="$"
+                        type="number"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="4">
+                      <v-text-field
+                        v-model="creator.commissionRate"
+                        label="Commission"
+                        :suffix="creator.commissionType === 'percentage' ? '%' : '$'"
+                        type="number"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="4">
+                      <v-select
+                        v-model="creator.commissionType"
+                        label="Type"
+                        :items="[{title: 'Percentage', value: 'percentage'}, {title: 'Fixed', value: 'fixed'}]"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                      />
+                    </v-col>
+                  </v-row>
+                </v-card>
               </v-col>
             </v-row>
           </v-card-text>
@@ -450,12 +510,20 @@
                       <div class="text-caption text-grey">
                         {{ creatorPayment.videos.length }} video{{ creatorPayment.videos.length !== 1 ? 's' : '' }} • 
                         ${{ creatorPayment.rate }}/video
+                        <span v-if="creatorPayment.commissionRate > 0">
+                          + {{ creatorPayment.commissionRate }}{{ creatorPayment.commissionType === 'percentage' ? '%' : '$' }} commission
+                        </span>
                       </div>
                     </v-col>
                     <v-col cols="auto">
                       <div class="text-right">
                         <div class="text-h6 text-primary">${{ creatorPayment.total }}</div>
-                        <div class="text-caption text-grey">Total Owed</div>
+                        <div class="text-caption text-grey">
+                          Base: ${{ creatorPayment.baseAmount }}
+                          <span v-if="creatorPayment.commissionAmount > 0">
+                            + Commission: ${{ creatorPayment.commissionAmount }}
+                          </span>
+                        </div>
                       </div>
                     </v-col>
                   </v-row>
@@ -665,6 +733,208 @@
                 >
                   <v-icon>mdi-information-outline</v-icon>
                 </v-btn>
+              </template>
+            </v-data-table>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
+      <!-- Invoices Tab Content -->
+      <v-window-item value="invoices">
+        <!-- Invoice Actions Bar -->
+        <v-card class="mb-4">
+          <v-card-text>
+            <v-row align="center">
+              <v-col cols="12" md="3">
+                <v-select
+                  v-model="invoiceStatusFilter"
+                  :items="invoiceStatusOptions"
+                  label="Status"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" md="3">
+                <v-select
+                  v-model="invoiceCreatorFilter"
+                  :items="invoiceCreatorOptions"
+                  label="Creator"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" md="2">
+                <v-text-field
+                  v-model="invoiceDateFrom"
+                  label="From Date"
+                  type="date"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" md="2">
+                <v-text-field
+                  v-model="invoiceDateTo"
+                  label="To Date"
+                  type="date"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="auto">
+                <v-btn
+                  color="primary"
+                  variant="elevated"
+                  @click="openInvoiceGenerator"
+                  prepend-icon="mdi-file-document-plus"
+                >
+                  Create Invoice
+                </v-btn>
+              </v-col>
+              <v-col cols="auto">
+                <v-btn
+                  color="secondary"
+                  variant="tonal"
+                  @click="openInvoiceSettings"
+                  prepend-icon="mdi-cog"
+                >
+                  Settings
+                </v-btn>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+
+        <!-- Invoice Statistics -->
+        <v-row class="mb-4">
+          <v-col cols="12" md="3">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-primary mb-2">{{ totalInvoices }}</h3>
+                <p class="text-body-2 text-grey">Total Invoices</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-success mb-2">${{ totalInvoiced }}</h3>
+                <p class="text-body-2 text-grey">Total Invoiced</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-warning mb-2">{{ pendingInvoices }}</h3>
+                <p class="text-body-2 text-grey">Pending</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-card>
+              <v-card-text class="text-center">
+                <h3 class="text-h4 text-info mb-2">${{ paidInvoices }}</h3>
+                <p class="text-body-2 text-grey">Paid</p>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Invoices List -->
+        <v-card>
+          <v-card-title>
+            Invoices
+            <v-spacer />
+            <v-btn
+              variant="text"
+              color="primary"
+              @click="refreshInvoices"
+              prepend-icon="mdi-refresh"
+            >
+              Refresh
+            </v-btn>
+          </v-card-title>
+          <v-card-text>
+            <v-data-table
+              :headers="invoiceHeaders"
+              :items="invoices"
+              :loading="isLoadingInvoices"
+              items-per-page="10"
+              class="elevation-0"
+            >
+              <!-- Invoice Number Column -->
+              <template v-slot:item.invoice_number="{ item }">
+                <span class="font-weight-medium">{{ item.invoice_number }}</span>
+              </template>
+
+              <!-- Status Column -->
+              <template v-slot:item.status="{ item }">
+                <v-chip
+                  :color="getInvoiceStatusColor(item.status)"
+                  size="small"
+                  variant="tonal"
+                >
+                  {{ item.status }}
+                </v-chip>
+              </template>
+
+              <!-- Date Column -->
+              <template v-slot:item.invoice_date="{ item }">
+                {{ formatDate(item.invoice_date) }}
+              </template>
+
+              <!-- Amount Column -->
+              <template v-slot:item.total_amount="{ item }">
+                <span class="font-weight-medium">${{ item.total_amount.toFixed(2) }}</span>
+              </template>
+
+              <!-- Actions Column -->
+              <template v-slot:item.actions="{ item }">
+                <v-btn
+                  icon="mdi-eye"
+                  size="small"
+                  variant="text"
+                  @click="viewInvoice(item)"
+                  title="View Invoice"
+                />
+                <v-btn
+                  icon="mdi-download"
+                  size="small"
+                  variant="text"
+                  @click="downloadInvoice(item)"
+                  title="Download PDF"
+                />
+                <v-btn
+                  v-if="item.status === 'pending'"
+                  icon="mdi-check"
+                  size="small"
+                  variant="text"
+                  color="success"
+                  @click="markInvoicePaid(item)"
+                  title="Mark as Paid"
+                />
+                <v-btn
+                  v-if="item.status === 'pending'"
+                  icon="mdi-pencil"
+                  size="small"
+                  variant="text"
+                  @click="editInvoice(item)"
+                  title="Edit Invoice"
+                />
+                <v-btn
+                  v-if="item.status !== 'voided'"
+                  icon="mdi-close"
+                  size="small"
+                  variant="text"
+                  color="error"
+                  @click="voidInvoice(item)"
+                  title="Void Invoice"
+                />
               </template>
             </v-data-table>
           </v-card-text>
@@ -1111,6 +1381,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { sparksApi, templatesApi, usersApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
+import jsPDF from 'jspdf';
 
 // Get auth state
 const { user, isAssistingUser } = useAuth();
@@ -1186,6 +1457,10 @@ const bulkAddLoading = ref(false);
 
 // Payment state
 const defaultRate = ref(1);
+const defaultCommissionRate = ref(0);
+const defaultCommissionType = ref('percentage');
+const paymentSettingsLoaded = ref(false);
+const isSavingSettings = ref(false);
 
 // Payment History state
 const paymentHistory = ref([]);
@@ -1201,6 +1476,31 @@ const selectedPayment = ref(null);
 const lastPaymentAction = ref(null);
 const showUndoButton = ref(false);
 const undoTimeoutId = ref(null);
+
+// Invoice state
+const invoices = ref([]);
+const isLoadingInvoices = ref(false);
+const invoiceStatusFilter = ref('all');
+const invoiceCreatorFilter = ref('all');
+const invoiceDateFrom = ref('');
+const invoiceDateTo = ref('');
+const invoiceStatusOptions = ref([
+  { title: 'All Status', value: 'all' },
+  { title: 'Pending', value: 'pending' },
+  { title: 'Paid', value: 'paid' },
+  { title: 'Voided', value: 'voided' },
+  { title: 'Overdue', value: 'overdue' }
+]);
+const invoiceCreatorOptions = ref([{ title: 'All Creators', value: 'all' }]);
+const invoiceHeaders = ref([
+  { title: 'Invoice #', key: 'invoice_number', sortable: true },
+  { title: 'Creator', key: 'creator_name', sortable: true },
+  { title: 'Date', key: 'invoice_date', sortable: true },
+  { title: 'Due Date', key: 'due_date', sortable: true },
+  { title: 'Amount', key: 'total_amount', sortable: true },
+  { title: 'Status', key: 'status', sortable: true },
+  { title: 'Actions', key: 'actions', sortable: false }
+]);
 
 // Payment History Headers
 const paymentHistoryHeaders = ref([
@@ -1298,15 +1598,38 @@ const paymentsByCreator = computed(() => {
       creatorMap.get(spark.creator).videos.push(spark);
     });
   
-  // Calculate totals and apply custom rates if available
+  // Calculate totals and apply custom rates and commissions if available
   const paymentsList = Array.from(creatorMap.values());
   paymentsList.forEach(payment => {
-    // Check if there's a custom rate for this creator
+    // Check if there's a custom rate and commission for this creator
     const customCreator = creators.value.find(c => c.name === payment.creator);
-    if (customCreator && customCreator.rate) {
-      payment.rate = customCreator.rate;
+    if (customCreator) {
+      if (customCreator.rate) {
+        payment.rate = customCreator.rate;
+      }
+      payment.commissionRate = customCreator.commissionRate || defaultCommissionRate.value;
+      payment.commissionType = customCreator.commissionType || defaultCommissionType.value;
+    } else {
+      payment.commissionRate = defaultCommissionRate.value;
+      payment.commissionType = defaultCommissionType.value;
     }
-    payment.total = (payment.videos.length * payment.rate).toFixed(2);
+    
+    // Calculate base amount
+    const baseAmount = payment.videos.length * payment.rate;
+    
+    // Calculate commission
+    let commissionAmount = 0;
+    if (payment.commissionRate > 0) {
+      if (payment.commissionType === 'percentage') {
+        commissionAmount = baseAmount * (payment.commissionRate / 100);
+      } else if (payment.commissionType === 'fixed') {
+        commissionAmount = payment.videos.length * payment.commissionRate;
+      }
+    }
+    
+    payment.baseAmount = baseAmount.toFixed(2);
+    payment.commissionAmount = commissionAmount.toFixed(2);
+    payment.total = (baseAmount + commissionAmount).toFixed(2);
   });
   
   // Sort by creator name
@@ -1358,6 +1681,28 @@ const totalVideosPaid = computed(() => {
   return paymentHistory.value.reduce((sum, p) => sum + (p.videoCount || 0), 0);
 });
 
+// Computed properties for invoices
+const totalInvoices = computed(() => {
+  return invoices.value.length;
+});
+
+const totalInvoiced = computed(() => {
+  return invoices.value
+    .reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
+    .toFixed(2);
+});
+
+const pendingInvoices = computed(() => {
+  return invoices.value.filter(inv => inv.status === 'pending').length;
+});
+
+const paidInvoices = computed(() => {
+  return invoices.value
+    .filter(inv => inv.status === 'paid')
+    .reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
+    .toFixed(2);
+});
+
 // Methods
 const fetchSparks = async () => {
   isLoading.value = true;
@@ -1385,7 +1730,9 @@ const fetchSparks = async () => {
           .map(va => ({
             id: va.value,
             name: va.title,
-            rate: defaultRate.value
+            rate: defaultRate.value,
+            commissionRate: defaultCommissionRate.value,
+            commissionType: defaultCommissionType.value
           }));
       } else {
         // Fallback to extracting from existing data
@@ -1397,7 +1744,9 @@ const fetchSparks = async () => {
         creators.value = uniqueCreators.map(name => ({
           id: name,
           name: name,
-          rate: defaultRate.value
+          rate: defaultRate.value,
+          commissionRate: defaultCommissionRate.value,
+          commissionType: defaultCommissionType.value
         }));
       }
       
@@ -1870,17 +2219,35 @@ const markCreatorPaid = async (creatorName) => {
       spark => spark.creator === creatorName && spark.status === 'active'
     );
     
-    // Calculate payment amount
+    // Calculate payment amount with commission
     const customCreator = creators.value.find(c => c.name === creatorName);
     const rate = customCreator?.rate || defaultRate.value;
-    const totalAmount = (creatorSparks.length * rate).toFixed(2);
+    const commissionRate = customCreator?.commissionRate || defaultCommissionRate.value;
+    const commissionType = customCreator?.commissionType || defaultCommissionType.value;
+    
+    // Calculate base amount
+    const baseAmount = creatorSparks.length * rate;
+    
+    // Calculate commission
+    let commissionAmount = 0;
+    if (commissionRate > 0) {
+      if (commissionType === 'percentage') {
+        commissionAmount = baseAmount * (commissionRate / 100);
+      } else if (commissionType === 'fixed') {
+        commissionAmount = creatorSparks.length * commissionRate;
+      }
+    }
+    
+    const totalAmount = baseAmount + commissionAmount;
     
     // Create payment history record
     const paymentRecord = {
       id: `payment_${Date.now()}`,
       creator: creatorName,
       paymentDate: new Date().toISOString(),
-      amount: totalAmount,
+      amount: totalAmount.toFixed(2),
+      baseAmount: baseAmount.toFixed(2),
+      commissionAmount: commissionAmount.toFixed(2),
       videoCount: creatorSparks.length,
       status: 'paid',
       paymentMethod: 'Manual',
@@ -1914,7 +2281,29 @@ const markCreatorPaid = async (creatorName) => {
       lastPaymentAction.value = null;
     }, 30000); // Hide after 30 seconds
     
-    // Add to payment history (in real app, this would be saved to backend)
+    // Save payment to backend
+    try {
+      await fetch('/api/sparks/record-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          creatorName: creatorName,
+          paymentDate: paymentRecord.paymentDate,
+          videoCount: paymentRecord.videoCount,
+          baseAmount: paymentRecord.baseAmount,
+          commissionAmount: paymentRecord.commissionAmount,
+          totalAmount: paymentRecord.amount,
+          paymentMethod: paymentRecord.paymentMethod,
+          notes: paymentRecord.notes,
+          sparkIds: creatorSparks.map(s => s.id)
+        })
+      });
+    } catch (error) {
+      console.error('Failed to save payment to backend:', error);
+    }
+    
+    // Add to payment history locally
     paymentHistory.value.unshift(paymentRecord);
     
     // Update each spark to completed status
@@ -2027,6 +2416,89 @@ const showPaymentDetails = (payment) => {
   showPaymentDetailsModal.value = true;
 };
 
+// Load payment settings from backend
+const loadPaymentSettings = async () => {
+  try {
+    const response = await fetch('/api/sparks/payment-settings', {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success && data.settings) {
+      // Load global settings
+      const globalSettings = data.settings.find(s => s.setting_type === 'global');
+      if (globalSettings) {
+        defaultRate.value = globalSettings.base_rate;
+        defaultCommissionRate.value = globalSettings.commission_rate;
+        defaultCommissionType.value = globalSettings.commission_type;
+      }
+      
+      // Load creator-specific settings
+      data.settings
+        .filter(s => s.setting_type === 'creator')
+        .forEach(setting => {
+          const creator = creators.value.find(c => c.name === setting.creator_name);
+          if (creator) {
+            creator.rate = setting.base_rate;
+            creator.commissionRate = setting.commission_rate;
+            creator.commissionType = setting.commission_type;
+          }
+        });
+        
+      paymentSettingsLoaded.value = true;
+    }
+  } catch (error) {
+    console.error('Failed to load payment settings:', error);
+  }
+};
+
+// Save payment settings to backend
+const savePaymentSettings = async () => {
+  isSavingSettings.value = true;
+  try {
+    // Save global settings
+    await fetch('/api/sparks/payment-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        settingType: 'global',
+        baseRate: defaultRate.value,
+        commissionRate: defaultCommissionRate.value,
+        commissionType: defaultCommissionType.value
+      })
+    });
+    
+    // Save creator-specific settings
+    for (const creator of creators.value) {
+      if (creator.rate !== defaultRate.value || 
+          creator.commissionRate !== defaultCommissionRate.value ||
+          creator.commissionType !== defaultCommissionType.value) {
+        await fetch('/api/sparks/payment-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            settingType: 'creator',
+            creatorName: creator.name,
+            baseRate: creator.rate,
+            commissionRate: creator.commissionRate || 0,
+            commissionType: creator.commissionType || 'percentage'
+          })
+        });
+      }
+    }
+    
+    showSuccess('Payment settings saved successfully');
+    paymentSettingsLoaded.value = true;
+  } catch (error) {
+    console.error('Failed to save payment settings:', error);
+    showError('Failed to save payment settings');
+  } finally {
+    isSavingSettings.value = false;
+  }
+};
+
 const exportPaymentHistory = () => {
   const headers = ['Date', 'Creator', 'Videos', 'Amount', 'Status', 'Method', 'Notes'];
   const rows = paymentHistory.value.map(payment => [
@@ -2072,6 +2544,364 @@ const updateHistoryCreatorOptions = () => {
       value: creator
     }))
   ];
+};
+
+// Invoice Management Methods
+const fetchInvoices = async () => {
+  isLoadingInvoices.value = true;
+  try {
+    const params = new URLSearchParams();
+    if (invoiceStatusFilter.value !== 'all') params.append('status', invoiceStatusFilter.value);
+    if (invoiceCreatorFilter.value !== 'all') params.append('creator', invoiceCreatorFilter.value);
+    if (invoiceDateFrom.value) params.append('dateFrom', invoiceDateFrom.value);
+    if (invoiceDateTo.value) params.append('dateTo', invoiceDateTo.value);
+    
+    const response = await fetch(`/api/sparks/invoices?${params}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      invoices.value = data.invoices;
+      
+      // Update creator options
+      const creators = new Set();
+      data.invoices.forEach(inv => creators.add(inv.creator_name));
+      invoiceCreatorOptions.value = [
+        { title: 'All Creators', value: 'all' },
+        ...Array.from(creators).map(c => ({ title: c, value: c }))
+      ];
+    }
+  } catch (error) {
+    console.error('Failed to fetch invoices:', error);
+    showError('Failed to load invoices');
+  } finally {
+    isLoadingInvoices.value = false;
+  }
+};
+
+const refreshInvoices = () => {
+  fetchInvoices();
+};
+
+const getInvoiceStatusColor = (status) => {
+  const colors = {
+    pending: 'warning',
+    paid: 'success',
+    voided: 'error',
+    overdue: 'error'
+  };
+  return colors[status] || 'grey';
+};
+
+const openInvoiceGenerator = async () => {
+  // Get current unpaid sparks grouped by creator
+  const unpaidByCreator = {};
+  
+  sparks.value
+    .filter(spark => spark.status === 'active' && spark.creator)
+    .forEach(spark => {
+      if (!unpaidByCreator[spark.creator]) {
+        unpaidByCreator[spark.creator] = [];
+      }
+      unpaidByCreator[spark.creator].push(spark);
+    });
+  
+  if (Object.keys(unpaidByCreator).length === 0) {
+    showWarning('No unpaid sparks to invoice');
+    return;
+  }
+  
+  // Show dialog to select creator and generate invoice
+  // For now, we'll create an invoice for the first creator
+  const creator = Object.keys(unpaidByCreator)[0];
+  const creatorSparks = unpaidByCreator[creator];
+  
+  await createInvoiceForCreator(creator, creatorSparks);
+};
+
+const createInvoiceForCreator = async (creatorName, creatorSparks) => {
+  try {
+    // Get payment settings for calculation
+    const customCreator = creators.value.find(c => c.name === creatorName);
+    const rate = customCreator?.rate || defaultRate.value;
+    const commissionRate = customCreator?.commissionRate || defaultCommissionRate.value;
+    const commissionType = customCreator?.commissionType || defaultCommissionType.value;
+    
+    // Calculate amounts
+    const subtotal = creatorSparks.length * rate;
+    let commissionAmount = 0;
+    
+    if (commissionRate > 0) {
+      if (commissionType === 'percentage') {
+        commissionAmount = subtotal * (commissionRate / 100);
+      } else {
+        commissionAmount = creatorSparks.length * commissionRate;
+      }
+    }
+    
+    const lineItems = [{
+      description: `Spark Videos (${creatorSparks.length})`,
+      quantity: creatorSparks.length,
+      rate: rate,
+      amount: subtotal
+    }];
+    
+    if (commissionAmount > 0) {
+      lineItems.push({
+        description: `Commission (${commissionRate}${commissionType === 'percentage' ? '%' : ' fixed'})`,
+        quantity: 1,
+        rate: commissionAmount,
+        amount: commissionAmount
+      });
+    }
+    
+    const response = await fetch('/api/sparks/invoices/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        creatorName,
+        lineItems,
+        subtotal,
+        commissionAmount,
+        totalAmount: subtotal + commissionAmount,
+        notes: `Invoice for ${creatorSparks.length} Spark videos`
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showSuccess(`Invoice ${result.invoiceNumber} created successfully`);
+      await fetchInvoices();
+    } else {
+      showError('Failed to create invoice');
+    }
+  } catch (error) {
+    console.error('Failed to create invoice:', error);
+    showError('Failed to create invoice');
+  }
+};
+
+const viewInvoice = (invoice) => {
+  // Open invoice HTML in new tab
+  window.open(`/api/sparks/invoices/${invoice.id}/pdf`, '_blank');
+};
+
+const downloadInvoice = async (invoice) => {
+  // Generate and download invoice as PDF
+  try {
+    // Parse line items
+    const lineItems = JSON.parse(invoice.line_items || '[]');
+    
+    // Create PDF document
+    const doc = new jsPDF();
+    
+    // Set font sizes
+    const titleSize = 20;
+    const headerSize = 14;
+    const normalSize = 11;
+    const smallSize = 9;
+    
+    // Colors
+    doc.setTextColor(0, 0, 0);
+    
+    // Title
+    doc.setFontSize(titleSize);
+    doc.text('INVOICE', 105, 20, { align: 'center' });
+    
+    // Invoice details
+    doc.setFontSize(normalSize);
+    doc.text(`Invoice #: ${invoice.invoice_number}`, 20, 40);
+    doc.text(`Date: ${new Date(invoice.invoice_date).toLocaleDateString()}`, 20, 47);
+    doc.text(`Due Date: ${new Date(invoice.due_date).toLocaleDateString()}`, 20, 54);
+    
+    // Status
+    doc.setFontSize(smallSize);
+    const statusColor = invoice.status === 'paid' ? [0, 128, 0] : 
+                       invoice.status === 'voided' ? [255, 0, 0] : [255, 165, 0];
+    doc.setTextColor(...statusColor);
+    doc.text(`Status: ${invoice.status.toUpperCase()}`, 20, 61);
+    doc.setTextColor(0, 0, 0);
+    
+    // Bill To
+    doc.setFontSize(headerSize);
+    doc.text('Bill To:', 20, 80);
+    doc.setFontSize(normalSize);
+    doc.text(invoice.creator_name, 20, 88);
+    
+    // Line items header
+    let yPos = 110;
+    doc.setFontSize(headerSize);
+    doc.text('Services', 20, yPos);
+    
+    // Draw line
+    doc.setLineWidth(0.5);
+    doc.line(20, yPos + 3, 190, yPos + 3);
+    
+    // Table headers
+    yPos += 10;
+    doc.setFontSize(smallSize);
+    doc.setFont(undefined, 'bold');
+    doc.text('Description', 20, yPos);
+    doc.text('Qty', 120, yPos);
+    doc.text('Rate', 140, yPos);
+    doc.text('Amount', 170, yPos);
+    doc.setFont(undefined, 'normal');
+    
+    // Table rows
+    yPos += 7;
+    doc.setFontSize(normalSize);
+    lineItems.forEach((item, index) => {
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.text(item.description || '', 20, yPos);
+      doc.text(String(item.quantity || 0), 120, yPos);
+      doc.text(`$${(item.rate || 0).toFixed(2)}`, 140, yPos);
+      doc.text(`$${(item.amount || 0).toFixed(2)}`, 170, yPos);
+      yPos += 7;
+    });
+    
+    // Draw line before totals
+    yPos += 5;
+    doc.line(120, yPos, 190, yPos);
+    
+    // Totals
+    yPos += 10;
+    doc.setFontSize(normalSize);
+    
+    if (invoice.subtotal !== invoice.total_amount) {
+      doc.text('Subtotal:', 140, yPos);
+      doc.text(`$${invoice.subtotal.toFixed(2)}`, 170, yPos);
+      yPos += 7;
+    }
+    
+    if (invoice.commission_amount > 0) {
+      doc.text('Commission:', 140, yPos);
+      doc.text(`$${invoice.commission_amount.toFixed(2)}`, 170, yPos);
+      yPos += 7;
+    }
+    
+    if (invoice.tax_amount > 0) {
+      doc.text('Tax:', 140, yPos);
+      doc.text(`$${invoice.tax_amount.toFixed(2)}`, 170, yPos);
+      yPos += 7;
+    }
+    
+    if (invoice.discount_amount > 0) {
+      doc.text('Discount:', 140, yPos);
+      doc.text(`-$${invoice.discount_amount.toFixed(2)}`, 170, yPos);
+      yPos += 7;
+    }
+    
+    // Total
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(headerSize);
+    doc.text('TOTAL:', 140, yPos + 5);
+    doc.text(`$${invoice.total_amount.toFixed(2)}`, 170, yPos + 5);
+    
+    // Notes
+    if (invoice.notes) {
+      yPos += 20;
+      if (yPos > 240) {
+        doc.addPage();
+        yPos = 20;
+      }
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(smallSize);
+      doc.text('Notes:', 20, yPos);
+      doc.setFontSize(normalSize);
+      const noteLines = doc.splitTextToSize(invoice.notes, 170);
+      doc.text(noteLines, 20, yPos + 7);
+    }
+    
+    // Footer
+    doc.setFontSize(smallSize);
+    doc.setTextColor(128, 128, 128);
+    doc.text('Generated by Sparks Invoice System', 105, 280, { align: 'center' });
+    doc.text(new Date().toLocaleDateString(), 105, 285, { align: 'center' });
+    
+    // Save the PDF
+    doc.save(`${invoice.invoice_number}.pdf`);
+    
+    showSuccess('Invoice downloaded as PDF');
+  } catch (error) {
+    console.error('Failed to generate PDF:', error);
+    showError('Failed to generate PDF invoice');
+  }
+};
+
+const markInvoicePaid = async (invoice) => {
+  try {
+    const response = await fetch(`/api/sparks/invoices/${invoice.id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        status: 'paid',
+        paymentData: {
+          paymentMethod: 'Manual',
+          paymentDate: new Date().toISOString().split('T')[0],
+          verifiedBy: user.value?.email
+        }
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showSuccess('Invoice marked as paid');
+      await fetchInvoices();
+    } else {
+      showError('Failed to update invoice status');
+    }
+  } catch (error) {
+    console.error('Failed to mark invoice as paid:', error);
+    showError('Failed to update invoice status');
+  }
+};
+
+const editInvoice = (invoice) => {
+  // Open edit modal
+  // This would open a modal to edit invoice details
+  showInfo('Invoice editing will be available soon');
+};
+
+const voidInvoice = async (invoice) => {
+  if (!confirm(`Are you sure you want to void invoice ${invoice.invoice_number}?`)) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/api/sparks/invoices/${invoice.id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ status: 'voided' })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showSuccess('Invoice voided successfully');
+      await fetchInvoices();
+    } else {
+      showError('Failed to void invoice');
+    }
+  } catch (error) {
+    console.error('Failed to void invoice:', error);
+    showError('Failed to void invoice');
+  }
+};
+
+const openInvoiceSettings = () => {
+  // Open settings modal
+  // This would open a modal to configure invoice settings
+  showInfo('Invoice settings will be available soon');
 };
 
 // Load initial payment history from completed sparks
@@ -2154,9 +2984,15 @@ onMounted(async () => {
   ]);
   await fetchSparks();
   
+  // Load payment settings from backend
+  await loadPaymentSettings();
+  
   // Load payment history and update creator options
   loadPaymentHistory();
   updateHistoryCreatorOptions();
+  
+  // Load invoices
+  await fetchInvoices();
 });
 </script>
 

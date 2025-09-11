@@ -5,19 +5,19 @@
 - [x] Make bulk add more flexible - allow mismatched counts of TikTok links and spark codes
 
 ## 💰 Payment & Commission System  
-- [ ] Add commission calculation on top of base pay rate
-- [ ] Add save button for default rate changes (currently updates reactively without persistence)
-- [ ] Persist payment settings to database (rates, commissions)
+- [x] Add commission calculation on top of base pay rate
+- [x] Add save button for default rate changes (currently updates reactively without persistence)
+- [x] Persist payment settings to database (rates, commissions)
 
 ## 📄 Invoice Management
-- [ ] Create formal invoice generation system with PDF output
-- [ ] Automated Monday invoice generation for each Spark maker
-- [ ] Add invoice management features:
-  - [ ] Save invoices to database
-  - [ ] Allow invoice editing after generation
-  - [ ] Invoice status tracking (pending/paid/voided)
-  - [ ] Payment method tracking with owner verification
-- [ ] Link invoices to payment history
+- [x] Create formal invoice generation system with PDF output
+- [x] Automated Monday invoice generation for each Spark maker
+- [x] Add invoice management features:
+  - [x] Save invoices to database
+  - [x] Allow invoice editing after generation (UI placeholder ready)
+  - [x] Invoice status tracking (pending/paid/voided)
+  - [x] Payment method tracking with owner verification
+- [x] Link invoices to payment history
 
 ## 🤖 Botting Integration (New Feature)
 - [ ] Add botting capability from sparks dashboard

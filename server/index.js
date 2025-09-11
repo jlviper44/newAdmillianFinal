@@ -361,8 +361,13 @@ export default {
         const reports = await generateWeeklyPayroll(env);
         
         console.log(`Successfully generated ${reports.length} payroll reports`);
+        
+        // Also generate scheduled invoices for Sparks
+        const { generateScheduledInvoices } = await import('./Dashboard/Sparks/InvoiceManagement.js');
+        const invoiceResult = await generateScheduledInvoices(env.DASHBOARD_DB);
+        console.log(`Generated ${invoiceResult.generated} scheduled invoices for Sparks`);
       } catch (error) {
-        console.error('Failed to generate weekly payroll:', error);
+        console.error('Failed to generate weekly payroll or invoices:', error);
       }
     }
     

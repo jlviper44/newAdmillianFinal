@@ -3,6 +3,12 @@
  * Manages all spark-related API endpoints for TikTok ad campaigns
  */
 
+import { handlePaymentSettings, initializePaymentTables } from './PaymentSettings.js';
+import { handleInvoiceManagement, initializeInvoiceTables, generateScheduledInvoices } from './InvoiceManagement.js';
+
+console.log('Sparks.js loaded - handlePaymentSettings:', typeof handlePaymentSettings);
+console.log('Sparks.js loaded - handleInvoiceManagement:', typeof handleInvoiceManagement);
+
 /**
  * Initialize sparks table if it doesn't exist
  */
@@ -297,9 +303,11 @@ export async function handleSparkData(request, env) {
     );
   }
   
-  // Ensure sparks table exists
+  // Ensure all required tables exist
   try {
     await initializeSparksTable(db);
+    await initializePaymentTables(db);
+    await initializeInvoiceTables(db);
   } catch (error) {
     console.error('Failed to initialize sparks table:', error);
     return new Response(
@@ -322,6 +330,8 @@ export async function handleSparkData(request, env) {
   const path = url.pathname.replace('/api/sparks', '');
   const method = request.method;
   
+  console.log('Sparks API - Path:', path, 'Method:', method);
+  
   // Handle CORS preflight requests
   if (method === 'OPTIONS') {
     return new Response(null, { 
@@ -331,6 +341,20 @@ export async function handleSparkData(request, env) {
   }
   
   try {
+    // Payment Settings endpoints (check these first before generic patterns)
+    if (path.startsWith('/payment-settings') || path.startsWith('/payment-history') || path.startsWith('/record-payment')) {
+      console.log('Handling payment settings endpoint');
+      const userInfo = await getUserInfoFromSession(request, env);
+      return await handlePaymentSettings(request, env, userInfo);
+    }
+    
+    // Invoice Management endpoints (check these first before generic patterns)
+    if (path.startsWith('/invoices')) {
+      console.log('Handling invoice management endpoint');
+      const userInfo = await getUserInfoFromSession(request, env);
+      return await handleInvoiceManagement(request, env, userInfo);
+    }
+    
     // List Sparks
     if (path === '' && method === 'GET') {
       return await listSparks(request, db, corsHeaders, env);
