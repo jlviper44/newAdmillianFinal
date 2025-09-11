@@ -53,9 +53,9 @@
             <CampaignsView />
           </div>
           
-          <!-- Launches Tab (Check permissions for VAs) -->
+          <!-- Ad Launches Tab (Check permissions for VAs) -->
           <div v-if="selectedTab === 'launches' && canViewLaunches">
-            <LaunchesView />
+            <AdLaunchesView />
           </div>
           
           <!-- Sparks Tab (Check permissions for VAs) -->
@@ -109,7 +109,7 @@ import SparksView from './components/Sparks/SparksView.vue';
 import TemplatesView from './components/Templates/TemplatesView.vue';
 import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
 import CampaignsView from './components/Campaigns/CampaignsView.vue';
-import LaunchesView from './components/Launches/LaunchesView.vue';
+import AdLaunchesView from './components/AdLaunches/AdLaunchesView.vue';
 import LogsView from './components/Logs/LogsView.vue';
 import LinkSplitterView from './components/LinkSplitter/LinkSplitter.vue';
 
@@ -122,7 +122,7 @@ const selectedTab = ref('metrics');
 const tabTitles = {
   metrics: 'Metrics',
   campaigns: 'Campaigns',
-  launches: 'Launches',
+  launches: 'Ad Launches',
   sparks: 'Sparks',
   templates: 'Templates',
   shopify: 'Shopify Stores',

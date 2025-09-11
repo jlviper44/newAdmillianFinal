@@ -4,7 +4,7 @@
  */
 
 // Import helper functions
-import { getUserInfoFromSession } from './utils.js';
+import { getUserInfoFromSession } from './launch-utils.js';
 
 // Note: These functions need to be imported from the main Campaigns module
 // They handle Shopify-specific operations

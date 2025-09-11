@@ -10,7 +10,7 @@ import handleCampaignsAPI from './Dashboard/Campaigns/Campaigns';
 import { handleLogsData } from './Dashboard/Logs/Logs';
 import { handleTeams } from './Teams/Teams';
 import { handleLinkSplitter } from './Dashboard/LinkSplitter/LinkSplitterHandler';
-import { handleLaunchTracker } from './Dashboard/LaunchTracker/LaunchTrackerD1';
+import { handleAdLaunches } from './Dashboard/AdLaunches/AdLaunches';
 
 export default {
   async fetch(request, env, ctx) {
@@ -224,11 +224,11 @@ export default {
         });
       }
       
-      // Route Launch Tracker API requests (protected)
+      // Route Ad Launches API requests (protected)
       if (path.startsWith('/api/tracker')) {
         return requireAuth(request, env, async (req, env, session) => {
           req.ctx = { ...req.ctx, session };
-          return handleLaunchTracker(req, env);
+          return handleAdLaunches(req, env);
         });
       }
       

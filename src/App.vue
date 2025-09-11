@@ -537,7 +537,7 @@ onUnmounted(() => {
               v-if="canViewLaunches"
               @click="navigateToAndClose('/dashboard?tab=launches')"
               prepend-icon="mdi-rocket-launch"
-              title="Launches"
+              title="Ad Launches"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
@@ -861,7 +861,7 @@ onUnmounted(() => {
             v-if="canViewLaunches"
             to="/dashboard?tab=launches"
             prepend-icon="mdi-rocket-launch"
-            title="Launches"
+            title="Ad Launches"
             :active="isTabActive('/dashboard', 'launches')"
             class="ml-2"
             rounded="lg"

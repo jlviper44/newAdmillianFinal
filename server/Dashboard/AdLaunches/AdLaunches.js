@@ -423,7 +423,7 @@ async function getAvailableWeeks(env) {
 }
 
 // Main handler function
-export async function handleLaunchTracker(request, env) {
+export async function handleAdLaunches(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
@@ -510,4 +510,4 @@ export async function handleLaunchTracker(request, env) {
   }
 }
 
-export default handleLaunchTracker;
+export default handleAdLaunches;

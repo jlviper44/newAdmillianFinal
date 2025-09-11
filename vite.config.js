@@ -21,6 +21,9 @@ export default defineConfig({
 		},
 	},
 	server: {
+		// Enable network access
+		host: true, // This exposes to all network interfaces
+		port: 5173, // You can change the port if needed
 		// Remove proxy for /l routes - let Vue Router handle them
 	},
   optimizeDeps: {

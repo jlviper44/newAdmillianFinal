@@ -2,298 +2,12 @@
   <v-container fluid class="launches-container pa-0">
     <!-- Tabs for switching between views -->
     <v-tabs v-model="activeTab" class="mb-4" color="purple">
-      <v-tab value="launches">Launch Management</v-tab>
-      <v-tab value="tracker">Launch Tracker</v-tab>
+      <v-tab value="tracker">Ad Launches</v-tab>
     </v-tabs>
 
-    <!-- Launch Management Tab (Existing Functionality) -->
+    <!-- Window for tab content -->
     <v-window v-model="activeTab">
-      <v-window-item value="launches">
-        <!-- Campaign Selector and Info -->
-        <v-card class="mb-4">
-          <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-4'">
-            <v-row align="center">
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="selectedCampaignId"
-                  label="Select Campaign"
-                  :items="campaignOptions"
-                  item-title="name"
-                  item-value="id"
-                  @update:model-value="selectCampaign"
-                  :density="$vuetify.display.smAndDown ? 'compact' : 'comfortable'"
-                >
-                  <template v-slot:selection="{ item }">
-                    <div class="d-flex align-center">
-                      <span class="font-weight-medium">{{ item.title }}</span>
-                    </div>
-                  </template>
-                </v-select>
-              </v-col>
-              <v-col cols="12" md="6" v-if="currentCampaign">
-                <div class="text-body-2">
-                  <div class="d-flex align-center">
-                    <span>Campaign ID: </span>
-                    <v-text-field
-                      v-if="editingCampaignId"
-                      v-model="tempCampaignId"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      single-line
-                      class="mx-2"
-                      style="max-width: 300px; min-width: 250px;"
-                      @keyup.enter="saveCampaignId"
-                      @keyup.esc="cancelEditCampaignId"
-                    >
-                      <template v-slot:append>
-                        <v-btn
-                          icon="mdi-check"
-                          variant="text"
-                          size="x-small"
-                          color="green"
-                          @click="saveCampaignId"
-                        />
-                        <v-btn
-                          icon="mdi-close"
-                          variant="text"
-                          size="x-small"
-                          color="red"
-                          @click="cancelEditCampaignId"
-                        />
-                      </template>
-                    </v-text-field>
-                    <span v-else class="d-flex align-center">
-                      <strong class="mx-2">{{ currentCampaign?.id }}</strong>
-                      <v-btn
-                        icon="mdi-pencil"
-                        variant="text"
-                        size="x-small"
-                        class="ml-1"
-                        @click="startEditCampaignId"
-                      />
-                    </span>
-                    <v-divider vertical class="mx-3" />
-                    <span>Total Launches: <strong>{{ currentLaunches.length }}</strong></span>
-                  </div>
-                </div>
-              </v-col>
-            </v-row>
-            
-            <v-alert
-              v-if="currentCampaign"
-              type="info"
-              variant="tonal"
-              density="compact"
-              class="mt-3 mb-0"
-            >
-              <span class="text-caption">The "Generate Link" button will create/refresh the Shopify pages with the latest campaign settings.</span>
-            </v-alert>
-          </v-card-text>
-        </v-card>
-
-        <!-- Add New Launches Section -->
-        <v-card v-if="currentCampaign" variant="flat" class="mb-4 pa-4" :class="$vuetify.theme.current.dark ? 'bg-grey-darken-3' : 'bg-grey-lighten-5'">
-          <div class="d-flex align-center justify-space-between">
-            <h4 class="text-body-1 font-weight-medium">Add New Launches</h4>
-            <div class="d-flex align-center gap-3">
-              <span class="text-body-2 font-weight-medium">Count:</span>
-              <div class="launch-count-wrapper purple-theme">
-                <button 
-                  type="button"
-                  class="launch-count-btn minus"
-                  @click="decrementLaunchCount"
-                  :disabled="newLaunchCount <= 1"
-                >
-                  <v-icon size="small">mdi-minus</v-icon>
-                </button>
-                <input 
-                  v-model.number="newLaunchCount"
-                  type="number"
-                  min="1"
-                  max="10"
-                  class="launch-count-input"
-                  @input="validateLaunchCount"
-                />
-                <button 
-                  type="button"
-                  class="launch-count-btn plus"
-                  @click="incrementLaunchCount"
-                  :disabled="newLaunchCount >= 10"
-                >
-                  <v-icon size="small">mdi-plus</v-icon>
-                </button>
-              </div>
-              <v-btn
-                color="purple"
-                variant="flat"
-                size="small"
-                @click="addNewLaunches"
-                :loading="addingLaunches"
-                prepend-icon="mdi-plus"
-                class="mx-2 my-1"
-              >
-                ADD
-              </v-btn>
-            </div>
-          </div>
-        </v-card>
-
-        <!-- Existing Launches List -->
-        <div v-if="currentCampaign">
-          <h4 class="text-body-1 mb-3 font-weight-medium">Existing Launches</h4>
-          
-          <div v-if="currentLaunches.length === 0" class="text-center py-8">
-            <v-card class="pa-8">
-              <v-icon size="48" color="grey">mdi-rocket</v-icon>
-              <p class="text-body-1 mt-3 mb-1">No launches found</p>
-              <p class="text-caption text-grey">Click "Add" above to create your first launch</p>
-            </v-card>
-          </div>
-          
-          <div v-else class="d-flex flex-column ga-3">
-            <v-card
-              v-for="(launch, index) in filteredLaunches" 
-              :key="launch.number"
-              :color="launch.isActive ? ($vuetify.theme.current.dark ? 'grey-darken-2' : 'grey-lighten-5') : ($vuetify.theme.current.dark ? 'grey-darken-3' : 'grey-lighten-4')"
-              :variant="launch.isActive ? 'outlined' : 'flat'"
-              :style="launch.isActive ? 'border-color: rgb(168, 85, 247); border-width: 2px;' : ''"
-              class="pa-4"
-            >
-              <div class="d-flex flex-column flex-sm-row align-start align-sm-center justify-space-between ga-3">
-                <!-- Launch info -->
-                <div class="flex-grow-1" style="min-width: 0;">
-                  <div class="d-flex align-center gap-2 mb-2 flex-wrap">
-                    <span class="text-h6 font-weight-medium d-flex align-center" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-2' : 'text-grey-darken-4'">
-                      Launch: 
-                      <v-text-field
-                        v-if="editingLaunchId === launch.number"
-                        v-model="tempLaunchId"
-                        variant="outlined"
-                        density="compact"
-                        hide-details
-                        single-line
-                        class="mx-2"
-                        style="max-width: 350px; min-width: 250px;"
-                        @keyup.enter="saveLaunchId(launch.number)"
-                        @keyup.esc="cancelEditLaunchId"
-                      >
-                        <template v-slot:append>
-                          <v-btn
-                            icon="mdi-check"
-                            variant="text"
-                            size="x-small"
-                            color="green"
-                            @click="saveLaunchId(launch.number)"
-                          />
-                          <v-btn
-                            icon="mdi-close"
-                            variant="text"
-                            size="x-small"
-                            color="red"
-                            @click="cancelEditLaunchId"
-                          />
-                        </template>
-                      </v-text-field>
-                      <span v-else class="d-flex align-center">
-                        <strong class="mx-2">{{ launch.number }}</strong>
-                        <v-btn
-                          v-if="launch.number !== '0' && launch.number !== 0"
-                          icon="mdi-pencil"
-                          variant="text"
-                          size="x-small"
-                          class="ml-1"
-                          @click="startEditLaunchId(launch.number)"
-                        />
-                      </span>
-                      <span v-if="launch.number === '0' || launch.number === 0" class="text-caption ml-1">(Default - Cannot be renamed)</span>
-                    </span>
-                    
-                    <v-chip 
-                      :color="launch.isActive ? 'green' : 'grey'"
-                      variant="tonal"
-                      size="small"
-                      label
-                    >
-                      {{ launch.isActive ? 'Active' : 'Disabled' }}
-                    </v-chip>
-                    
-                    <v-chip
-                      v-if="launch.traffic > 0"
-                      color="blue"
-                      variant="tonal"
-                      size="small"
-                      label
-                    >
-                      <v-icon start size="x-small">mdi-chart-line</v-icon>
-                      {{ launch.traffic }} visits
-                    </v-chip>
-                  </div>
-                  
-                  <div class="text-body-2" :class="$vuetify.theme.current.dark ? 'text-grey-lighten-1' : 'text-grey-darken-1'">
-                    <div v-if="launch.createdAt" class="mb-1">
-                      Created: {{ formatDate(launch.createdAt) }}
-                    </div>
-                    <div v-if="launch.generatedAt">
-                      <template v-if="getTimeSinceGenerated(launch.generatedAt).hours < 1">
-                        <v-icon size="x-small" color="green">mdi-circle</v-icon>
-                        <span class="text-green-darken-1 ml-1">Updated {{ getTimeSinceGenerated(launch.generatedAt).minutes }}m ago</span>
-                      </template>
-                      <template v-else-if="getTimeSinceGenerated(launch.generatedAt).hours < 24">
-                        <v-icon size="x-small" color="blue">mdi-circle</v-icon>
-                        <span class="text-blue-darken-1 ml-1">Updated {{ getTimeSinceGenerated(launch.generatedAt).hours }}h ago</span>
-                      </template>
-                      <template v-else>
-                        <v-icon size="x-small" color="orange">mdi-circle</v-icon>
-                        <span class="text-orange-darken-1 ml-1">Updated {{ getTimeSinceGenerated(launch.generatedAt).days }}d ago</span>
-                      </template>
-                    </div>
-                    <div v-else>
-                      <v-icon size="x-small" color="orange">mdi-circle</v-icon>
-                      <span class="text-orange-darken-1 ml-1">Not generated</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Action buttons -->
-                <div class="d-flex align-center gap-2 flex-shrink-0">
-                  <v-btn
-                    color="purple"
-                    variant="flat"
-                    @click="generateLaunchLink(launch.number)"
-                    :loading="generatingLinkFor === launch.number"
-                    :prepend-icon="launch.generatedAt ? 'mdi-refresh' : 'mdi-link'"
-                  >
-                    {{ launch.generatedAt ? 'REFRESH & COPY' : 'GENERATE LINK' }}
-                  </v-btn>
-                  
-                  <v-btn
-                    color="blue"
-                    variant="tonal"
-                    @click="copyTestLink(launch.number)"
-                    :disabled="!launch.generatedAt"
-                    prepend-icon="mdi-test-tube"
-                  >
-                    COPY TEST LINK
-                  </v-btn>
-                  
-                  <v-btn
-                    :color="launch.isActive ? 'grey' : 'green'"
-                    variant="flat"
-                    @click="toggleLaunch(launch.number)"
-                    :loading="togglingLaunch === launch.number"
-                    :prepend-icon="launch.isActive ? 'mdi-pause' : 'mdi-play'"
-                  >
-                    {{ launch.isActive ? 'DISABLE' : 'ENABLE' }}
-                  </v-btn>
-                </div>
-              </div>
-            </v-card>
-          </div>
-        </div>
-      </v-window-item>
-
-      <!-- Launch Tracker Tab (New Functionality) -->
+      <!-- Ad Launches Tab -->
       <v-window-item value="tracker">
         <!-- Week Selector and Summary Cards -->
         <v-card class="mb-4">
@@ -324,7 +38,7 @@
                   <v-btn
                     color="green"
                     variant="flat"
-                    @click="showAddEntryDialog = true"
+                    @click="openAddEntryDialog"
                     prepend-icon="mdi-plus"
                   >
                     Add Entry
@@ -432,6 +146,12 @@
             :items-per-page="20"
             class="tracker-table"
           >
+            <template v-slot:item.campaignId="{ item }">
+              <span class="font-weight-medium">{{ item.campaignId }}</span>
+            </template>
+            <template v-slot:item.campaignName="{ item }">
+              <span class="text-caption">{{ item.campaignName || '-' }}</span>
+            </template>
             <template v-slot:item.status="{ item }">
               <v-chip
                 :color="getStatusColor(item.status)"
@@ -481,22 +201,31 @@
               {{ editingEntry ? 'Edit Entry' : 'Add New Entry' }}
             </v-card-title>
             <v-card-text>
-              <v-form ref="entryForm">
+              <v-form ref="entryFormRef">
                 <v-row>
                   <v-col cols="12" md="6">
                     <v-text-field
                       v-model="entryForm.va"
-                      label="VA Name"
+                      label="VA Name (Email)"
                       required
                       :rules="[v => !!v || 'VA name is required']"
+                      :readonly="!isUserAdmin"
+                      :hint="!isUserAdmin ? 'Auto-populated with your email' : 'Enter VA email'"
+                      persistent-hint
                     />
                   </v-col>
                   <v-col cols="12" md="6">
-                    <v-text-field
+                    <v-autocomplete
                       v-model="entryForm.campaignId"
-                      label="Campaign ID"
+                      label="Campaign"
+                      :items="campaignOptions"
+                      item-value="id"
+                      item-title="displayName"
                       required
-                      :rules="[v => !!v || 'Campaign ID is required']"
+                      :rules="[v => !!v || 'Campaign is required']"
+                      clearable
+                      hint="Select or type to search"
+                      persistent-hint
                     />
                   </v-col>
                   <v-col cols="12" md="4">
@@ -594,7 +323,7 @@
             <v-card-actions>
               <v-spacer />
               <v-btn
-                text
+                variant="text"
                 @click="closeEntryDialog"
               >
                 Cancel
@@ -634,13 +363,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { campaignsApi, shopifyApi } from '@/services/api';
 import logsAPI from '@/services/logsAPI';
-import launchTrackerAPI from '@/services/launchTrackerAPI';
+import adLaunchesAPI from '@/services/adLaunchesAPI';
+import { useAuth } from '@/composables/useAuth';
+
+// Get auth user
+const { user, isAuthenticated } = useAuth();
 
 // Tab control
-const activeTab = ref('launches');
+const activeTab = ref('tracker');
 
 // Snackbar state
 const showSnackbar = ref(false);
@@ -693,6 +426,7 @@ const trackerLoading = ref(false);
 const showAddEntryDialog = ref(false);
 const editingEntry = ref(null);
 const savingEntry = ref(false);
+const entryFormRef = ref(null);
 
 // Tracker filters
 const trackerFilters = ref({
@@ -702,8 +436,8 @@ const trackerFilters = ref({
   launchTarget: null
 });
 
-// Entry form
-const entryForm = ref({
+// Entry form - using reactive for better reactivity
+const entryForm = reactive({
   va: '',
   campaignId: '',
   bcGeo: '',
@@ -730,6 +464,7 @@ const trackerHeaders = [
   { title: 'VA', key: 'va' },
   { title: 'Time', key: 'timestamp' },
   { title: 'Campaign ID', key: 'campaignId' },
+  { title: 'Campaign Name', key: 'campaignName' },
   { title: 'BC GEO', key: 'bcGeo' },
   { title: 'BC Type', key: 'bcType' },
   { title: 'WH Obj', key: 'whObj' },
@@ -749,7 +484,8 @@ const trackerHeaders = [
 const campaignOptions = computed(() => {
   return campaigns.value.map(c => ({
     id: c.id,
-    name: `${c.name} (${c.id})`
+    name: c.name,
+    displayName: `${c.name} (${c.id})`
   }));
 });
 
@@ -776,16 +512,27 @@ const filteredLaunches = computed(() => {
 
 // Tracker computed properties
 const trackerTotals = computed(() => {
-  return launchTrackerAPI.calculateTotals(filteredTrackerEntries.value);
+  return adLaunchesAPI.calculateTotals(filteredTrackerEntries.value);
 });
 
 const calculatedAmountLost = computed(() => {
-  return (parseFloat(entryForm.value.bcSpend) || 0) - (parseFloat(entryForm.value.adSpend) || 0);
+  return (parseFloat(entryForm.bcSpend) || 0) - (parseFloat(entryForm.adSpend) || 0);
 });
 
 const calculatedRealSpend = computed(() => {
-  return (parseFloat(entryForm.value.adSpend) || 0) - calculatedAmountLost.value;
+  return (parseFloat(entryForm.adSpend) || 0) - calculatedAmountLost.value;
 });
+
+// Check if user is admin (admins can edit VA field)
+const isUserAdmin = computed(() => {
+  return user.value?.isAdmin || false;
+});
+
+// Helper to get campaign name by ID
+const getCampaignName = (campaignId) => {
+  const campaign = campaigns.value.find(c => c.id === campaignId);
+  return campaign ? campaign.name : '';
+};
 
 // ========== EXISTING LAUNCH MANAGEMENT METHODS ==========
 const fetchCampaigns = async () => {
@@ -1079,8 +826,8 @@ const copyTestLink = async (launchNumber) => {
 const loadAvailableWeeks = async () => {
   try {
     // Get current week
-    const currentWeek = launchTrackerAPI.utils.formatWeekKey(new Date());
-    const currentWeekString = launchTrackerAPI.utils.getCurrentWeekString();
+    const currentWeek = adLaunchesAPI.utils.formatWeekKey(new Date());
+    const currentWeekString = adLaunchesAPI.utils.getCurrentWeekString();
     
     // Initialize with current week and past 8 weeks
     const weeks = [];
@@ -1089,8 +836,8 @@ const loadAvailableWeeks = async () => {
     for (let i = 0; i < 8; i++) {
       const weekDate = new Date(today);
       weekDate.setDate(today.getDate() - (i * 7));
-      const weekKey = launchTrackerAPI.utils.formatWeekKey(weekDate);
-      const weekStart = launchTrackerAPI.utils.getWeekStart(weekDate);
+      const weekKey = adLaunchesAPI.utils.formatWeekKey(weekDate);
+      const weekStart = adLaunchesAPI.utils.getWeekStart(weekDate);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
       
@@ -1111,10 +858,16 @@ const loadAvailableWeeks = async () => {
 const loadTrackerData = async () => {
   trackerLoading.value = true;
   try {
-    const data = await launchTrackerAPI.getEntries(selectedTrackerWeek.value);
-    trackerEntries.value = data.entries || [];
+    const data = await adLaunchesAPI.getEntries(selectedTrackerWeek.value);
+    console.log('Loaded tracker data:', data);
+    // Add campaign name to each entry
+    trackerEntries.value = (data.entries || []).map(entry => ({
+      ...entry,
+      campaignName: getCampaignName(entry.campaignId)
+    }));
     filterTrackerData();
   } catch (error) {
+    console.error('Error loading tracker data:', error);
     showError('Failed to load tracker data');
     trackerEntries.value = [];
   } finally {
@@ -1148,23 +901,45 @@ const filterTrackerData = () => {
 
 const exportTrackerData = async () => {
   try {
-    await launchTrackerAPI.exportData(selectedTrackerWeek.value);
+    await adLaunchesAPI.exportData(selectedTrackerWeek.value);
     showSuccess('Data exported successfully');
   } catch (error) {
     showError('Failed to export data');
   }
 };
 
+const openAddEntryDialog = () => {
+  // Reset form with user's email as VA name
+  Object.assign(entryForm, {
+    va: user.value?.email || '',  // Auto-populate with user's email
+    campaignId: selectedCampaignId.value || '',  // Auto-populate with current campaign if selected
+    bcGeo: '',
+    bcType: '',
+    whObj: '',
+    launchTarget: '',
+    status: '',
+    ban: '',
+    adSpend: 0,
+    bcSpend: 0,
+    offer: '',
+    notes: ''
+  });
+  editingEntry.value = null;
+  showAddEntryDialog.value = true;
+};
+
 const editTrackerEntry = (entry) => {
   editingEntry.value = entry;
-  entryForm.value = { ...entry };
+  // Don't copy campaignName to the form (it's a computed field)
+  const { campaignName, ...entryData } = entry;
+  Object.assign(entryForm, entryData);
   showAddEntryDialog.value = true;
 };
 
 const deleteTrackerEntry = async (entry) => {
   if (confirm(`Are you sure you want to delete this entry for ${entry.va}?`)) {
     try {
-      await launchTrackerAPI.deleteEntry(entry.id, selectedTrackerWeek.value);
+      await adLaunchesAPI.deleteEntry(entry.id, selectedTrackerWeek.value);
       showSuccess('Entry deleted successfully');
       await loadTrackerData();
     } catch (error) {
@@ -1174,26 +949,39 @@ const deleteTrackerEntry = async (entry) => {
 };
 
 const saveTrackerEntry = async () => {
+  // Validate form if ref is available
+  if (entryFormRef.value) {
+    const { valid } = await entryFormRef.value.validate();
+    if (!valid) {
+      showError('Please fill in all required fields');
+      return;
+    }
+  }
+  
   savingEntry.value = true;
   try {
+    console.log('Saving entry:', entryForm);
+    
     if (editingEntry.value) {
       // Update existing entry
-      await launchTrackerAPI.updateEntry(
+      await adLaunchesAPI.updateEntry(
         editingEntry.value.id,
-        entryForm.value,
+        entryForm,
         selectedTrackerWeek.value
       );
       showSuccess('Entry updated successfully');
     } else {
       // Create new entry
-      await launchTrackerAPI.createEntry(entryForm.value);
+      const result = await adLaunchesAPI.createEntry(entryForm);
+      console.log('Entry created:', result);
       showSuccess('Entry added successfully');
     }
     
     closeEntryDialog();
     await loadTrackerData();
   } catch (error) {
-    showError('Failed to save entry');
+    console.error('Save error:', error);
+    showError('Failed to save entry: ' + (error.message || 'Unknown error'));
   } finally {
     savingEntry.value = false;
   }
@@ -1202,7 +990,7 @@ const saveTrackerEntry = async () => {
 const closeEntryDialog = () => {
   showAddEntryDialog.value = false;
   editingEntry.value = null;
-  entryForm.value = {
+  Object.assign(entryForm, {
     va: '',
     campaignId: '',
     bcGeo: '',
@@ -1215,7 +1003,7 @@ const closeEntryDialog = () => {
     bcSpend: 0,
     offer: '',
     notes: ''
-  };
+  });
 };
 
 // Helper functions

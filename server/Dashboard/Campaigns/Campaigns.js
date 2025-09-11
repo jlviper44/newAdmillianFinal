@@ -4,8 +4,8 @@
  */
 
 // Import Launches module for launch-related operations
-import LaunchesModule from '../Launches/Launches.js';
-import { getUserInfoFromSession as getSessionInfo, getUserTeamId } from '../Launches/utils.js';
+import LaunchesModule from './CampaignLaunches.js';
+import { getUserInfoFromSession as getSessionInfo, getUserTeamId } from './launch-utils.js';
 
 
 /**
