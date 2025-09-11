@@ -24,7 +24,14 @@ export default defineConfig({
 		// Enable network access
 		host: true, // This exposes to all network interfaces
 		port: 5173, // You can change the port if needed
-		// Remove proxy for /l routes - let Vue Router handle them
+		// Proxy API requests to the Cloudflare Worker
+		proxy: {
+			'/api': {
+				target: 'http://localhost:8787', // Cloudflare Worker dev server
+				changeOrigin: true,
+				rewrite: (path) => path
+			}
+		}
 	},
   optimizeDeps: {
     exclude: [

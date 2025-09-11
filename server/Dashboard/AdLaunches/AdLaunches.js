@@ -80,9 +80,58 @@ async function initializeTables(env) {
     await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_campaign ON launch_entries (campaign_id)`).run();
     await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_status ON launch_entries (status)`).run();
 
-    console.log('Launch tracker tables initialized');
+    // Create timeclock_entries table
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS timeclock_entries (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        date TEXT NOT NULL,
+        hours_worked REAL NOT NULL,
+        bcs_launched INTEGER DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        day_key TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    // Create indexes for timeclock
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_timeclock_va ON timeclock_entries (va)`).run();
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_timeclock_date ON timeclock_entries (date)`).run();
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_timeclock_day ON timeclock_entries (day_key)`).run();
+
+    // Create payroll_reports table
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS payroll_reports (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        total_hours REAL DEFAULT 0,
+        total_real_spend REAL DEFAULT 0,
+        hourly_rate REAL DEFAULT 5,
+        commission_rate REAL DEFAULT 0.03,
+        hourly_pay REAL DEFAULT 0,
+        commission_pay REAL DEFAULT 0,
+        bonus_amount REAL DEFAULT 0,
+        bonus_reason TEXT,
+        total_pay REAL DEFAULT 0,
+        status TEXT DEFAULT 'unpaid',
+        payment_method TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    // Create indexes for payroll
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_payroll_va ON payroll_reports (va)`).run();
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_payroll_status ON payroll_reports (status)`).run();
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll_reports (period_start, period_end)`).run();
+
+    console.log('Launch tracker and payroll tables initialized');
   } catch (error) {
-    console.error('Error initializing launch tracker tables:', error);
+    console.error('Error initializing tables:', error);
   }
 }
 
@@ -422,6 +471,324 @@ async function getAvailableWeeks(env) {
   }
 }
 
+// Time Clock Functions
+async function submitTimeClock(env, data) {
+  try {
+    const { va, date, hoursWorked, bcsLaunched } = data;
+    const dayKey = `day_${date}`;
+    const id = `timeclock_${date}_${va}`;
+    
+    // Check if entry already exists
+    const existing = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM timeclock_entries WHERE id = ?
+    `).bind(id).first();
+    
+    if (existing) {
+      // Update existing entry
+      await env.DASHBOARD_DB.prepare(`
+        UPDATE timeclock_entries 
+        SET hours_worked = ?, bcs_launched = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(hoursWorked, bcsLaunched, id).run();
+    } else {
+      // Create new entry
+      await env.DASHBOARD_DB.prepare(`
+        INSERT INTO timeclock_entries (
+          id, va, date, hours_worked, bcs_launched, day_key, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).bind(id, va, date, hoursWorked, bcsLaunched, dayKey).run();
+    }
+    
+    const result = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM timeclock_entries WHERE id = ?
+    `).bind(id).first();
+    
+    return transformRow(result);
+  } catch (error) {
+    console.error('Error submitting time clock:', error);
+    throw error;
+  }
+}
+
+async function getTimeClockData(env, va, date) {
+  try {
+    const dayKey = `day_${date}`;
+    
+    // Get time clock entry
+    const timeEntry = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM timeclock_entries 
+      WHERE va = ? AND date = ?
+    `).bind(va, date).first();
+    
+    // Get actual launch count for verification
+    const launchCount = await env.DASHBOARD_DB.prepare(`
+      SELECT COUNT(*) as count FROM launch_entries 
+      WHERE va = ? AND DATE(timestamp) = ?
+    `).bind(va, date).first();
+    
+    return {
+      timeEntry: transformRow(timeEntry),
+      actualLaunches: launchCount?.count || 0,
+      dayKey
+    };
+  } catch (error) {
+    console.error('Error getting time clock data:', error);
+    throw error;
+  }
+}
+
+// Payroll Functions
+async function getPayrollData(env, va, startDate, endDate) {
+  try {
+    // Get time entries for period
+    const timeEntries = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM timeclock_entries 
+      WHERE va = ? AND date >= ? AND date <= ?
+      ORDER BY date ASC
+    `).bind(va, startDate, endDate).all();
+    
+    // Get launch entries for real spend calculation
+    const launches = await env.DASHBOARD_DB.prepare(`
+      SELECT SUM(real_spend) as totalRealSpend 
+      FROM launch_entries 
+      WHERE va = ? AND DATE(timestamp) >= ? AND DATE(timestamp) <= ?
+    `).bind(va, startDate, endDate).first();
+    
+    // Calculate totals
+    let totalHours = 0;
+    const entries = [];
+    
+    for (const entry of timeEntries.results || []) {
+      totalHours += entry.hours_worked;
+      entries.push(transformRow(entry));
+    }
+    
+    return {
+      entries,
+      totalHours,
+      totalRealSpend: launches?.totalRealSpend || 0,
+      period: { start: startDate, end: endDate }
+    };
+  } catch (error) {
+    console.error('Error getting payroll data:', error);
+    throw error;
+  }
+}
+
+async function createPayrollReport(env, report) {
+  try {
+    const id = `payroll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Calculate pay components
+    const hourlyPay = report.totalHours * report.hourlyRate;
+    const commissionPay = report.totalRealSpend * report.commissionRate;
+    const totalPay = hourlyPay + commissionPay + (report.bonusAmount || 0);
+    
+    await env.DASHBOARD_DB.prepare(`
+      INSERT INTO payroll_reports (
+        id, va, period_start, period_end, total_hours, total_real_spend,
+        hourly_rate, commission_rate, hourly_pay, commission_pay,
+        bonus_amount, bonus_reason, total_pay, status, payment_method, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      report.va,
+      report.period.start,
+      report.period.end,
+      report.totalHours,
+      report.totalRealSpend,
+      report.hourlyRate,
+      report.commissionRate,
+      hourlyPay,
+      commissionPay,
+      report.bonusAmount || 0,
+      report.bonusReason || null,
+      totalPay,
+      'unpaid',
+      report.paymentMethod || null,
+      report.notes || null
+    ).run();
+    
+    const result = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM payroll_reports WHERE id = ?
+    `).bind(id).first();
+    
+    return transformRow(result);
+  } catch (error) {
+    console.error('Error creating payroll report:', error);
+    throw error;
+  }
+}
+
+async function getPayrollReports(env, va = null, status = null) {
+  try {
+    let query = `SELECT * FROM payroll_reports`;
+    const params = [];
+    const conditions = [];
+    
+    if (va) {
+      conditions.push('va = ?');
+      params.push(va);
+    }
+    
+    if (status) {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    query += ' ORDER BY created_at DESC';
+    
+    const reports = await env.DASHBOARD_DB.prepare(query).bind(...params).all();
+    
+    return (reports.results || []).map(transformRow);
+  } catch (error) {
+    console.error('Error getting payroll reports:', error);
+    throw error;
+  }
+}
+
+async function updatePayrollReport(env, reportId, updates) {
+  try {
+    const updateFields = [];
+    const values = [];
+    
+    if (updates.status !== undefined) {
+      updateFields.push('status = ?');
+      values.push(updates.status);
+    }
+    
+    if (updates.paymentMethod !== undefined) {
+      updateFields.push('payment_method = ?');
+      values.push(updates.paymentMethod);
+    }
+    
+    if (updates.notes !== undefined) {
+      updateFields.push('notes = ?');
+      values.push(updates.notes);
+    }
+    
+    updateFields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(reportId);
+    
+    await env.DASHBOARD_DB.prepare(`
+      UPDATE payroll_reports 
+      SET ${updateFields.join(', ')}
+      WHERE id = ?
+    `).bind(...values).run();
+    
+    const result = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM payroll_reports WHERE id = ?
+    `).bind(reportId).first();
+    
+    return transformRow(result);
+  } catch (error) {
+    console.error('Error updating payroll report:', error);
+    throw error;
+  }
+}
+
+async function exportPayrollReport(env, reportId) {
+  try {
+    const report = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM payroll_reports WHERE id = ?
+    `).bind(reportId).first();
+    
+    if (!report) {
+      throw new Error('Report not found');
+    }
+    
+    // Get time entries for the period
+    const timeEntries = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM timeclock_entries 
+      WHERE va = ? AND date >= ? AND date <= ?
+      ORDER BY date ASC
+    `).bind(report.va, report.period_start, report.period_end).all();
+    
+    // Create CSV
+    const headers = ['Date', 'Hours Worked', 'BCs Launched'];
+    const rows = (timeEntries.results || []).map(e => [
+      e.date,
+      e.hours_worked,
+      e.bcs_launched
+    ]);
+    
+    // Add summary rows
+    rows.push([]);
+    rows.push(['Summary', '', '']);
+    rows.push(['Total Hours', report.total_hours, '']);
+    rows.push(['Total Real Spend', report.total_real_spend, '']);
+    rows.push(['Hourly Pay', report.hourly_pay, '']);
+    rows.push(['Commission Pay', report.commission_pay, '']);
+    rows.push(['Bonus', report.bonus_amount, report.bonus_reason || '']);
+    rows.push(['Total Pay', report.total_pay, '']);
+    rows.push(['Status', report.status, '']);
+    rows.push(['Payment Method', report.payment_method || '', '']);
+    
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="payroll_${report.va}_${report.period_start}_${report.period_end}.csv"`
+      }
+    });
+  } catch (error) {
+    console.error('Error exporting payroll report:', error);
+    throw error;
+  }
+}
+
+async function generateWeeklyPayroll(env) {
+  try {
+    const now = getESTDate();
+    const weekEnd = new Date(now);
+    weekEnd.setDate(weekEnd.getDate() - (weekEnd.getDay() || 7)); // Last Sunday
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() - 6); // Previous Monday
+    
+    const startDate = weekStart.toISOString().split('T')[0];
+    const endDate = weekEnd.toISOString().split('T')[0];
+    
+    // Get all VAs who have time entries for the week
+    const vas = await env.DASHBOARD_DB.prepare(`
+      SELECT DISTINCT va FROM timeclock_entries 
+      WHERE date >= ? AND date <= ?
+    `).bind(startDate, endDate).all();
+    
+    const reports = [];
+    
+    for (const vaRow of vas.results || []) {
+      const va = vaRow.va;
+      
+      // Get payroll data
+      const payrollData = await getPayrollData(env, va, startDate, endDate);
+      
+      // Create report
+      const report = await createPayrollReport(env, {
+        va,
+        period: { start: startDate, end: endDate },
+        totalHours: payrollData.totalHours,
+        totalRealSpend: payrollData.totalRealSpend,
+        hourlyRate: 5,
+        commissionRate: 0.03,
+        bonusAmount: 0,
+        notes: 'Weekly automated payroll'
+      });
+      
+      reports.push(report);
+    }
+    
+    return reports;
+  } catch (error) {
+    console.error('Error generating weekly payroll:', error);
+    throw error;
+  }
+}
+
 // Main handler function
 export async function handleAdLaunches(request, env) {
   const url = new URL(request.url);
@@ -495,6 +862,67 @@ export async function handleAdLaunches(request, env) {
       return new Response(JSON.stringify(weeks), { headers: corsHeaders });
     }
     
+    // Time Clock Routes
+    // Route: POST /api/timeclock
+    if (path === '/api/timeclock' && method === 'POST') {
+      const data = await request.json();
+      const result = await submitTimeClock(env, data);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
+    }
+    
+    // Route: GET /api/timeclock
+    if (path === '/api/timeclock' && method === 'GET') {
+      const va = url.searchParams.get('va');
+      const date = url.searchParams.get('date');
+      const result = await getTimeClockData(env, va, date);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
+    }
+    
+    // Payroll Routes
+    // Route: GET /api/payroll
+    if (path === '/api/payroll' && method === 'GET') {
+      const va = url.searchParams.get('va');
+      const startDate = url.searchParams.get('startDate');
+      const endDate = url.searchParams.get('endDate');
+      const result = await getPayrollData(env, va, startDate, endDate);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
+    }
+    
+    // Route: POST /api/payroll-report
+    if (path === '/api/payroll-report' && method === 'POST') {
+      const report = await request.json();
+      const result = await createPayrollReport(env, report);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
+    }
+    
+    // Route: GET /api/payroll-report
+    if (path === '/api/payroll-report' && method === 'GET') {
+      const va = url.searchParams.get('va');
+      const status = url.searchParams.get('status');
+      const reports = await getPayrollReports(env, va, status);
+      return new Response(JSON.stringify(reports), { headers: corsHeaders });
+    }
+    
+    // Route: PUT /api/payroll-report/:id
+    if (path.match(/^\/api\/payroll-report\/[^\/]+$/) && method === 'PUT') {
+      const reportId = path.split('/').pop();
+      const updates = await request.json();
+      const result = await updatePayrollReport(env, reportId, updates);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
+    }
+    
+    // Route: GET /api/payroll-report/export
+    if (path === '/api/payroll-report/export' && method === 'GET') {
+      const reportId = url.searchParams.get('id');
+      return await exportPayrollReport(env, reportId);
+    }
+    
+    // Route: POST /api/generate-weekly-payroll
+    if (path === '/api/generate-weekly-payroll' && method === 'POST') {
+      const reports = await generateWeeklyPayroll(env);
+      return new Response(JSON.stringify(reports), { headers: corsHeaders });
+    }
+    
     // Route not found
     return new Response(JSON.stringify({ error: 'Route not found' }), {
       status: 404,
@@ -509,5 +937,8 @@ export async function handleAdLaunches(request, env) {
     });
   }
 }
+
+// Export for cron job usage
+export { generateWeeklyPayroll };
 
 export default handleAdLaunches;

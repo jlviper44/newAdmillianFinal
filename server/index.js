@@ -224,8 +224,23 @@ export default {
         });
       }
       
-      // Route Ad Launches API requests (protected)
-      if (path.startsWith('/api/tracker')) {
+      // Route Ad Launches and Payroll API requests (protected)
+      const isPayrollRoute = path.startsWith('/api/tracker') || 
+          path.startsWith('/api/timeclock') || 
+          path.startsWith('/api/payroll') || 
+          path === '/api/generate-weekly-payroll';
+      
+      console.log('Checking payroll routes:', { 
+        path, 
+        isPayrollRoute,
+        startsWithTracker: path.startsWith('/api/tracker'),
+        startsWithTimeclock: path.startsWith('/api/timeclock'),
+        startsWithPayroll: path.startsWith('/api/payroll'),
+        isWeeklyPayroll: path === '/api/generate-weekly-payroll'
+      });
+      
+      if (isPayrollRoute) {
+        console.log('Routing to handleAdLaunches for path:', path);
         return requireAuth(request, env, async (req, env, session) => {
           req.ctx = { ...req.ctx, session };
           return handleAdLaunches(req, env);
@@ -324,4 +339,34 @@ export default {
       );
     }
   },
+  
+  async scheduled(controller, env, ctx) {
+    // Weekly payroll generation - runs every Monday at 00:15 EST (05:15 UTC)
+    const currentTime = new Date();
+    const currentHour = currentTime.getUTCHours();
+    const currentMinute = currentTime.getUTCMinutes();
+    const currentDay = currentTime.getUTCDay();
+    
+    console.log(`Scheduled task running at ${currentTime.toISOString()}`);
+    
+    // Check if it's Monday at 05:15 UTC (00:15 EST)
+    if (currentDay === 1 && currentHour === 5 && currentMinute === 15) {
+      console.log('Running weekly payroll generation...');
+      
+      try {
+        // Import the generateWeeklyPayroll function from AdLaunches
+        const { generateWeeklyPayroll } = await import('./Dashboard/AdLaunches/AdLaunches');
+        
+        // Generate weekly payroll reports
+        const reports = await generateWeeklyPayroll(env);
+        
+        console.log(`Successfully generated ${reports.length} payroll reports`);
+      } catch (error) {
+        console.error('Failed to generate weekly payroll:', error);
+      }
+    }
+    
+    // You can add other scheduled tasks here based on the cron schedule
+    // The crons are: hourly, daily at midnight, weekly on Sunday, monthly on 1st
+  }
 };

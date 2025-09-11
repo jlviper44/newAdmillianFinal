@@ -3,6 +3,9 @@
     <!-- Tabs for switching between views -->
     <v-tabs v-model="activeTab" class="mb-4" color="purple">
       <v-tab value="tracker">Ad Launches</v-tab>
+      <v-tab value="timeclock">Time Clock</v-tab>
+      <v-tab v-if="!isVirtualAssistant" value="payroll">Payroll Calculator</v-tab>
+      <v-tab v-if="!isVirtualAssistant" value="history">Payroll History</v-tab>
     </v-tabs>
 
     <!-- Window for tab content -->
@@ -340,6 +343,392 @@
           </v-card>
         </v-dialog>
       </v-window-item>
+
+      <!-- Time Clock Tab -->
+      <v-window-item value="timeclock">
+        <v-card>
+          <v-card-title>Daily Time Entry</v-card-title>
+          <v-card-text>
+            <v-form ref="timeClockFormRef">
+              <v-row>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model="timeClockForm.va"
+                    label="VA Name"
+                    :readonly="!isUserAdmin"
+                    :hint="!isUserAdmin ? 'Auto-filled with your email' : ''"
+                    persistent-hint
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model="timeClockForm.date"
+                    label="Date"
+                    type="date"
+                    :max="todayDate"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-select
+                    v-model="timeClockForm.hoursWorked"
+                    label="Hours Worked"
+                    :items="hoursOptions"
+                    hint="Select hours in 0.5 increments"
+                    persistent-hint
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model.number="timeClockForm.bcsLaunched"
+                    label="BCs Launched"
+                    type="number"
+                    min="0"
+                    hint="For verification"
+                    persistent-hint
+                  />
+                </v-col>
+              </v-row>
+              
+              <v-alert
+                v-if="timeClockVerification.show"
+                :type="timeClockVerification.type"
+                class="mt-4"
+                dismissible
+              >
+                {{ timeClockVerification.message }}
+              </v-alert>
+              
+              <v-row class="mt-4">
+                <v-col>
+                  <v-btn
+                    color="primary"
+                    @click="submitTimeEntry"
+                    :loading="timeClockLoading"
+                  >
+                    Submit Time Entry
+                  </v-btn>
+                  <v-btn
+                    variant="outlined"
+                    class="ml-2"
+                    @click="checkTimeEntry"
+                  >
+                    Check Entry
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-form>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
+      <!-- Payroll Calculator Tab -->
+      <v-window-item value="payroll">
+        <v-card>
+          <v-card-title>Calculate Payroll</v-card-title>
+          <v-card-text>
+            <v-form ref="payrollFormRef">
+              <v-row>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model="payrollForm.va"
+                    label="VA Name"
+                    :readonly="!isUserAdmin"
+                  />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model="payrollForm.startDate"
+                    label="Start Date"
+                    type="date"
+                  />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model="payrollForm.endDate"
+                    label="End Date"
+                    type="date"
+                  />
+                </v-col>
+              </v-row>
+              
+              <v-row>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model.number="payrollForm.hourlyRate"
+                    label="Hourly Rate"
+                    type="number"
+                    prefix="$"
+                    step="0.5"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model.number="payrollForm.commissionRate"
+                    label="Commission %"
+                    type="number"
+                    suffix="%"
+                    step="0.1"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model.number="payrollForm.bonusAmount"
+                    label="Bonus"
+                    type="number"
+                    prefix="$"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model="payrollForm.bonusReason"
+                    label="Bonus Reason"
+                  />
+                </v-col>
+              </v-row>
+              
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="payrollForm.paymentMethod"
+                    label="Payment Method"
+                    :items="['PayPal', 'Wise', 'Bank Transfer', 'Crypto', 'Other']"
+                  />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-textarea
+                    v-model="payrollForm.notes"
+                    label="Notes"
+                    rows="2"
+                  />
+                </v-col>
+              </v-row>
+              
+              <v-divider class="my-4" />
+              
+              <!-- Payroll Calculation Results -->
+              <v-row v-if="payrollCalculation">
+                <v-col cols="12">
+                  <v-alert type="info" variant="tonal">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span>Total Hours:</span>
+                      <strong>{{ payrollCalculation.totalHours }} hrs</strong>
+                    </div>
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span>Total Real Spend:</span>
+                      <strong>{{ formatCurrency(payrollCalculation.totalRealSpend) }}</strong>
+                    </div>
+                    <v-divider class="my-2" />
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span>Hourly Pay ({{ payrollForm.hourlyRate }}/hr):</span>
+                      <strong>{{ formatCurrency(payrollCalculation.hourlyPay) }}</strong>
+                    </div>
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span>Commission ({{ payrollForm.commissionRate }}%):</span>
+                      <strong>{{ formatCurrency(payrollCalculation.commissionPay) }}</strong>
+                    </div>
+                    <div v-if="payrollForm.bonusAmount" class="d-flex justify-space-between align-center mb-2">
+                      <span>Bonus:</span>
+                      <strong>{{ formatCurrency(payrollForm.bonusAmount) }}</strong>
+                    </div>
+                    <v-divider class="my-2" />
+                    <div class="d-flex justify-space-between align-center">
+                      <span class="text-h6">Total Pay:</span>
+                      <strong class="text-h5 text-green">{{ formatCurrency(payrollCalculation.totalPay) }}</strong>
+                    </div>
+                  </v-alert>
+                </v-col>
+              </v-row>
+              
+              <v-row class="mt-4">
+                <v-col>
+                  <v-btn
+                    color="primary"
+                    @click="calculatePayroll"
+                    :loading="payrollLoading"
+                  >
+                    Calculate
+                  </v-btn>
+                  <v-btn
+                    v-if="payrollCalculation"
+                    color="green"
+                    variant="flat"
+                    class="ml-2"
+                    @click="createPayrollReport"
+                  >
+                    Create Report
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-form>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
+      <!-- Payroll History Tab -->
+      <v-window-item value="history">
+        <v-card>
+          <v-card-text>
+            <v-row align="center" class="mb-4">
+              <v-col cols="12" md="3">
+                <v-text-field
+                  v-model="historyFilters.va"
+                  label="Filter by VA"
+                  clearable
+                  density="compact"
+                  @update:model-value="loadPayrollHistory"
+                />
+              </v-col>
+              <v-col cols="12" md="3">
+                <v-select
+                  v-model="historyFilters.status"
+                  label="Payment Status"
+                  :items="['all', 'paid', 'unpaid']"
+                  density="compact"
+                  @update:model-value="loadPayrollHistory"
+                />
+              </v-col>
+              <v-col cols="12" md="6" class="text-right">
+                <v-btn
+                  color="purple"
+                  variant="tonal"
+                  @click="generateWeeklyPayroll"
+                  prepend-icon="mdi-calendar-clock"
+                  :loading="weeklyPayrollLoading"
+                >
+                  Generate Weekly Payroll
+                </v-btn>
+              </v-col>
+            </v-row>
+            
+            <v-data-table
+              :headers="payrollHistoryHeaders"
+              :items="payrollHistory"
+              :loading="historyLoading"
+              density="compact"
+              :items-per-page="15"
+            >
+              <template v-slot:item.period="{ item }">
+                {{ formatDate(item.periodStart) }} - {{ formatDate(item.periodEnd) }}
+              </template>
+              <template v-slot:item.totalPay="{ item }">
+                <strong class="text-green">{{ formatCurrency(item.totalPay) }}</strong>
+              </template>
+              <template v-slot:item.status="{ item }">
+                <v-chip
+                  :color="item.status === 'paid' ? 'green' : 'orange'"
+                  size="small"
+                  label
+                >
+                  {{ item.status }}
+                </v-chip>
+              </template>
+              <template v-slot:item.createdAt="{ item }">
+                {{ formatDateTime(item.createdAt) }}
+              </template>
+              <template v-slot:item.actions="{ item }">
+                <v-btn
+                  icon="mdi-eye"
+                  size="x-small"
+                  variant="text"
+                  @click="viewPayrollDetails(item)"
+                />
+                <v-btn
+                  icon="mdi-download"
+                  size="x-small"
+                  variant="text"
+                  @click="exportPayrollReport(item.id)"
+                />
+                <v-btn
+                  v-if="item.status === 'unpaid'"
+                  icon="mdi-check"
+                  size="x-small"
+                  variant="text"
+                  color="green"
+                  @click="markAsPaid(item)"
+                />
+              </template>
+            </v-data-table>
+          </v-card-text>
+        </v-card>
+        
+        <!-- Payroll Details Dialog -->
+        <v-dialog v-model="showPayrollDetailsDialog" max-width="600">
+          <v-card v-if="selectedPayrollReport">
+            <v-card-title>
+              Payroll Report Details
+            </v-card-title>
+            <v-card-text>
+              <v-list density="compact">
+                <v-list-item>
+                  <v-list-item-title>VA</v-list-item-title>
+                  <v-list-item-subtitle>{{ selectedPayrollReport.va }}</v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>Period</v-list-item-title>
+                  <v-list-item-subtitle>
+                    {{ formatDate(selectedPayrollReport.periodStart) }} - {{ formatDate(selectedPayrollReport.periodEnd) }}
+                  </v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>Total Hours</v-list-item-title>
+                  <v-list-item-subtitle>{{ selectedPayrollReport.totalHours }} hours</v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>Hourly Pay</v-list-item-title>
+                  <v-list-item-subtitle>{{ formatCurrency(selectedPayrollReport.hourlyPay) }}</v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>Commission</v-list-item-title>
+                  <v-list-item-subtitle>{{ formatCurrency(selectedPayrollReport.commissionPay) }}</v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item v-if="selectedPayrollReport.bonusAmount">
+                  <v-list-item-title>Bonus</v-list-item-title>
+                  <v-list-item-subtitle>
+                    {{ formatCurrency(selectedPayrollReport.bonusAmount) }}
+                    <span v-if="selectedPayrollReport.bonusReason">({{ selectedPayrollReport.bonusReason }})</span>
+                  </v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>Total Pay</v-list-item-title>
+                  <v-list-item-subtitle class="text-h6 text-green">
+                    {{ formatCurrency(selectedPayrollReport.totalPay) }}
+                  </v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>Status</v-list-item-title>
+                  <v-list-item-subtitle>
+                    <v-chip
+                      :color="selectedPayrollReport.status === 'paid' ? 'green' : 'orange'"
+                      size="small"
+                      label
+                    >
+                      {{ selectedPayrollReport.status }}
+                    </v-chip>
+                  </v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item v-if="selectedPayrollReport.paymentMethod">
+                  <v-list-item-title>Payment Method</v-list-item-title>
+                  <v-list-item-subtitle>{{ selectedPayrollReport.paymentMethod }}</v-list-item-subtitle>
+                </v-list-item>
+                <v-list-item v-if="selectedPayrollReport.notes">
+                  <v-list-item-title>Notes</v-list-item-title>
+                  <v-list-item-subtitle>{{ selectedPayrollReport.notes }}</v-list-item-subtitle>
+                </v-list-item>
+              </v-list>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn
+                color="primary"
+                variant="text"
+                @click="showPayrollDetailsDialog = false"
+              >
+                Close
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </v-window-item>
     </v-window>
     
     <!-- Snackbar for notifications -->
@@ -480,6 +869,72 @@ const trackerHeaders = [
   { title: 'Actions', key: 'actions', sortable: false }
 ];
 
+// ========== PAYROLL DATA ==========
+// Time Clock
+const timeClockForm = reactive({
+  va: user.value?.email || '',
+  date: new Date().toISOString().split('T')[0],
+  hoursWorked: 0,
+  bcsLaunched: 0
+});
+
+const timeClockLoading = ref(false);
+const timeClockVerification = ref({
+  show: false,
+  type: 'info',
+  message: ''
+});
+
+// Payroll Calculator
+const payrollForm = reactive({
+  va: user.value?.email || '',
+  startDate: '',
+  endDate: '',
+  hourlyRate: 5,
+  commissionRate: 3,
+  bonusAmount: 0,
+  bonusReason: '',
+  paymentMethod: '',
+  notes: ''
+});
+
+const payrollLoading = ref(false);
+const payrollCalculation = ref(null);
+
+// Payroll History
+const payrollHistory = ref([]);
+const historyLoading = ref(false);
+const historyFilters = reactive({
+  va: '',
+  status: 'all'
+});
+
+const showPayrollDetailsDialog = ref(false);
+const selectedPayrollReport = ref(null);
+const weeklyPayrollLoading = ref(false);
+
+// Payroll history table headers
+const payrollHistoryHeaders = [
+  { title: 'VA', key: 'va' },
+  { title: 'Period', key: 'period' },
+  { title: 'Hours', key: 'totalHours' },
+  { title: 'Total Pay', key: 'totalPay' },
+  { title: 'Status', key: 'status' },
+  { title: 'Created', key: 'createdAt' },
+  { title: 'Actions', key: 'actions', sortable: false }
+];
+
+// Generate hours options (0.5 hour increments from 0 to 24)
+const hoursOptions = (() => {
+  const options = [];
+  for (let i = 0; i <= 24; i += 0.5) {
+    options.push(i);
+  }
+  return options;
+})();
+
+const todayDate = new Date().toISOString().split('T')[0];
+
 // ========== COMPUTED PROPERTIES ==========
 const campaignOptions = computed(() => {
   return campaigns.value.map(c => ({
@@ -526,6 +981,11 @@ const calculatedRealSpend = computed(() => {
 // Check if user is admin (admins can edit VA field)
 const isUserAdmin = computed(() => {
   return user.value?.isAdmin || false;
+});
+
+// Check if user is a Virtual Assistant
+const isVirtualAssistant = computed(() => {
+  return user.value?.isVirtualAssistant || false;
 });
 
 // Helper to get campaign name by ID
@@ -1069,12 +1529,228 @@ const validateLaunchCount = () => {
   }
 };
 
+// ========== PAYROLL METHODS ==========
+// Time Clock Methods
+const submitTimeEntry = async () => {
+  try {
+    timeClockLoading.value = true;
+    
+    const response = await fetch('/api/timeclock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(timeClockForm),
+      credentials: 'include'
+    });
+    
+    if (!response.ok) throw new Error('Failed to submit time entry');
+    
+    const result = await response.json();
+    showSuccess('Time entry submitted successfully');
+    
+    // Check against actual launches
+    await checkTimeEntry();
+  } catch (error) {
+    showError(error.message || 'Failed to submit time entry');
+  } finally {
+    timeClockLoading.value = false;
+  }
+};
+
+const checkTimeEntry = async () => {
+  try {
+    const response = await fetch(`/api/timeclock?va=${timeClockForm.va}&date=${timeClockForm.date}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.actualLaunches !== undefined) {
+      const difference = Math.abs(data.actualLaunches - timeClockForm.bcsLaunched);
+      
+      if (difference === 0) {
+        timeClockVerification.value = {
+          show: true,
+          type: 'success',
+          message: `Launch count matches! ${data.actualLaunches} launches verified.`
+        };
+      } else {
+        timeClockVerification.value = {
+          show: true,
+          type: 'warning',
+          message: `Launch count mismatch! You reported ${timeClockForm.bcsLaunched} but system shows ${data.actualLaunches} launches.`
+        };
+      }
+    }
+  } catch (error) {
+    console.error('Failed to check time entry:', error);
+  }
+};
+
+// Payroll Calculator Methods
+const calculatePayroll = async () => {
+  try {
+    payrollLoading.value = true;
+    payrollCalculation.value = null;
+    
+    const response = await fetch(
+      `/api/payroll?va=${payrollForm.va}&startDate=${payrollForm.startDate}&endDate=${payrollForm.endDate}`,
+      { credentials: 'include' }
+    );
+    
+    if (!response.ok) throw new Error('Failed to calculate payroll');
+    
+    const data = await response.json();
+    
+    // Calculate pay components
+    const hourlyPay = data.totalHours * payrollForm.hourlyRate;
+    const commissionPay = data.totalRealSpend * (payrollForm.commissionRate / 100);
+    const totalPay = hourlyPay + commissionPay + (payrollForm.bonusAmount || 0);
+    
+    payrollCalculation.value = {
+      ...data,
+      hourlyPay,
+      commissionPay,
+      totalPay
+    };
+  } catch (error) {
+    showError(error.message || 'Failed to calculate payroll');
+  } finally {
+    payrollLoading.value = false;
+  }
+};
+
+const createPayrollReport = async () => {
+  try {
+    if (!payrollCalculation.value) return;
+    
+    const report = {
+      va: payrollForm.va,
+      period: {
+        start: payrollForm.startDate,
+        end: payrollForm.endDate
+      },
+      totalHours: payrollCalculation.value.totalHours,
+      totalRealSpend: payrollCalculation.value.totalRealSpend,
+      hourlyRate: payrollForm.hourlyRate,
+      commissionRate: payrollForm.commissionRate / 100,
+      bonusAmount: payrollForm.bonusAmount || 0,
+      bonusReason: payrollForm.bonusReason,
+      paymentMethod: payrollForm.paymentMethod,
+      notes: payrollForm.notes
+    };
+    
+    const response = await fetch('/api/payroll-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+      credentials: 'include'
+    });
+    
+    if (!response.ok) throw new Error('Failed to create payroll report');
+    
+    showSuccess('Payroll report created successfully');
+    await loadPayrollHistory();
+    
+    // Switch to history tab
+    activeTab.value = 'history';
+  } catch (error) {
+    showError(error.message || 'Failed to create payroll report');
+  }
+};
+
+// Payroll History Methods
+const loadPayrollHistory = async () => {
+  try {
+    historyLoading.value = true;
+    
+    let url = '/api/payroll-report?';
+    if (historyFilters.va) url += `va=${historyFilters.va}&`;
+    if (historyFilters.status !== 'all') url += `status=${historyFilters.status}&`;
+    
+    const response = await fetch(url, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to load payroll history');
+    
+    payrollHistory.value = await response.json();
+  } catch (error) {
+    showError(error.message || 'Failed to load payroll history');
+  } finally {
+    historyLoading.value = false;
+  }
+};
+
+const viewPayrollDetails = (report) => {
+  selectedPayrollReport.value = report;
+  showPayrollDetailsDialog.value = true;
+};
+
+const markAsPaid = async (report) => {
+  try {
+    const response = await fetch(`/api/payroll-report/${report.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'paid' }),
+      credentials: 'include'
+    });
+    
+    if (!response.ok) throw new Error('Failed to update payment status');
+    
+    showSuccess('Payment status updated');
+    await loadPayrollHistory();
+  } catch (error) {
+    showError(error.message || 'Failed to update payment status');
+  }
+};
+
+const exportPayrollReport = async (reportId) => {
+  try {
+    const response = await fetch(`/api/payroll-report/export?id=${reportId}`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to export report');
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_report_${reportId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    showError(error.message || 'Failed to export report');
+  }
+};
+
+const generateWeeklyPayroll = async () => {
+  try {
+    weeklyPayrollLoading.value = true;
+    
+    const response = await fetch('/api/generate-weekly-payroll', {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    if (!response.ok) throw new Error('Failed to generate weekly payroll');
+    
+    const reports = await response.json();
+    showSuccess(`Generated ${reports.length} payroll reports`);
+    await loadPayrollHistory();
+  } catch (error) {
+    showError(error.message || 'Failed to generate weekly payroll');
+  } finally {
+    weeklyPayrollLoading.value = false;
+  }
+};
+
 // Lifecycle
 onMounted(() => {
   fetchCampaigns();
   fetchStores();
   loadAvailableWeeks();
   loadTrackerData();
+  loadPayrollHistory();
 });
 </script>
 
