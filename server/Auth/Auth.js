@@ -169,7 +169,7 @@ async function migrateDashboardPermissions(env) {
   try {
     // Check if Dashboard permission columns exist by trying to query them
     const testQuery = `
-      SELECT dashboard_metrics, dashboard_campaigns, dashboard_sparks, 
+      SELECT dashboard_metrics, dashboard_campaigns, dashboard_launches, dashboard_sparks, 
              dashboard_templates, dashboard_shopify, dashboard_logs 
       FROM virtual_assistants 
       LIMIT 1
@@ -198,6 +198,16 @@ async function migrateDashboardPermissions(env) {
         await env.USERS_DB.prepare(`
           ALTER TABLE virtual_assistants 
           ADD COLUMN dashboard_campaigns BOOLEAN DEFAULT 1
+        `).run();
+      } catch (e) {
+        // Column might already exist
+      }
+      
+      // Add dashboard_launches permission
+      try {
+        await env.USERS_DB.prepare(`
+          ALTER TABLE virtual_assistants 
+          ADD COLUMN dashboard_launches BOOLEAN DEFAULT 1
         `).run();
       } catch (e) {
         // Column might already exist
@@ -258,12 +268,14 @@ async function migrateDashboardPermissions(env) {
         UPDATE virtual_assistants 
         SET dashboard_metrics = 0,
             dashboard_campaigns = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
+            dashboard_launches = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
             dashboard_sparks = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
             dashboard_templates = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
             dashboard_shopify = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END,
             dashboard_logs = 0,
             dashboard_link_splitter = CASE WHEN has_dashboard_access = 1 THEN 1 ELSE 0 END
         WHERE dashboard_campaigns IS NULL 
+           OR dashboard_launches IS NULL
            OR dashboard_sparks IS NULL 
            OR dashboard_templates IS NULL
            OR dashboard_shopify IS NULL
@@ -716,6 +728,7 @@ async function getVirtualAssistantAccounts(env, userEmail) {
         has_bc_gen_access,
         dashboard_metrics,
         dashboard_campaigns,
+        dashboard_launches,
         dashboard_sparks,
         dashboard_templates,
         dashboard_shopify,
@@ -765,6 +778,7 @@ async function getVirtualAssistantAccounts(env, userEmail) {
             has_bc_gen_access: row.has_bc_gen_access,
             dashboard_metrics: row.dashboard_metrics,
             dashboard_campaigns: row.dashboard_campaigns,
+            dashboard_launches: row.dashboard_launches,
             dashboard_sparks: row.dashboard_sparks,
             dashboard_templates: row.dashboard_templates,
             dashboard_shopify: row.dashboard_shopify,
@@ -962,6 +976,7 @@ async function handleCheckAccess(request, env) {
                 hasBCGenAccess: vaResult.has_bc_gen_access === 1,
                 dashboardMetrics: vaResult.dashboard_metrics === 1,
                 dashboardCampaigns: vaResult.dashboard_campaigns === 1,
+                dashboardLaunches: vaResult.dashboard_launches === 1,
                 dashboardSparks: vaResult.dashboard_sparks === 1,
                 dashboardTemplates: vaResult.dashboard_templates === 1,
                 dashboardShopify: vaResult.dashboard_shopify === 1,
@@ -1057,6 +1072,7 @@ async function handleCheckAccess(request, env) {
           hasBCGenAccess: vaResult.has_bc_gen_access === 1,
           dashboardMetrics: vaResult.dashboard_metrics === 1,
           dashboardCampaigns: vaResult.dashboard_campaigns === 1,
+          dashboardLaunches: vaResult.dashboard_launches === 1,
           dashboardSparks: vaResult.dashboard_sparks === 1,
           dashboardTemplates: vaResult.dashboard_templates === 1,
           dashboardShopify: vaResult.dashboard_shopify === 1,
@@ -1070,6 +1086,7 @@ async function handleCheckAccess(request, env) {
         hasBCGenAccess: vaResult.has_bc_gen_access === 1,
         dashboardMetrics: vaResult.dashboard_metrics === 1,
         dashboardCampaigns: vaResult.dashboard_campaigns === 1,
+        dashboardLaunches: vaResult.dashboard_launches === 1,
         dashboardSparks: vaResult.dashboard_sparks === 1,
         dashboardTemplates: vaResult.dashboard_templates === 1,
         dashboardShopify: vaResult.dashboard_shopify === 1,
@@ -2034,7 +2051,7 @@ async function handleGetVirtualAssistants(request, env) {
     const query = `
       SELECT id, email, status, 
              has_comment_bot_access, has_dashboard_access, has_bc_gen_access,
-             dashboard_metrics, dashboard_campaigns, dashboard_sparks,
+             dashboard_metrics, dashboard_campaigns, dashboard_launches, dashboard_sparks,
              dashboard_templates, dashboard_shopify, dashboard_logs,
              dashboard_link_splitter,
              created_at, expires_at
@@ -2062,6 +2079,7 @@ async function handleGetVirtualAssistants(request, env) {
         // Dashboard permissions
         dashboard_metrics: assistant.dashboard_metrics === 1,
         dashboard_campaigns: assistant.dashboard_campaigns === 1,
+        dashboard_launches: assistant.dashboard_launches === 1,
         dashboard_sparks: assistant.dashboard_sparks === 1,
         dashboard_templates: assistant.dashboard_templates === 1,
         dashboard_shopify: assistant.dashboard_shopify === 1,
@@ -2111,6 +2129,7 @@ async function handleAddVirtualAssistant(request, env) {
       // Dashboard permissions - no defaults, use what's sent
       dashboardMetrics,
       dashboardCampaigns,
+      dashboardLaunches,
       dashboardSparks,
       dashboardTemplates,
       dashboardShopify,
@@ -2179,12 +2198,12 @@ async function handleAddVirtualAssistant(request, env) {
       INSERT INTO virtual_assistants (
         id, user_id, email, status, 
         has_comment_bot_access, has_dashboard_access, has_bc_gen_access,
-        dashboard_metrics, dashboard_campaigns, dashboard_sparks,
+        dashboard_metrics, dashboard_campaigns, dashboard_launches, dashboard_sparks,
         dashboard_templates, dashboard_shopify, dashboard_logs,
         dashboard_link_splitter,
         created_at, expires_at
       )
-      VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     await env.USERS_DB.prepare(insertQuery)
@@ -2195,6 +2214,7 @@ async function handleAddVirtualAssistant(request, env) {
         hasBCGenAccess ? 1 : 0,
         dashboardMetrics === true ? 1 : 0,
         dashboardCampaigns === true ? 1 : 0,
+        dashboardLaunches === true ? 1 : 0,
         dashboardSparks === true ? 1 : 0,
         dashboardTemplates === true ? 1 : 0,
         dashboardShopify === true ? 1 : 0,
@@ -2216,6 +2236,7 @@ async function handleAddVirtualAssistant(request, env) {
         has_bc_gen_access: hasBCGenAccess === true,
         dashboard_metrics: dashboardMetrics === true,
         dashboard_campaigns: dashboardCampaigns === true,
+        dashboard_launches: dashboardLaunches === true,
         dashboard_sparks: dashboardSparks === true,
         dashboard_templates: dashboardTemplates === true,
         dashboard_shopify: dashboardShopify === true,
@@ -2387,6 +2408,7 @@ async function handleEditVirtualAssistant(request, env) {
       // Dashboard permissions - no defaults, use what's sent
       dashboardMetrics,
       dashboardCampaigns,
+      dashboardLaunches,
       dashboardSparks,
       dashboardTemplates,
       dashboardShopify,
@@ -2443,6 +2465,7 @@ async function handleEditVirtualAssistant(request, env) {
           has_bc_gen_access = ?,
           dashboard_metrics = ?,
           dashboard_campaigns = ?,
+          dashboard_launches = ?,
           dashboard_sparks = ?,
           dashboard_templates = ?,
           dashboard_shopify = ?,
@@ -2459,6 +2482,7 @@ async function handleEditVirtualAssistant(request, env) {
         hasBCGenAccess ? 1 : 0,
         dashboardMetrics === true ? 1 : 0,
         dashboardCampaigns === true ? 1 : 0,
+        dashboardLaunches === true ? 1 : 0,
         dashboardSparks === true ? 1 : 0,
         dashboardTemplates === true ? 1 : 0,
         dashboardShopify === true ? 1 : 0,

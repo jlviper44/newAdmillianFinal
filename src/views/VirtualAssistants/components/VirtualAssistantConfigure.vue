@@ -30,6 +30,7 @@ const assistantRoles = ref({
   // Dashboard permissions
   dashboardMetrics: false,
   dashboardCampaigns: false,
+  dashboardLaunches: false,
   dashboardSparks: false,
   dashboardTemplates: false,
   dashboardShopify: false,
@@ -50,11 +51,11 @@ const editRoles = ref({
   // Dashboard permissions  
   dashboardMetrics: false,
   dashboardCampaigns: false,
+  dashboardLaunches: false,
   dashboardSparks: false,
   dashboardTemplates: false,
   dashboardShopify: false,
   dashboardLogs: false,
-  dashboardLinkSplitter: false,
   dashboardLinkSplitter: false
 });
 
@@ -132,6 +133,7 @@ const addVirtualAssistant = async () => {
         hasBCGenAccess: false,
         dashboardMetrics: false,
         dashboardCampaigns: false,
+        dashboardLaunches: false,
         dashboardSparks: false,
         dashboardTemplates: false,
         dashboardShopify: false,
@@ -171,6 +173,7 @@ const confirmEdit = (assistant) => {
     hasBCGenAccess: assistant.has_bc_gen_access === true,
     dashboardMetrics: assistant.dashboard_metrics === true,
     dashboardCampaigns: assistant.dashboard_campaigns === true,
+    dashboardLaunches: assistant.dashboard_launches === true,
     dashboardSparks: assistant.dashboard_sparks === true,
     dashboardTemplates: assistant.dashboard_templates === true,
     dashboardShopify: assistant.dashboard_shopify === true,
@@ -231,6 +234,7 @@ const editAssistant = async () => {
         assistant.has_bc_gen_access = editRoles.value.hasBCGenAccess;
         assistant.dashboard_metrics = editRoles.value.dashboardMetrics;
         assistant.dashboard_campaigns = editRoles.value.dashboardCampaigns;
+        assistant.dashboard_launches = editRoles.value.dashboardLaunches;
         assistant.dashboard_sparks = editRoles.value.dashboardSparks;
         assistant.dashboard_templates = editRoles.value.dashboardTemplates;
         assistant.dashboard_shopify = editRoles.value.dashboardShopify;
@@ -248,6 +252,7 @@ const editAssistant = async () => {
         hasBCGenAccess: false,
         dashboardMetrics: false,
         dashboardCampaigns: false,
+        dashboardLaunches: false,
         dashboardSparks: false,
         dashboardTemplates: false,
         dashboardShopify: false,
@@ -351,6 +356,7 @@ watch(() => assistantRoles.value.hasDashboardAccess, (newValue) => {
     // If Dashboard Access is disabled, disable all Dashboard tabs
     assistantRoles.value.dashboardMetrics = false;
     assistantRoles.value.dashboardCampaigns = false;
+    assistantRoles.value.dashboardLaunches = false;
     assistantRoles.value.dashboardSparks = false;
     assistantRoles.value.dashboardTemplates = false;
     assistantRoles.value.dashboardShopify = false;
@@ -364,6 +370,7 @@ watch(() => editRoles.value.hasDashboardAccess, (newValue) => {
     // If Dashboard Access is disabled, disable all Dashboard tabs
     editRoles.value.dashboardMetrics = false;
     editRoles.value.dashboardCampaigns = false;
+    editRoles.value.dashboardLaunches = false;
     editRoles.value.dashboardSparks = false;
     editRoles.value.dashboardTemplates = false;
     editRoles.value.dashboardShopify = false;
@@ -697,6 +704,12 @@ watch(() => editRoles.value.hasDashboardAccess, (newValue) => {
                 hide-details
               ></v-checkbox>
               <v-checkbox
+                v-model="assistantRoles.dashboardLaunches"
+                label="Ad Launches"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
                 v-model="assistantRoles.dashboardSparks"
                 label="Sparks"
                 density="compact"
@@ -914,6 +927,12 @@ watch(() => editRoles.value.hasDashboardAccess, (newValue) => {
               <v-checkbox
                 v-model="editRoles.dashboardCampaigns"
                 label="Campaigns"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+              <v-checkbox
+                v-model="editRoles.dashboardLaunches"
+                label="Ad Launches"
                 density="compact"
                 hide-details
               ></v-checkbox>
