@@ -110,6 +110,16 @@
 
         <!-- Data Table -->
         <v-card>
+          <v-card-text class="pa-2">
+            <v-alert
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-2"
+            >
+              Double-click any cell to edit inline. Press Enter to save or Esc to cancel.
+            </v-alert>
+          </v-card-text>
           <v-data-table
             :headers="headers"
             :items="filteredSparks"
@@ -125,8 +135,8 @@
                 <v-img
                   :src="item.thumbnail || defaultThumbnail"
                   :alt="item.name"
-                  width="100"
-                  height="100"
+                  width="150"
+                  height="150"
                   cover
                   class="rounded cursor-pointer"
                   @click="showLargePreview(item)"
@@ -135,31 +145,107 @@
               </div>
             </template>
 
-            <!-- Name Column -->
+            <!-- Name Column (editable) -->
             <template v-slot:item.name="{ item }">
-              <span class="font-weight-medium">{{ item.name }}</span>
+              <div 
+                @dblclick="startInlineEdit(item, 'name')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-text-field
+                  v-if="isEditing(item.id, 'name')"
+                  v-model="editingValues[`${item.id}-name`]"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'name')"
+                  @keyup.enter="saveInlineEdit(item, 'name')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'name')"
+                />
+                <span v-else class="font-weight-medium">{{ item.name }}</span>
+              </div>
             </template>
 
-            <!-- Type Column -->
+            <!-- Type Column (editable) -->
             <template v-slot:item.type="{ item }">
-              <v-chip
-                size="small"
-                :color="item.type === 'manual' ? 'purple' : 'indigo'"
-                variant="flat"
+              <div 
+                @dblclick="startInlineEdit(item, 'type')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
               >
-                {{ item.type || 'Auto' }}
-              </v-chip>
+                <v-select
+                  v-if="isEditing(item.id, 'type')"
+                  v-model="editingValues[`${item.id}-type`]"
+                  :items="['auto', 'manual']"
+                  :menu="menuStates[`${item.id}-type`]"
+                  @update:menu="val => menuStates[`${item.id}-type`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  @update:model-value="val => { editingValues[`${item.id}-type`] = val; saveInlineEdit(item, 'type'); }"
+                />
+                <v-chip
+                  v-else
+                  size="small"
+                  :color="item.type === 'manual' ? 'purple' : 'indigo'"
+                  variant="flat"
+                >
+                  {{ item.type || 'Auto' }}
+                </v-chip>
+              </div>
             </template>
 
-            <!-- Status Column -->
+            <!-- Status Column (editable) -->
             <template v-slot:item.status="{ item }">
-              <v-chip
-                size="small"
-                :color="getStatusColor(item.status)"
-                variant="flat"
+              <div 
+                @dblclick="startInlineEdit(item, 'status')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
               >
-                {{ getStatusLabel(item.status) }}
-              </v-chip>
+                <v-select
+                  v-if="isEditing(item.id, 'status')"
+                  v-model="editingValues[`${item.id}-status`]"
+                  :items="['active', 'completed', 'disabled']"
+                  :menu="menuStates[`${item.id}-status`]"
+                  @update:menu="val => menuStates[`${item.id}-status`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  @update:model-value="val => { editingValues[`${item.id}-status`] = val; saveInlineEdit(item, 'status'); }"
+                />
+                <v-chip
+                  v-else
+                  size="small"
+                  :color="getStatusColor(item.status)"
+                  variant="flat"
+                >
+                  {{ getStatusLabel(item.status) }}
+                </v-chip>
+              </div>
+            </template>
+
+            <!-- Creator Column (editable) -->
+            <template v-slot:item.creator="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'creator')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'creator')"
+                  v-model="editingValues[`${item.id}-creator`]"
+                  :items="virtualAssistants"
+                  :menu="menuStates[`${item.id}-creator`]"
+                  @update:menu="val => menuStates[`${item.id}-creator`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  @update:model-value="val => { editingValues[`${item.id}-creator`] = val; saveInlineEdit(item, 'creator'); }"
+                />
+                <span v-else>{{ item.creator || '-' }}</span>
+              </div>
             </template>
 
             <!-- TikTok Link Column -->
@@ -176,18 +262,36 @@
               </v-btn>
             </template>
 
-            <!-- Spark Code Column -->
+            <!-- Spark Code Column (editable) -->
             <template v-slot:item.spark_code="{ item }">
-              <div class="d-flex align-center">
-                <code class="mr-2">{{ item.spark_code }}</code>
-                <v-btn
-                  icon
-                  variant="text"
-                  size="x-small"
-                  @click.stop="copyCode(item.spark_code)"
-                >
-                  <v-icon size="small">mdi-content-copy</v-icon>
-                </v-btn>
+              <div 
+                @dblclick="startInlineEdit(item, 'spark_code')"
+                class="editable-cell d-flex align-center"
+                :title="'Double-click to edit'"
+              >
+                <v-text-field
+                  v-if="isEditing(item.id, 'spark_code')"
+                  v-model="editingValues[`${item.id}-spark_code`]"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'spark_code')"
+                  @keyup.enter="saveInlineEdit(item, 'spark_code')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'spark_code')"
+                />
+                <template v-else>
+                  <code class="mr-2">{{ item.spark_code }}</code>
+                  <v-btn
+                    icon
+                    variant="text"
+                    size="x-small"
+                    @click.stop="copyCode(item.spark_code)"
+                  >
+                    <v-icon size="small">mdi-content-copy</v-icon>
+                  </v-btn>
+                </template>
               </div>
             </template>
 
@@ -728,6 +832,17 @@
         </v-card-title>
         <v-card-text>
           <v-form ref="bulkAddFormRef">
+            <!-- Info Alert -->
+            <v-alert
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-4"
+            >
+              <v-icon>mdi-information</v-icon>
+              Spark codes will be automatically generated if not provided. You can enter fewer spark codes than TikTok links.
+            </v-alert>
+            
             <!-- Base Name Field -->
             <v-text-field
               v-model="bulkAddForm.baseName"
@@ -803,12 +918,12 @@
               <v-col cols="12" md="6">
                 <v-textarea
                   v-model="bulkAddForm.sparkCodes"
-                  label="Spark Codes (one per line)"
+                  label="Spark Codes (one per line - Optional)"
                   variant="outlined"
                   density="compact"
                   rows="8"
-                  hint="Enter one spark code per line"
-                  placeholder="SC001&#10;SC002&#10;SC003"
+                  hint="Optional: Codes will be auto-generated if not provided"
+                  placeholder="SC001&#10;SC002&#10;SC003&#10;(Leave empty to auto-generate)"
                 />
               </v-col>
             </v-row>
@@ -1020,6 +1135,11 @@ const offerTemplates = ref([]);
 const creators = ref([]);
 const payments = ref([]);
 const virtualAssistants = ref([]);
+
+// Inline editing state
+const editingCells = ref({});
+const editingValues = ref({});
+const menuStates = ref({});
 
 // Filter state
 const searchQuery = ref('');
@@ -1281,9 +1401,7 @@ const fetchSparks = async () => {
         }));
       }
       
-      // Update stats
-      unpaidSparks.value = sparks.value.filter(s => s.status === 'active').length;
-      activeCreators.value = uniqueCreators.length;
+      // Stats are updated automatically via computed properties
     }
   } catch (error) {
     showError('Failed to load sparks');
@@ -1456,6 +1574,77 @@ const deleteSpark = (spark) => {
   showDeleteModal.value = true;
 };
 
+// Inline editing methods
+const isEditing = (itemId, field) => {
+  return editingCells.value[`${itemId}-${field}`] === true;
+};
+
+const startInlineEdit = (item, field) => {
+  // Set the editing state
+  const key = `${item.id}-${field}`;
+  editingCells.value[key] = true;
+  editingValues.value[key] = item[field];
+  // Open menu for select fields
+  menuStates.value[key] = true;
+};
+
+const cancelInlineEdit = (itemId, field) => {
+  const key = `${itemId}-${field}`;
+  delete editingCells.value[key];
+  delete editingValues.value[key];
+  delete menuStates.value[key];
+};
+
+const saveInlineEdit = async (item, field) => {
+  const key = `${item.id}-${field}`;
+  const newValue = editingValues.value[key];
+  
+  // Don't save if value hasn't changed
+  if (newValue === item[field]) {
+    cancelInlineEdit(item.id, field);
+    return;
+  }
+  
+  try {
+    // Map snake_case field names to camelCase for API
+    const fieldMapping = {
+      'spark_code': 'sparkCode',
+      'tiktok_link': 'tiktokLink',
+      'offer_name': 'offerName'
+    };
+    
+    // Prepare the update data - use camelCase for API
+    const updateData = {
+      name: item.name,
+      creator: item.creator,
+      tiktokLink: item.tiktok_link,  // Map to camelCase
+      sparkCode: item.spark_code,     // Map to camelCase
+      type: item.type,
+      status: item.status,
+      offerName: item.offer_name || ''  // Map to camelCase
+    };
+    
+    // Update the specific field being edited (use camelCase if needed)
+    const apiField = fieldMapping[field] || field;
+    updateData[apiField] = newValue;
+    
+    // Update the spark
+    await sparksApi.updateSpark(item.id, updateData);
+    
+    // Update local data with the original field name
+    item[field] = newValue;
+    
+    // Clear editing state
+    cancelInlineEdit(item.id, field);
+    
+    showSuccess(`${field.replace('_', ' ')} updated successfully`);
+  } catch (error) {
+    console.error('Failed to update inline:', error);
+    showError('Failed to update field: ' + (error.message || 'Unknown error'));
+    cancelInlineEdit(item.id, field);
+  }
+};
+
 const confirmDelete = async () => {
   if (!sparkToDelete.value) return;
   
@@ -1501,13 +1690,8 @@ const previewBulkAdd = () => {
   const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
   const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
   
-  if (sparkCodes.length !== tiktokLinks.length) {
-    showError('Number of TikTok links must match number of spark codes');
-    return;
-  }
-  
   if (tiktokLinks.length === 0) {
-    showError('Please enter at least one TikTok link and spark code');
+    showError('Please enter at least one TikTok link');
     return;
   }
   
@@ -1521,20 +1705,42 @@ const previewBulkAdd = () => {
     startNumber = parseInt(baseNameMatch[2]);
   }
   
-  bulkAddPreview.value = tiktokLinks.map((link, index) => {
-    const currentNumber = startNumber + index;
+  // Auto-generate spark codes if not enough provided
+  const maxCount = Math.max(tiktokLinks.length, sparkCodes.length);
+  
+  bulkAddPreview.value = [];
+  for (let i = 0; i < maxCount; i++) {
+    const currentNumber = startNumber + i;
     const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1 
       ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
       : currentNumber.toString();
     
-    return {
-      name: `${namePrefix}${paddedNumber}`,
-      tiktokLink: link.trim(),
-      sparkCode: sparkCodes[index]?.trim() || `${namePrefix}${paddedNumber}`
-    };
-  });
+    const name = `${namePrefix}${paddedNumber}`;
+    
+    // Use provided spark code or auto-generate one
+    let sparkCode = sparkCodes[i]?.trim();
+    if (!sparkCode) {
+      // Auto-generate spark code using name pattern
+      sparkCode = `SPARK-${namePrefix.toUpperCase()}${paddedNumber}`;
+    }
+    
+    // Only add if we have a TikTok link for this index
+    if (tiktokLinks[i]) {
+      bulkAddPreview.value.push({
+        name: name,
+        tiktokLink: tiktokLinks[i].trim(),
+        sparkCode: sparkCode
+      });
+    }
+  }
   
-  showInfo(`Ready to create ${bulkAddPreview.value.length} sparks`);
+  // Show info about auto-generated codes
+  const autoGeneratedCount = bulkAddPreview.value.length - sparkCodes.length;
+  if (autoGeneratedCount > 0) {
+    showInfo(`Ready to create ${bulkAddPreview.value.length} sparks (${autoGeneratedCount} spark codes auto-generated)`);
+  } else {
+    showInfo(`Ready to create ${bulkAddPreview.value.length} sparks`);
+  }
 };
 
 const saveBulkAdd = async () => {
@@ -1547,13 +1753,8 @@ const saveBulkAdd = async () => {
   const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
   const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
   
-  if (sparkCodes.length !== tiktokLinks.length) {
-    showError('Number of TikTok links must match number of spark codes');
-    return;
-  }
-  
   if (tiktokLinks.length === 0) {
-    showError('Please enter at least one TikTok link and spark code');
+    showError('Please enter at least one TikTok link');
     return;
   }
   
@@ -1572,18 +1773,29 @@ const saveBulkAdd = async () => {
   try {
     let successCount = 0;
     let failedCount = 0;
+    const errors = [];
     
+    // Process each TikTok link
     for (let i = 0; i < tiktokLinks.length; i++) {
       const currentNumber = startNumber + i;
       const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1 
         ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
         : currentNumber.toString();
       
+      const name = `${namePrefix}${paddedNumber}`;
+      
+      // Use provided spark code or auto-generate one
+      let sparkCode = sparkCodes[i]?.trim();
+      if (!sparkCode) {
+        // Auto-generate spark code using name pattern
+        sparkCode = `SPARK-${namePrefix.toUpperCase()}${paddedNumber}`;
+      }
+      
       const sparkData = {
-        name: `${namePrefix}${paddedNumber}`,
+        name: name,
         creator: bulkAddForm.value.creator || '',
         tiktokLink: tiktokLinks[i].trim(),
-        sparkCode: sparkCodes[i]?.trim() || `AUTO-${i + 1}`,
+        sparkCode: sparkCode,
         type: bulkAddForm.value.type,
         offer: '',  // Default empty offer
         status: bulkAddForm.value.status
@@ -1593,17 +1805,22 @@ const saveBulkAdd = async () => {
         await sparksApi.createSpark(sparkData);
         successCount++;
       } catch (error) {
-        console.error(`Failed to create spark ${i + 1}:`, error);
+        console.error(`Failed to create spark ${name}:`, error);
+        errors.push(`${name}: ${error.message || 'Unknown error'}`);
         failedCount++;
       }
     }
     
     showBulkAddModal.value = false;
     
+    // Show detailed results
     if (failedCount === 0) {
       showSuccess(`Successfully created ${successCount} sparks`);
+    } else if (successCount === 0) {
+      showError(`Failed to create all sparks. Errors: ${errors.join(', ')}`);
     } else {
-      showError(`Created ${successCount} sparks, ${failedCount} failed`);
+      showWarning(`Created ${successCount} sparks, ${failedCount} failed. Check console for details.`);
+      console.error('Failed sparks:', errors);
     }
     
     // Refresh the sparks list
@@ -1922,6 +2139,12 @@ const showInfo = (message) => {
   showSnackbar.value = true;
 };
 
+const showWarning = (message) => {
+  snackbarText.value = message;
+  snackbarColor.value = 'warning';
+  showSnackbar.value = true;
+};
+
 // Lifecycle
 onMounted(async () => {
   // Fetch VAs and templates first, then sparks
@@ -1980,5 +2203,49 @@ code {
 
 .preview-list .v-list-item:last-child {
   border-bottom: none;
+}
+
+/* Inline editing styles */
+.editable-cell {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.editable-cell:hover {
+  background-color: rgba(33, 150, 243, 0.08);
+}
+
+.v-theme--dark .editable-cell:hover {
+  background-color: rgba(33, 150, 243, 0.15);
+}
+
+.editable-cell:deep(.v-field) {
+  min-height: 32px !important;
+}
+
+.editable-cell:deep(.v-field__input) {
+  padding: 4px 8px !important;
+  min-height: 32px !important;
+}
+
+.editable-cell:deep(.v-input__details) {
+  display: none !important;
+}
+
+.editable-cell:deep(.v-select__selection) {
+  margin: 0 !important;
+}
+
+/* Ensure table doesn't clip dropdowns */
+.sparks-table :deep(.v-data-table__td) {
+  white-space: nowrap;
+  position: relative;
+  overflow: visible;
 }
 </style>

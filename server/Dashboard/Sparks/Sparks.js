@@ -1102,62 +1102,8 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     }
     
     
-    // Handle offer name update
-    let offerName = existingSpark.offer_name;
-    if (sparkData.offer !== existingSpark.offer) {
-      try {
-        // Check template with team permissions
-        let template;
-        if (teamId) {
-          // If user is in a team, get all team members
-          const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
-          const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
-          
-          if (teamMembersResult.results && teamMembersResult.results.length > 0) {
-            const memberIds = teamMembersResult.results.map(m => m.user_id);
-            const placeholders = memberIds.map(() => '?').join(',');
-            template = await db.prepare(
-              `SELECT name FROM templates WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
-            ).bind(sparkData.offer, ...memberIds, teamId).first();
-          } else {
-            template = await db.prepare(
-              'SELECT name FROM templates WHERE id = ? AND team_id = ?'
-            ).bind(sparkData.offer, teamId).first();
-          }
-        } else {
-          template = await db.prepare('SELECT name FROM templates WHERE id = ? AND user_id = ?')
-            .bind(sparkData.offer, userId)
-            .first();
-        }
-        
-        if (template) {
-          offerName = template.name;
-        } else {
-          // Fallback offer names
-          const offerNames = {
-            'cash750': 'Cash ($750)',
-            'cashapp': 'Cash App',
-            'walmart': 'Walmart Gift Card',
-            'iphone': 'iPhone 15 Pro',
-            'macbook': 'MacBook Pro',
-            'paypal750': 'PayPal ($750)'
-          };
-          offerName = offerNames[sparkData.offer] || sparkData.offer;
-        }
-      } catch (templateError) {
-        console.error('Error fetching template:', templateError);
-        // Use fallback offer names
-        const offerNames = {
-          'cash750': 'Cash ($750)',
-          'cashapp': 'Cash App',
-          'walmart': 'Walmart Gift Card',
-          'iphone': 'iPhone 15 Pro',
-          'macbook': 'MacBook Pro',
-          'paypal750': 'PayPal ($750)'
-        };
-        offerName = offerNames[sparkData.offer] || sparkData.offer;
-      }
-    }
+    // Handle offer name update - use provided offerName or keep existing
+    let offerName = sparkData.offerName || existingSpark.offer_name || '';
     
     // Handle thumbnail update
     let thumbnail = sparkData.thumbnail || existingSpark.thumbnail;
@@ -1170,22 +1116,21 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       }
     }
     
-    // Update the spark
+    // Update the spark - ensure no undefined values
     await db.prepare(`
       UPDATE sparks 
       SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?, 
-          offer = ?, offer_name = ?, thumbnail = ?, status = ?
+          offer_name = ?, thumbnail = ?, status = ?
       WHERE id = ?
     `).bind(
-      sparkData.name,
+      sparkData.name || existingSpark.name,
       sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),  // Preserve existing or use empty string
       sparkData.type || existingSpark.type || 'auto',
-      sparkData.tiktokLink,
-      sparkData.sparkCode,
-      sparkData.offer || '',
-      offerName,
-      thumbnail,
-      sparkData.status || existingSpark.status,
+      sparkData.tiktokLink || existingSpark.tiktok_link,
+      sparkData.sparkCode || existingSpark.spark_code,
+      offerName || existingSpark.offer_name || '',
+      thumbnail || existingSpark.thumbnail || '',
+      sparkData.status || existingSpark.status || 'Pending',
       sparkId
     ).run();
     

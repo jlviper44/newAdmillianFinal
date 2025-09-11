@@ -141,6 +141,16 @@
 
         <!-- Tracker Entries Table -->
         <v-card>
+          <v-card-text class="pa-2">
+            <v-alert
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-2"
+            >
+              Double-click any cell to edit inline. Dropdowns available for Campaign, BC Type, WH Obj, Target, Status, Ban, and Offer fields. Press Enter to save or Esc to cancel.
+            </v-alert>
+          </v-card-text>
           <v-data-table
             :headers="trackerHeaders"
             :items="filteredTrackerEntries"
@@ -149,36 +159,316 @@
             :items-per-page="20"
             class="tracker-table"
           >
-            <template v-slot:item.campaignId="{ item }">
-              <span class="font-weight-medium">{{ item.campaignId }}</span>
+            <!-- VA (editable) -->
+            <template v-slot:item.va="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'va')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-text-field
+                  v-if="isEditing(item.id, 'va')"
+                  v-model="editingValues[`${item.id}-va`]"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'va')"
+                  @keyup.enter="saveInlineEdit(item, 'va')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'va')"
+                />
+                <span v-else>{{ item.va }}</span>
+              </div>
             </template>
+            
+            <!-- Campaign ID (editable with autocomplete) -->
+            <template v-slot:item.campaignId="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'campaignId')"
+                class="editable-cell font-weight-medium"
+                :title="'Double-click to edit'"
+              >
+                <v-autocomplete
+                  v-if="isEditing(item.id, 'campaignId')"
+                  v-model="editingValues[`${item.id}-campaignId`]"
+                  :items="campaignOptions"
+                  item-value="id"
+                  item-title="displayName"
+                  :menu="menuStates[`${item.id}-campaignId`]"
+                  @update:menu="val => menuStates[`${item.id}-campaignId`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  @update:model-value="val => { editingValues[`${item.id}-campaignId`] = val; saveInlineEdit(item, 'campaignId'); }"
+                  @click:clear="() => { editingValues[`${item.id}-campaignId`] = ''; saveInlineEdit(item, 'campaignId'); }"
+                />
+                <span v-else>{{ item.campaignId }}</span>
+              </div>
+            </template>
+            
+            <!-- Campaign Name (read-only) -->
             <template v-slot:item.campaignName="{ item }">
               <span class="text-caption">{{ item.campaignName || '-' }}</span>
             </template>
-            <template v-slot:item.status="{ item }">
-              <v-chip
-                :color="getStatusColor(item.status)"
-                size="small"
-                label
+            
+            <!-- BC GEO (editable) -->
+            <template v-slot:item.bcGeo="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'bcGeo')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
               >
-                {{ item.status }}
-              </v-chip>
+                <v-text-field
+                  v-if="isEditing(item.id, 'bcGeo')"
+                  v-model="editingValues[`${item.id}-bcGeo`]"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'bcGeo')"
+                  @keyup.enter="saveInlineEdit(item, 'bcGeo')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'bcGeo')"
+                />
+                <span v-else>{{ item.bcGeo || '-' }}</span>
+              </div>
             </template>
+            
+            <!-- BC Type (editable with dropdown) -->
+            <template v-slot:item.bcType="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'bcType')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'bcType')"
+                  v-model="editingValues[`${item.id}-bcType`]"
+                  :items="bcTypeOptions"
+                  :menu="menuStates[`${item.id}-bcType`]"
+                  @update:menu="val => menuStates[`${item.id}-bcType`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  @update:model-value="val => { editingValues[`${item.id}-bcType`] = val; saveInlineEdit(item, 'bcType'); }"
+                />
+                <span v-else>{{ item.bcType || '-' }}</span>
+              </div>
+            </template>
+            
+            <!-- WH Obj (editable with dropdown) -->
+            <template v-slot:item.whObj="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'whObj')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'whObj')"
+                  v-model="editingValues[`${item.id}-whObj`]"
+                  :items="whObjOptions"
+                  :menu="menuStates[`${item.id}-whObj`]"
+                  @update:menu="val => menuStates[`${item.id}-whObj`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  @update:model-value="val => { editingValues[`${item.id}-whObj`] = val; saveInlineEdit(item, 'whObj'); }"
+                />
+                <span v-else>{{ item.whObj || '-' }}</span>
+              </div>
+            </template>
+            
+            <!-- Target (editable with dropdown) -->
+            <template v-slot:item.launchTarget="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'launchTarget')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'launchTarget')"
+                  v-model="editingValues[`${item.id}-launchTarget`]"
+                  :items="targetOptions"
+                  :menu="menuStates[`${item.id}-launchTarget`]"
+                  @update:menu="val => menuStates[`${item.id}-launchTarget`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  @update:model-value="val => { editingValues[`${item.id}-launchTarget`] = val; saveInlineEdit(item, 'launchTarget'); }"
+                />
+                <span v-else>{{ item.launchTarget || '-' }}</span>
+              </div>
+            </template>
+            
+            <!-- Status (editable with dropdown) -->
+            <template v-slot:item.status="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'status')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'status')"
+                  v-model="editingValues[`${item.id}-status`]"
+                  :items="statusOptions"
+                  :menu="menuStates[`${item.id}-status`]"
+                  @update:menu="val => menuStates[`${item.id}-status`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  @update:model-value="val => { editingValues[`${item.id}-status`] = val; saveInlineEdit(item, 'status'); }"
+                />
+                <v-chip
+                  v-else
+                  :color="getStatusColor(item.status)"
+                  size="small"
+                  label
+                >
+                  {{ item.status }}
+                </v-chip>
+              </div>
+            </template>
+            
+            <!-- Ban (editable with dropdown) -->
+            <template v-slot:item.ban="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'ban')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'ban')"
+                  v-model="editingValues[`${item.id}-ban`]"
+                  :items="banOptions"
+                  :menu="menuStates[`${item.id}-ban`]"
+                  @update:menu="val => menuStates[`${item.id}-ban`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  @update:model-value="val => { editingValues[`${item.id}-ban`] = val; saveInlineEdit(item, 'ban'); }"
+                  @click:clear="() => { editingValues[`${item.id}-ban`] = ''; saveInlineEdit(item, 'ban'); }"
+                />
+                <span v-else>{{ item.ban || '-' }}</span>
+              </div>
+            </template>
+            
+            <!-- Ad Spend (editable) -->
             <template v-slot:item.adSpend="{ item }">
-              {{ formatCurrency(item.adSpend) }}
+              <div 
+                @dblclick="startInlineEdit(item, 'adSpend')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-text-field
+                  v-if="isEditing(item.id, 'adSpend')"
+                  v-model.number="editingValues[`${item.id}-adSpend`]"
+                  type="number"
+                  prefix="$"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'adSpend')"
+                  @keyup.enter="saveInlineEdit(item, 'adSpend')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'adSpend')"
+                />
+                <span v-else>{{ formatCurrency(item.adSpend) }}</span>
+              </div>
             </template>
+            
+            <!-- BC Spend (editable) -->
             <template v-slot:item.bcSpend="{ item }">
-              {{ formatCurrency(item.bcSpend) }}
+              <div 
+                @dblclick="startInlineEdit(item, 'bcSpend')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-text-field
+                  v-if="isEditing(item.id, 'bcSpend')"
+                  v-model.number="editingValues[`${item.id}-bcSpend`]"
+                  type="number"
+                  prefix="$"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'bcSpend')"
+                  @keyup.enter="saveInlineEdit(item, 'bcSpend')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'bcSpend')"
+                />
+                <span v-else>{{ formatCurrency(item.bcSpend) }}</span>
+              </div>
             </template>
+            
+            <!-- Amount Lost (computed, read-only) -->
             <template v-slot:item.amountLost="{ item }">
               <span class="text-red">{{ formatCurrency(item.amountLost) }}</span>
             </template>
+            
+            <!-- Real Spend (computed, read-only) -->
             <template v-slot:item.realSpend="{ item }">
               <span class="text-green">{{ formatCurrency(item.realSpend) }}</span>
             </template>
+            
+            <!-- Offer (editable with dropdown) -->
+            <template v-slot:item.offer="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'offer')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-select
+                  v-if="isEditing(item.id, 'offer')"
+                  v-model="editingValues[`${item.id}-offer`]"
+                  :items="offerOptions"
+                  :menu="menuStates[`${item.id}-offer`]"
+                  @update:menu="val => menuStates[`${item.id}-offer`] = val"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  @update:model-value="val => { editingValues[`${item.id}-offer`] = val; saveInlineEdit(item, 'offer'); }"
+                  @click:clear="() => { editingValues[`${item.id}-offer`] = ''; saveInlineEdit(item, 'offer'); }"
+                />
+                <span v-else>{{ item.offer || '-' }}</span>
+              </div>
+            </template>
+            
+            <!-- Notes (editable) -->
+            <template v-slot:item.notes="{ item }">
+              <div 
+                @dblclick="startInlineEdit(item, 'notes')"
+                class="editable-cell"
+                :title="'Double-click to edit'"
+              >
+                <v-text-field
+                  v-if="isEditing(item.id, 'notes')"
+                  v-model="editingValues[`${item.id}-notes`]"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  autofocus
+                  @blur="saveInlineEdit(item, 'notes')"
+                  @keyup.enter="saveInlineEdit(item, 'notes')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'notes')"
+                />
+                <span v-else class="text-caption">{{ item.notes || '-' }}</span>
+              </div>
+            </template>
+            
+            <!-- Timestamp (read-only) -->
             <template v-slot:item.timestamp="{ item }">
               {{ formatDateTime(item.timestamp) }}
             </template>
+            
+            <!-- Actions -->
             <template v-slot:item.actions="{ item }">
               <v-btn
                 icon="mdi-pencil"
@@ -241,7 +531,7 @@
                     <v-select
                       v-model="entryForm.bcType"
                       label="BC Type"
-                      :items="['Auto', 'Manual']"
+                      :items="bcTypeOptions"
                     />
                   </v-col>
                   <v-col cols="12" md="4">
@@ -817,6 +1107,11 @@ const editingEntry = ref(null);
 const savingEntry = ref(false);
 const entryFormRef = ref(null);
 
+// Inline editing state
+const editingCells = ref({});
+const editingValues = ref({});
+const menuStates = ref({});
+
 // Tracker filters
 const trackerFilters = ref({
   va: '',
@@ -847,6 +1142,7 @@ const offerOptions = ['Cash', 'Shein', 'Auto', 'CPI', 'Other'];
 const targetOptions = ['US', 'UK', 'CAN', 'AUS', 'Other'];
 const whObjOptions = ['Sales', 'Sales +', 'Video Views', 'Reach', 'Traffic', 'Lead Gen', 'Lead Gen +'];
 const banOptions = ['WH Instant', 'WH Delay', 'BH Instant', 'BH Delay', 'Dupe'];
+const bcTypeOptions = ['Auto', 'Manual'];
 
 // Tracker table headers
 const trackerHeaders = [
@@ -981,6 +1277,11 @@ const calculatedRealSpend = computed(() => {
 // Check if user is admin (admins can edit VA field)
 const isUserAdmin = computed(() => {
   return user.value?.isAdmin || false;
+});
+
+// Get user email for permission checks
+const userEmail = computed(() => {
+  return user.value?.email || '';
 });
 
 // Check if user is a Virtual Assistant
@@ -1405,6 +1706,83 @@ const deleteTrackerEntry = async (entry) => {
     } catch (error) {
       showError('Failed to delete entry');
     }
+  }
+};
+
+// Inline editing methods
+const isEditing = (itemId, field) => {
+  return editingCells.value[`${itemId}-${field}`] === true;
+};
+
+const startInlineEdit = (item, field) => {
+  // Don't allow editing if user is not admin and it's not their entry
+  if (!isUserAdmin.value && item.va !== userEmail.value) {
+    showError('You can only edit your own entries');
+    return;
+  }
+  
+  // Set the editing state
+  const key = `${item.id}-${field}`;
+  editingCells.value[key] = true;
+  editingValues.value[key] = item[field];
+  // Open menu for select fields
+  menuStates.value[key] = true;
+};
+
+const cancelInlineEdit = (itemId, field) => {
+  const key = `${itemId}-${field}`;
+  delete editingCells.value[key];
+  delete editingValues.value[key];
+  delete menuStates.value[key];
+};
+
+const saveInlineEdit = async (item, field) => {
+  const key = `${item.id}-${field}`;
+  const newValue = editingValues.value[key];
+  
+  // Don't save if value hasn't changed
+  if (newValue === item[field]) {
+    cancelInlineEdit(item.id, field);
+    return;
+  }
+  
+  try {
+    // Prepare the update data
+    const updateData = { ...item };
+    updateData[field] = newValue;
+    
+    // Recalculate computed fields if needed
+    if (field === 'adSpend' || field === 'bcSpend') {
+      const adSpend = field === 'adSpend' ? parseFloat(newValue) || 0 : parseFloat(item.adSpend) || 0;
+      const bcSpend = field === 'bcSpend' ? parseFloat(newValue) || 0 : parseFloat(item.bcSpend) || 0;
+      updateData.amountLost = Math.max(0, bcSpend - adSpend);
+      updateData.realSpend = adSpend - updateData.amountLost;
+    }
+    
+    // Update the entry
+    await adLaunchesAPI.updateEntry(
+      item.id,
+      updateData,
+      selectedTrackerWeek.value
+    );
+    
+    // Update local data
+    item[field] = newValue;
+    if (field === 'adSpend' || field === 'bcSpend') {
+      item.amountLost = updateData.amountLost;
+      item.realSpend = updateData.realSpend;
+    }
+    
+    // Clear editing state
+    cancelInlineEdit(item.id, field);
+    
+    // Reload data to ensure consistency
+    await loadTrackerData();
+    showSuccess(`${field} updated successfully`);
+  } catch (error) {
+    console.error('Failed to update inline:', error);
+    showError('Failed to update field');
+    cancelInlineEdit(item.id, field);
   }
 };
 
@@ -1860,5 +2238,49 @@ onMounted(() => {
 
 .tracker-table :deep(.v-data-table-header__content) {
   font-weight: 600;
+}
+
+/* Inline editing styles */
+.editable-cell {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.editable-cell:hover {
+  background-color: rgba(168, 85, 247, 0.08);
+}
+
+.v-theme--dark .editable-cell:hover {
+  background-color: rgba(168, 85, 247, 0.15);
+}
+
+.editable-cell:deep(.v-field) {
+  min-height: 32px !important;
+}
+
+.editable-cell:deep(.v-field__input) {
+  padding: 4px 8px !important;
+  min-height: 32px !important;
+}
+
+.editable-cell:deep(.v-input__details) {
+  display: none !important;
+}
+
+.editable-cell:deep(.v-select__selection) {
+  margin: 0 !important;
+}
+
+/* Ensure table doesn't clip dropdowns */
+.tracker-table :deep(.v-data-table__td) {
+  white-space: nowrap;
+  position: relative;
+  overflow: visible;
 }
 </style>
