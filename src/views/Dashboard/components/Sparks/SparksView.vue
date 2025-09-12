@@ -17,7 +17,7 @@
             <v-row align="center">
               <v-col cols="12" md="3">
                 <v-text-field
-                  v-model="searchQuery"
+                  v-model="searchInput"
                   label="Search sparks..."
                   variant="outlined"
                   density="compact"
@@ -126,9 +126,13 @@
             :items="filteredSparks"
             :items-per-page="itemsPerPage"
             :loading="isLoading"
-            :search="searchQuery"
+            :items-per-page-options="[10, 25, 50, 100]"
+            :page="currentPage"
+            @update:page="currentPage = $event"
             class="sparks-table"
             hover
+            fixed-header
+            height="600"
           >
             <!-- Thumbnail Column -->
             <template v-slot:item.thumbnail="{ item }">
@@ -1413,14 +1417,27 @@ const editingValues = ref({});
 const menuStates = ref({});
 
 // Filter state
+const searchInput = ref('');
 const searchQuery = ref('');
+
+// Debounce timer
+let searchDebounceTimer = null;
+
+// Watch search input with debounce
+watch(searchInput, (newValue) => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    searchQuery.value = newValue;
+  }, 300); // 300ms debounce
+});
 const typeFilter = ref('all');
 const statusFilter = ref('active');  // Default to active
 const creatorFilter = ref('all');
 const activeOnly = ref(false);
 
 // Table configuration
-const itemsPerPage = ref(10);
+const itemsPerPage = ref(25); // Increased for better performance with pagination
+const currentPage = ref(1);
 
 // Modal state
 const showPreview = ref(false);
@@ -1554,26 +1571,44 @@ const defaultThumbnail = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdo
 
 // Computed properties
 const filteredSparks = computed(() => {
-  let filtered = [...sparks.value];
+  let filtered = sparks.value;
 
-  // Type filter
-  if (typeFilter.value !== 'all') {
-    filtered = filtered.filter(spark => spark.type === typeFilter.value);
-  }
+  // Apply filters only if needed to avoid unnecessary iterations
+  if (typeFilter.value !== 'all' || statusFilter.value !== 'all' || 
+      creatorFilter.value !== 'all' || activeOnly.value || searchQuery.value) {
+    
+    filtered = sparks.value.filter(spark => {
+      // Type filter
+      if (typeFilter.value !== 'all' && spark.type !== typeFilter.value) {
+        return false;
+      }
 
-  // Status filter
-  if (statusFilter.value !== 'all') {
-    filtered = filtered.filter(spark => spark.status === statusFilter.value);
-  }
+      // Status filter
+      if (statusFilter.value !== 'all' && spark.status !== statusFilter.value) {
+        return false;
+      }
 
-  // Creator filter
-  if (creatorFilter.value !== 'all') {
-    filtered = filtered.filter(spark => spark.creator === creatorFilter.value);
-  }
+      // Creator filter
+      if (creatorFilter.value !== 'all' && spark.creator !== creatorFilter.value) {
+        return false;
+      }
 
-  // Active only filter
-  if (activeOnly.value) {
-    filtered = filtered.filter(spark => spark.status === 'active');
+      // Active only filter
+      if (activeOnly.value && spark.status !== 'active') {
+        return false;
+      }
+
+      // Search query filter
+      if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase();
+        const searchableText = `${spark.name || ''} ${spark.creator || ''} ${spark.spark_code || ''} ${spark.type || ''}`.toLowerCase();
+        if (!searchableText.includes(query)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
   }
 
   return filtered;
@@ -1709,11 +1744,12 @@ const fetchSparks = async () => {
   try {
     const response = await sparksApi.listSparks({ page: 1, limit: 1000 });
     if (response.success) {
-      sparks.value = response.sparks.map(spark => ({
+      // Freeze the sparks array to prevent unnecessary reactivity on individual items
+      sparks.value = Object.freeze(response.sparks.map(spark => ({
         ...spark,
         type: spark.type || 'auto',
         creator: spark.creator || 'None'  // Show "None" instead of "Unknown"
-      }));
+      })));
       
       // Use virtual assistants for creator options if available
       const uniqueCreators = [...new Set(sparks.value.map(s => s.creator).filter(c => c))];
@@ -1799,11 +1835,13 @@ const fetchVirtualAssistants = async () => {
 };
 
 const clearFilters = () => {
+  searchInput.value = '';
   searchQuery.value = '';
   typeFilter.value = 'all';
   statusFilter.value = 'all';
   creatorFilter.value = 'all';
   activeOnly.value = false;
+  currentPage.value = 1;
 };
 
 const getStatusColor = (status) => {
@@ -3083,5 +3121,17 @@ code {
   white-space: nowrap;
   position: relative;
   overflow: visible;
+}
+
+/* Performance optimizations */
+.sparks-table {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.v-data-table__wrapper {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 </style>
