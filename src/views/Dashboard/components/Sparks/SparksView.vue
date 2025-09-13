@@ -287,15 +287,17 @@
                   @keyup.esc="cancelInlineEdit(item.id, 'spark_code')"
                 />
                 <template v-else>
-                  <code class="mr-2">{{ item.spark_code }}</code>
-                  <v-btn
-                    icon
-                    variant="text"
-                    size="x-small"
-                    @click.stop="copyCode(item.spark_code)"
-                  >
-                    <v-icon size="small">mdi-content-copy</v-icon>
-                  </v-btn>
+                  <div class="d-flex align-center">
+                    <code class="mr-2 text-truncate spark-code-truncate">{{ item.spark_code }}</code>
+                    <v-btn
+                      icon
+                      variant="text"
+                      size="x-small"
+                      @click.stop="copyCode(item.spark_code)"
+                    >
+                      <v-icon size="small">mdi-content-copy</v-icon>
+                    </v-btn>
+                  </div>
                 </template>
               </div>
             </template>
@@ -3133,5 +3135,14 @@ code {
 .v-data-table__wrapper {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.spark-code-truncate {
+  max-width: 150px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 </style>

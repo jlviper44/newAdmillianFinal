@@ -17,11 +17,39 @@ const transformRow = (row) => {
 };
 
 // Helper functions for date/week management
-const getESTDate = () => {
-  const now = new Date();
-  const utcTime = now.getTime() + now.getTimezoneOffset() * 60000;
-  const estOffset = -5; // EST is UTC-5
+const getESTDate = (date = null) => {
+  const baseDate = date ? new Date(date) : new Date();
+  const utcTime = baseDate.getTime() + baseDate.getTimezoneOffset() * 60000;
+  // Use EST/EDT offset based on daylight saving time
+  const isDST = isDaylightSavingTime(baseDate);
+  const estOffset = isDST ? -4 : -5; // EDT is UTC-4, EST is UTC-5
   return new Date(utcTime + (3600000 * estOffset));
+};
+
+// Check if date is in daylight saving time (US Eastern Time)
+const isDaylightSavingTime = (date) => {
+  const year = date.getFullYear();
+  // DST starts second Sunday in March
+  const dstStart = new Date(year, 2, 1); // March 1
+  dstStart.setDate(dstStart.getDate() + ((7 - dstStart.getDay()) % 7) + 7); // Second Sunday
+  
+  // DST ends first Sunday in November
+  const dstEnd = new Date(year, 10, 1); // November 1
+  dstEnd.setDate(dstEnd.getDate() + ((7 - dstEnd.getDay()) % 7)); // First Sunday
+  
+  return date >= dstStart && date < dstEnd;
+};
+
+// Convert any date to EST/EDT
+const toESTDate = (dateString) => {
+  if (!dateString) return null;
+  return getESTDate(new Date(dateString));
+};
+
+// Format date in EST timezone
+const formatESTDate = (date) => {
+  const estDate = date instanceof Date ? getESTDate(date) : getESTDate(new Date(date));
+  return estDate.toISOString().split('T')[0];
 };
 
 const getWeekStart = (date) => {
@@ -48,6 +76,9 @@ const formatWeekKey = (date) => {
 
 // Initialize database tables
 async function initializeTables(env) {
+  // Check if already initialized by checking for a flag in env
+  if (env.TABLES_INITIALIZED) return;
+  
   try {
     // Create launch_entries table if it doesn't exist
     await env.DASHBOARD_DB.prepare(`
@@ -100,6 +131,39 @@ async function initializeTables(env) {
     await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_timeclock_date ON timeclock_entries (date)`).run();
     await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_timeclock_day ON timeclock_entries (day_key)`).run();
 
+    // Create clock_sessions table for storing actual clock in/out timestamps
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS clock_sessions (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        date TEXT NOT NULL,
+        clock_in DATETIME NOT NULL,
+        clock_out DATETIME,
+        hours_worked REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    // Create indexes for clock_sessions
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_clock_sessions_va ON clock_sessions (va)`).run();
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_clock_sessions_date ON clock_sessions (date)`).run();
+    await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_clock_sessions_status ON clock_sessions (status)`).run();
+
+    // Create VA rates table
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS va_rates (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        hourly_rate REAL NOT NULL,
+        commission_rate REAL NOT NULL,
+        effective_date DATE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(va, effective_date)
+      )
+    `).run();
+    
     // Create payroll_reports table
     await env.DASHBOARD_DB.prepare(`
       CREATE TABLE IF NOT EXISTS payroll_reports (
@@ -118,6 +182,9 @@ async function initializeTables(env) {
         total_pay REAL DEFAULT 0,
         status TEXT DEFAULT 'unpaid',
         payment_method TEXT,
+        payment_date DATETIME,
+        edited BOOLEAN DEFAULT 0,
+        voided BOOLEAN DEFAULT 0,
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -130,8 +197,10 @@ async function initializeTables(env) {
     await env.DASHBOARD_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll_reports (period_start, period_end)`).run();
 
     console.log('Launch tracker and payroll tables initialized');
+    env.TABLES_INITIALIZED = true;
   } catch (error) {
     console.error('Error initializing tables:', error);
+    // Don't set flag on error so it can retry
   }
 }
 
@@ -537,37 +606,358 @@ async function getTimeClockData(env, va, date) {
   }
 }
 
+// Clock In/Out Functions with EST timestamps
+async function clockIn(env, data) {
+  try {
+    // Ensure table exists first - force creation
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS clock_sessions (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        date TEXT NOT NULL,
+        clock_in DATETIME NOT NULL,
+        clock_out DATETIME,
+        hours_worked REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    const { va } = data;
+    const now = getESTDate();
+    const dateKey = now.toISOString().split('T')[0];
+    
+    // Check if already clocked in
+    const activeSession = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM clock_sessions 
+      WHERE va = ? AND status = 'active'
+      ORDER BY clock_in DESC
+      LIMIT 1
+    `).bind(va).first();
+    
+    if (activeSession) {
+      return {
+        success: false,
+        message: 'Already clocked in. Please clock out first.',
+        session: transformRow(activeSession)
+      };
+    }
+    
+    // Create new clock session with EST timestamp
+    const sessionId = `clock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const clockInEST = now.toISOString();
+    
+    await env.DASHBOARD_DB.prepare(`
+      INSERT INTO clock_sessions (
+        id, va, date, clock_in, status
+      ) VALUES (?, ?, ?, ?, 'active')
+    `).bind(sessionId, va, dateKey, clockInEST).run();
+    
+    const newSession = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM clock_sessions WHERE id = ?
+    `).bind(sessionId).first();
+    
+    return {
+      success: true,
+      message: `Clocked in at ${now.toLocaleTimeString('en-US', { timeZone: 'America/New_York' })} EST`,
+      session: transformRow(newSession)
+    };
+  } catch (error) {
+    console.error('Clock in error:', error);
+    throw error;
+  }
+}
+
+async function clockOut(env, data) {
+  try {
+    // Ensure table exists first - force creation
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS clock_sessions (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        date TEXT NOT NULL,
+        clock_in DATETIME NOT NULL,
+        clock_out DATETIME,
+        hours_worked REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    const { va, notes } = data;
+    const now = getESTDate();
+    
+    // Find active session
+    const activeSession = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM clock_sessions 
+      WHERE va = ? AND status = 'active'
+      ORDER BY clock_in DESC
+      LIMIT 1
+    `).bind(va).first();
+    
+    if (!activeSession) {
+      return {
+        success: false,
+        message: 'Not currently clocked in.'
+      };
+    }
+    
+    // Calculate hours worked
+    const clockInTime = new Date(activeSession.clock_in);
+    const hoursWorked = (now - clockInTime) / (1000 * 60 * 60);
+    const clockOutEST = now.toISOString();
+    
+    // Update session with clock out time
+    await env.DASHBOARD_DB.prepare(`
+      UPDATE clock_sessions 
+      SET clock_out = ?, hours_worked = ?, status = 'completed', notes = ?
+      WHERE id = ?
+    `).bind(clockOutEST, hoursWorked, notes, activeSession.id).run();
+    
+    const updatedSession = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM clock_sessions WHERE id = ?
+    `).bind(activeSession.id).first();
+    
+    return {
+      success: true,
+      message: `Clocked out at ${now.toLocaleTimeString('en-US', { timeZone: 'America/New_York' })} EST. Worked ${hoursWorked.toFixed(2)} hours.`,
+      session: transformRow(updatedSession)
+    };
+  } catch (error) {
+    console.error('Clock out error:', error);
+    throw error;
+  }
+}
+
+async function getClockStatus(env, va) {
+  try {
+    // Ensure table exists with correct schema
+    await env.DASHBOARD_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS clock_sessions (
+        id TEXT PRIMARY KEY,
+        va TEXT NOT NULL,
+        date TEXT NOT NULL,
+        clock_in DATETIME NOT NULL,
+        clock_out DATETIME,
+        hours_worked REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    // Get active session if any
+    const activeSession = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM clock_sessions 
+      WHERE va = ? AND status = 'active'
+      ORDER BY clock_in DESC
+      LIMIT 1
+    `).bind(va).first();
+    
+    if (activeSession) {
+      // Calculate current session duration
+      const clockInTime = new Date(activeSession.clock_in);
+      const now = getESTDate();
+      const currentHours = (now - clockInTime) / (1000 * 60 * 60);
+      
+      return {
+        isClockedIn: true,
+        session: transformRow(activeSession),
+        currentSessionHours: Math.round(currentHours * 100) / 100,
+        clockInTime: activeSession.clock_in
+      };
+    }
+    
+    // Get today's completed sessions
+    const today = getESTDate().toISOString().split('T')[0];
+    const todaySessions = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM clock_sessions 
+      WHERE va = ? AND date = ? AND status = 'completed'
+      ORDER BY clock_in DESC
+    `).bind(va, today).all();
+    
+    const totalHoursToday = (todaySessions.results || []).reduce((sum, s) => sum + (s.hours_worked || 0), 0);
+    
+    return {
+      isClockedIn: false,
+      todayHours: Math.round(totalHoursToday * 100) / 100,
+      sessions: (todaySessions.results || []).map(transformRow)
+    };
+  } catch (error) {
+    console.error('Get clock status error:', error);
+    throw error;
+  }
+}
+
+// Get daily clock summary
+async function getClockDailySummary(env, date) {
+  try {
+    const targetDate = date || getESTDate().toISOString().split('T')[0];
+    
+    const result = await env.DASHBOARD_DB.prepare(`
+      SELECT 
+        va,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_sessions,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_sessions,
+        SUM(CASE WHEN status = 'completed' THEN hours_worked ELSE 0 END) as total_hours,
+        MIN(clock_in) as first_clock_in,
+        MAX(clock_out) as last_clock_out
+      FROM clock_sessions
+      WHERE date = ?
+      GROUP BY va
+      ORDER BY va
+    `).bind(targetDate).all();
+    
+    return {
+      success: true,
+      date: targetDate,
+      summary: (result.results || []).map(row => ({
+        va: row.va,
+        totalHours: row.total_hours || 0,
+        completedSessions: row.completed_sessions || 0,
+        activeSessions: row.active_sessions || 0,
+        firstClockIn: row.first_clock_in,
+        lastClockOut: row.last_clock_out
+      }))
+    };
+  } catch (error) {
+    console.error('Get daily summary error:', error);
+    return { success: false, summary: [] };
+  }
+}
+
+// Get weekly clock summary
+async function getClockWeeklySummary(env, startDate) {
+  try {
+    const start = startDate || getWeekStart(getESTDate()).toISOString().split('T')[0];
+    const startDateObj = new Date(start);
+    const endDateObj = new Date(startDateObj);
+    endDateObj.setDate(startDateObj.getDate() + 6);
+    const end = endDateObj.toISOString().split('T')[0];
+    
+    // Get data grouped by VA and date
+    const result = await env.DASHBOARD_DB.prepare(`
+      SELECT 
+        va,
+        date,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as sessions,
+        SUM(CASE WHEN status = 'completed' THEN hours_worked ELSE 0 END) as hours_worked
+      FROM clock_sessions
+      WHERE date >= ? AND date <= ?
+      GROUP BY va, date
+      ORDER BY va, date
+    `).bind(start, end).all();
+    
+    // Organize data
+    const byVA = {};
+    const byDay = {};
+    
+    (result.results || []).forEach(row => {
+      // By VA
+      if (!byVA[row.va]) {
+        byVA[row.va] = {
+          totalHours: 0,
+          daysWorked: 0,
+          dailyHours: {}
+        };
+      }
+      byVA[row.va].totalHours += row.hours_worked || 0;
+      if (row.hours_worked > 0) byVA[row.va].daysWorked++;
+      byVA[row.va].dailyHours[row.date] = row.hours_worked || 0;
+      
+      // By Day
+      if (!byDay[row.date]) {
+        byDay[row.date] = {
+          totalHours: 0,
+          vaCount: 0
+        };
+      }
+      byDay[row.date].totalHours += row.hours_worked || 0;
+      if (row.hours_worked > 0) byDay[row.date].vaCount++;
+    });
+    
+    return {
+      success: true,
+      weekStart: start,
+      weekEnd: end,
+      byVA,
+      byDay
+    };
+  } catch (error) {
+    console.error('Get weekly summary error:', error);
+    return { success: false, byVA: {}, byDay: {} };
+  }
+}
+
 // Payroll Functions
 async function getPayrollData(env, va, startDate, endDate) {
   try {
+    // Convert dates to EST for consistent querying
+    const estStartDate = formatESTDate(startDate);
+    const estEndDate = formatESTDate(endDate);
+    
     // Get time entries for period
     const timeEntries = await env.DASHBOARD_DB.prepare(`
       SELECT * FROM timeclock_entries 
       WHERE va = ? AND date >= ? AND date <= ?
       ORDER BY date ASC
-    `).bind(va, startDate, endDate).all();
+    `).bind(va, estStartDate, estEndDate).all();
+    
+    // Get clock sessions for daily breakdown
+    const clockSessions = await env.DASHBOARD_DB.prepare(`
+      SELECT date, va, SUM(hours_worked) as hours
+      FROM clock_sessions
+      WHERE va = ? AND date >= ? AND date <= ?
+      GROUP BY date, va
+      ORDER BY date ASC
+    `).bind(va, estStartDate, estEndDate).all();
     
     // Get launch entries for real spend calculation
     const launches = await env.DASHBOARD_DB.prepare(`
       SELECT SUM(real_spend) as totalRealSpend 
       FROM launch_entries 
       WHERE va = ? AND DATE(timestamp) >= ? AND DATE(timestamp) <= ?
-    `).bind(va, startDate, endDate).first();
+    `).bind(va, estStartDate, estEndDate).first();
     
     // Calculate totals
     let totalHours = 0;
     const entries = [];
+    const dailyBreakdown = [];
     
+    // Process timeclock entries
     for (const entry of timeEntries.results || []) {
       totalHours += entry.hours_worked;
       entries.push(transformRow(entry));
+    }
+    
+    // Process clock sessions for daily breakdown
+    for (const session of clockSessions.results || []) {
+      dailyBreakdown.push({
+        date: session.date,
+        va: session.va,
+        hours: session.hours || 0
+      });
+    }
+    
+    // If no clock sessions, use timeclock entries for daily breakdown
+    if (dailyBreakdown.length === 0 && timeEntries.results?.length > 0) {
+      for (const entry of timeEntries.results) {
+        dailyBreakdown.push({
+          date: entry.date,
+          va: entry.va,
+          hours: entry.hours_worked || 0
+        });
+      }
     }
     
     return {
       entries,
       totalHours,
       totalRealSpend: launches?.totalRealSpend || 0,
-      period: { start: startDate, end: endDate }
+      period: { start: startDate, end: endDate },
+      dailyBreakdown
     };
   } catch (error) {
     console.error('Error getting payroll data:', error);
@@ -578,6 +968,10 @@ async function getPayrollData(env, va, startDate, endDate) {
 async function createPayrollReport(env, report) {
   try {
     const id = `payroll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Ensure dates are in EST
+    const periodStart = formatESTDate(report.period.start);
+    const periodEnd = formatESTDate(report.period.end);
     
     // Calculate pay components
     const hourlyPay = report.totalHours * report.hourlyRate;
@@ -593,8 +987,8 @@ async function createPayrollReport(env, report) {
     `).bind(
       id,
       report.va,
-      report.period.start,
-      report.period.end,
+      periodStart,
+      periodEnd,
       report.totalHours,
       report.totalRealSpend,
       report.hourlyRate,
@@ -656,14 +1050,85 @@ async function updatePayrollReport(env, reportId, updates) {
     const updateFields = [];
     const values = [];
     
+    // Status updates
     if (updates.status !== undefined) {
       updateFields.push('status = ?');
       values.push(updates.status);
+      
+      // If marking as paid, record payment date
+      if (updates.status === 'paid') {
+        updateFields.push('payment_date = CURRENT_TIMESTAMP');
+      }
+    }
+    
+    // Void report
+    if (updates.voided !== undefined) {
+      updateFields.push('voided = ?');
+      values.push(updates.voided ? 1 : 0);
+    }
+    
+    // Edit payroll details
+    if (updates.edited !== undefined) {
+      updateFields.push('edited = ?');
+      values.push(updates.edited ? 1 : 0);
+    }
+    
+    if (updates.totalHours !== undefined) {
+      updateFields.push('total_hours = ?');
+      values.push(updates.totalHours);
+    }
+    
+    if (updates.hourlyRate !== undefined) {
+      updateFields.push('hourly_rate = ?');
+      values.push(updates.hourlyRate);
+    }
+    
+    if (updates.commissionRate !== undefined) {
+      updateFields.push('commission_rate = ?');
+      values.push(updates.commissionRate);
+    }
+    
+    if (updates.bonusAmount !== undefined) {
+      updateFields.push('bonus_amount = ?');
+      values.push(updates.bonusAmount);
+    }
+    
+    if (updates.bonusReason !== undefined) {
+      updateFields.push('bonus_reason = ?');
+      values.push(updates.bonusReason);
+    }
+    
+    // Recalculate pay if rates or hours changed
+    if (updates.totalHours !== undefined || updates.hourlyRate !== undefined || 
+        updates.commissionRate !== undefined || updates.bonusAmount !== undefined) {
+      
+      // Get current values
+      const current = await env.DASHBOARD_DB.prepare(`
+        SELECT * FROM payroll_reports WHERE id = ?
+      `).bind(reportId).first();
+      
+      const hours = updates.totalHours ?? current.total_hours;
+      const hourlyRate = updates.hourlyRate ?? current.hourly_rate;
+      const commissionRate = updates.commissionRate ?? current.commission_rate;
+      const realSpend = updates.totalRealSpend ?? current.total_real_spend;
+      const bonus = updates.bonusAmount ?? current.bonus_amount;
+      
+      const hourlyPay = hours * hourlyRate;
+      const commissionPay = realSpend * commissionRate;
+      const totalPay = hourlyPay + commissionPay + bonus;
+      
+      updateFields.push('hourly_pay = ?', 'commission_pay = ?', 'total_pay = ?');
+      values.push(hourlyPay, commissionPay, totalPay);
     }
     
     if (updates.paymentMethod !== undefined) {
       updateFields.push('payment_method = ?');
       values.push(updates.paymentMethod);
+    }
+    
+    if (updates.paymentDate !== undefined) {
+      updateFields.push('payment_date = ?');
+      values.push(updates.paymentDate);
     }
     
     if (updates.notes !== undefined) {
@@ -742,6 +1207,56 @@ async function exportPayrollReport(env, reportId) {
   }
 }
 
+// Get effective rates for a VA on a specific date
+async function getEffectiveRates(env, va, date) {
+  try {
+    // Get the most recent rate that's effective on or before the given date
+    const rate = await env.DASHBOARD_DB.prepare(`
+      SELECT * FROM va_rates 
+      WHERE va = ? AND effective_date <= ?
+      ORDER BY effective_date DESC
+      LIMIT 1
+    `).bind(va, date).first();
+    
+    if (rate) {
+      return {
+        hourlyRate: rate.hourly_rate,
+        commissionRate: rate.commission_rate
+      };
+    }
+    
+    // Default rates if no specific rates found
+    return {
+      hourlyRate: 5,
+      commissionRate: 0.03
+    };
+  } catch (error) {
+    console.error('Error getting effective rates:', error);
+    // Return defaults on error
+    return {
+      hourlyRate: 5,
+      commissionRate: 0.03
+    };
+  }
+}
+
+// Save VA rates
+async function saveVARates(env, va, hourlyRate, commissionRate, effectiveDate) {
+  try {
+    const id = `rate_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    await env.DASHBOARD_DB.prepare(`
+      INSERT OR REPLACE INTO va_rates (id, va, hourly_rate, commission_rate, effective_date)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(id, va, hourlyRate, commissionRate, effectiveDate).run();
+    
+    return { success: true, id };
+  } catch (error) {
+    console.error('Error saving VA rates:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 async function generateWeeklyPayroll(env) {
   try {
     const now = getESTDate();
@@ -753,19 +1268,34 @@ async function generateWeeklyPayroll(env) {
     const startDate = weekStart.toISOString().split('T')[0];
     const endDate = weekEnd.toISOString().split('T')[0];
     
-    // Get all VAs who have time entries for the week
-    const vas = await env.DASHBOARD_DB.prepare(`
+    // Get all VAs who have time entries or clock sessions for the week
+    const vasFromTimeclock = await env.DASHBOARD_DB.prepare(`
       SELECT DISTINCT va FROM timeclock_entries 
       WHERE date >= ? AND date <= ?
     `).bind(startDate, endDate).all();
     
+    const vasFromClock = await env.DASHBOARD_DB.prepare(`
+      SELECT DISTINCT va FROM clock_sessions 
+      WHERE date >= ? AND date <= ?
+    `).bind(startDate, endDate).all();
+    
+    // Combine unique VAs from both sources
+    const vaSet = new Set();
+    [...(vasFromTimeclock.results || []), ...(vasFromClock.results || [])].forEach(row => {
+      vaSet.add(row.va);
+    });
+    
     const reports = [];
     
-    for (const vaRow of vas.results || []) {
-      const va = vaRow.va;
-      
+    for (const va of vaSet) {
       // Get payroll data
       const payrollData = await getPayrollData(env, va, startDate, endDate);
+      
+      // Skip if no hours worked
+      if (payrollData.totalHours === 0) continue;
+      
+      // Get effective rates for this VA and period
+      const rates = await getEffectiveRates(env, va, endDate);
       
       // Create report
       const report = await createPayrollReport(env, {
@@ -773,8 +1303,8 @@ async function generateWeeklyPayroll(env) {
         period: { start: startDate, end: endDate },
         totalHours: payrollData.totalHours,
         totalRealSpend: payrollData.totalRealSpend,
-        hourlyRate: 5,
-        commissionRate: 0.03,
+        hourlyRate: rates.hourlyRate,
+        commissionRate: rates.commissionRate,
         bonusAmount: 0,
         notes: 'Weekly automated payroll'
       });
@@ -878,6 +1408,91 @@ export async function handleAdLaunches(request, env) {
       return new Response(JSON.stringify(result), { headers: corsHeaders });
     }
     
+    // Clock In/Out Routes
+    // Route: POST /api/clock-in
+    if (path === '/api/clock-in' && method === 'POST') {
+      try {
+        const data = await request.json();
+        const result = await clockIn(env, data);
+        return new Response(JSON.stringify(result), { headers: corsHeaders });
+      } catch (error) {
+        console.error('Clock in error:', error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          message: error.message || 'Failed to clock in'
+        }), { headers: corsHeaders });
+      }
+    }
+    
+    // Route: POST /api/clock-out
+    if (path === '/api/clock-out' && method === 'POST') {
+      try {
+        const data = await request.json();
+        const result = await clockOut(env, data);
+        return new Response(JSON.stringify(result), { headers: corsHeaders });
+      } catch (error) {
+        console.error('Clock out error:', error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          message: error.message || 'Failed to clock out'
+        }), { headers: corsHeaders });
+      }
+    }
+    
+    // Route: GET /api/clock-status/:va
+    if (path.startsWith('/api/clock-status/') && method === 'GET') {
+      try {
+        const va = decodeURIComponent(path.split('/').pop());
+        const result = await getClockStatus(env, va);
+        return new Response(JSON.stringify(result), { headers: corsHeaders });
+      } catch (error) {
+        console.error('Clock status error:', error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: error.message,
+          isClockedIn: false,
+          todayHours: 0,
+          sessions: []
+        }), { 
+          headers: corsHeaders,
+          status: 200 // Return 200 with error in body instead of 500
+        });
+      }
+    }
+    
+    // Route: GET /api/clock-summary/daily
+    if (path === '/api/clock-summary/daily' && method === 'GET') {
+      try {
+        const date = url.searchParams.get('date');
+        const result = await getClockDailySummary(env, date);
+        return new Response(JSON.stringify(result), { headers: corsHeaders });
+      } catch (error) {
+        console.error('Daily summary error:', error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          summary: [],
+          error: error.message
+        }), { headers: corsHeaders });
+      }
+    }
+    
+    // Route: GET /api/clock-summary/weekly
+    if (path === '/api/clock-summary/weekly' && method === 'GET') {
+      try {
+        const startDate = url.searchParams.get('startDate');
+        const result = await getClockWeeklySummary(env, startDate);
+        return new Response(JSON.stringify(result), { headers: corsHeaders });
+      } catch (error) {
+        console.error('Weekly summary error:', error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          byVA: {},
+          byDay: {},
+          error: error.message
+        }), { headers: corsHeaders });
+      }
+    }
+    
     // Payroll Routes
     // Route: GET /api/payroll
     if (path === '/api/payroll' && method === 'GET') {
@@ -921,6 +1536,21 @@ export async function handleAdLaunches(request, env) {
     if (path === '/api/generate-weekly-payroll' && method === 'POST') {
       const reports = await generateWeeklyPayroll(env);
       return new Response(JSON.stringify(reports), { headers: corsHeaders });
+    }
+    
+    // Route: POST /api/va-rates
+    if (path === '/api/va-rates' && method === 'POST') {
+      const { va, hourlyRate, commissionRate, effectiveDate } = await request.json();
+      const result = await saveVARates(env, va, hourlyRate, commissionRate, effectiveDate);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
+    }
+    
+    // Route: GET /api/va-rates/:va
+    if (path.match(/^\/api\/va-rates\/[^\/]+$/) && method === 'GET') {
+      const va = decodeURIComponent(path.split('/').pop());
+      const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
+      const rates = await getEffectiveRates(env, va, date);
+      return new Response(JSON.stringify(rates), { headers: corsHeaders });
     }
     
     // Route not found

@@ -227,7 +227,11 @@ export default {
       // Route Ad Launches and Payroll API requests (protected)
       const isPayrollRoute = path.startsWith('/api/tracker') || 
           path.startsWith('/api/timeclock') || 
+          path.startsWith('/api/clock-') || 
           path.startsWith('/api/payroll') || 
+          path.startsWith('/api/va-rates') ||
+          path.startsWith('/api/launch-entry') ||
+          path.startsWith('/api/time-entry') ||
           path === '/api/generate-weekly-payroll';
       
       console.log('Checking payroll routes:', { 
