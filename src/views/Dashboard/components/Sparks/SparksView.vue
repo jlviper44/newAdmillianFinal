@@ -69,8 +69,49 @@
                 />
               </v-col>
 
+              <v-col cols="auto">
+                <v-checkbox
+                  v-model="showThumbnails"
+                  label="Show Thumbnails"
+                  hide-details
+                  density="compact"
+                />
+              </v-col>
+
               <v-col cols="auto" class="ml-auto">
                 <v-btn
+                  v-if="!isBulkEditMode"
+                  variant="tonal"
+                  color="warning"
+                  class="mr-2"
+                  @click="startBulkEdit"
+                  prepend-icon="mdi-pencil-box-multiple"
+                >
+                  Edit All
+                </v-btn>
+                <template v-if="isBulkEditMode">
+                  <v-btn
+                    color="success"
+                    variant="elevated"
+                    class="mr-2"
+                    @click="saveBulkEdit"
+                    prepend-icon="mdi-check-all"
+                    :loading="isSavingBulk"
+                  >
+                    Save All
+                  </v-btn>
+                  <v-btn
+                    color="error"
+                    variant="tonal"
+                    class="mr-2"
+                    @click="cancelBulkEdit"
+                    prepend-icon="mdi-close"
+                  >
+                    Cancel
+                  </v-btn>
+                </template>
+                <v-btn
+                  v-if="!isBulkEditMode"
                   variant="tonal"
                   color="primary"
                   class="mr-2"
@@ -80,6 +121,7 @@
                   Export CSV
                 </v-btn>
                 <v-btn
+                  v-if="!isBulkEditMode"
                   color="primary"
                   variant="elevated"
                   class="mr-2"
@@ -89,6 +131,7 @@
                   Add Spark
                 </v-btn>
                 <v-btn
+                  v-if="!isBulkEditMode"
                   color="secondary"
                   variant="elevated"
                   class="mr-2"
@@ -98,6 +141,7 @@
                   Bulk Add
                 </v-btn>
                 <v-btn
+                  v-if="!isBulkEditMode"
                   variant="text"
                   @click="clearFilters"
                   prepend-icon="mdi-filter-remove"
@@ -153,6 +197,7 @@
             <!-- Name Column (editable) -->
             <template v-slot:item.name="{ item }">
               <div 
+                v-if="!isBulkEditMode"
                 @dblclick="startInlineEdit(item, 'name')"
                 class="editable-cell"
                 :title="'Double-click to edit'"
@@ -171,40 +216,61 @@
                 />
                 <span v-else class="font-weight-medium">{{ item.name }}</span>
               </div>
+              <v-text-field
+                v-else
+                v-model="bulkEditValues[`${item.id}-name`]"
+                density="compact"
+                variant="outlined"
+                hide-details
+                single-line
+              />
             </template>
 
             <!-- Type Column (editable) -->
             <template v-slot:item.type="{ item }">
               <div 
+                v-if="!isBulkEditMode"
                 @dblclick="startInlineEdit(item, 'type')"
                 class="editable-cell"
                 :title="'Double-click to edit'"
               >
-                <v-select
+                <v-combobox
                   v-if="isEditing(item.id, 'type')"
                   v-model="editingValues[`${item.id}-type`]"
-                  :items="['auto', 'manual']"
-                  :menu="menuStates[`${item.id}-type`]"
-                  @update:menu="val => menuStates[`${item.id}-type`] = val"
+                  :items="typeItems"
                   density="compact"
                   variant="outlined"
                   hide-details
-                  @update:model-value="val => { editingValues[`${item.id}-type`] = val; saveInlineEdit(item, 'type'); }"
+                  clearable
+                  autofocus
+                  @change="saveInlineEdit(item, 'type')"
+                  @keyup.enter.stop="saveInlineEdit(item, 'type')"
+                  @keyup.esc="cancelInlineEdit(item.id, 'type')"
                 />
                 <v-chip
                   v-else
                   size="small"
-                  :color="item.type === 'manual' ? 'purple' : 'indigo'"
+                  :color="getTypeColor(item.type)"
                   variant="flat"
                 >
-                  {{ item.type || 'Auto' }}
+                  {{ item.type || 'auto' }}
                 </v-chip>
               </div>
+              <v-combobox
+                v-else
+                v-model="bulkEditValues[`${item.id}-type`]"
+                :items="typeItems"
+                density="compact"
+                variant="outlined"
+                hide-details
+                clearable
+              />
             </template>
 
             <!-- Status Column (editable) -->
             <template v-slot:item.status="{ item }">
               <div 
+                v-if="!isBulkEditMode"
                 @dblclick="startInlineEdit(item, 'status')"
                 class="editable-cell"
                 :title="'Double-click to edit'"
@@ -212,12 +278,13 @@
                 <v-select
                   v-if="isEditing(item.id, 'status')"
                   v-model="editingValues[`${item.id}-status`]"
-                  :items="['active', 'completed', 'disabled']"
+                  :items="['active', 'testing', 'blocked']"
                   :menu="menuStates[`${item.id}-status`]"
                   @update:menu="val => menuStates[`${item.id}-status`] = val"
                   density="compact"
                   variant="outlined"
                   hide-details
+                  autofocus
                   @update:model-value="val => { editingValues[`${item.id}-status`] = val; saveInlineEdit(item, 'status'); }"
                 />
                 <v-chip
@@ -229,11 +296,20 @@
                   {{ getStatusLabel(item.status) }}
                 </v-chip>
               </div>
+              <v-select
+                v-else
+                v-model="bulkEditValues[`${item.id}-status`]"
+                :items="['active', 'testing', 'blocked']"
+                density="compact"
+                variant="outlined"
+                hide-details
+              />
             </template>
 
             <!-- Creator Column (editable) -->
             <template v-slot:item.creator="{ item }">
               <div 
+                v-if="!isBulkEditMode"
                 @dblclick="startInlineEdit(item, 'creator')"
                 class="editable-cell"
                 :title="'Double-click to edit'"
@@ -247,10 +323,19 @@
                   density="compact"
                   variant="outlined"
                   hide-details
+                  autofocus
                   @update:model-value="val => { editingValues[`${item.id}-creator`] = val; saveInlineEdit(item, 'creator'); }"
                 />
                 <span v-else>{{ item.creator || '-' }}</span>
               </div>
+              <v-select
+                v-else
+                v-model="bulkEditValues[`${item.id}-creator`]"
+                :items="virtualAssistants"
+                density="compact"
+                variant="outlined"
+                hide-details
+              />
             </template>
 
             <!-- TikTok Link Column -->
@@ -270,6 +355,7 @@
             <!-- Spark Code Column (editable) -->
             <template v-slot:item.spark_code="{ item }">
               <div 
+                v-if="!isBulkEditMode"
                 @dblclick="startInlineEdit(item, 'spark_code')"
                 class="editable-cell d-flex align-center"
                 :title="'Double-click to edit'"
@@ -300,6 +386,14 @@
                   </div>
                 </template>
               </div>
+              <v-text-field
+                v-else
+                v-model="bulkEditValues[`${item.id}-spark_code`]"
+                density="compact"
+                variant="outlined"
+                hide-details
+                single-line
+              />
             </template>
 
             <!-- Created Date Column -->
@@ -1044,15 +1138,15 @@
                 />
               </v-col>
               <v-col cols="12" md="6">
-                <v-select
+                <v-combobox
                   v-model="sparkForm.type"
                   label="Type"
-                  :items="[
-                    { title: 'Auto', value: 'auto' },
-                    { title: 'Manual', value: 'manual' }
-                  ]"
+                  :items="typeItems"
                   variant="outlined"
                   density="compact"
+                  clearable
+                  hint="Select from list or type a custom value"
+                  persistent-hint
                 />
               </v-col>
             </v-row>
@@ -1064,8 +1158,8 @@
                   label="Status"
                   :items="[
                     { title: 'Active', value: 'active' },
-                    { title: 'Completed', value: 'completed' },
-                    { title: 'Disabled', value: 'disabled' }
+                    { title: 'Testing', value: 'testing' },
+                    { title: 'Blocked', value: 'blocked' }
                   ]"
                   variant="outlined"
                   density="compact"
@@ -1132,15 +1226,15 @@
             <v-row>
               <!-- Type and Creator Selection -->
               <v-col cols="12" md="6">
-                <v-select
+                <v-combobox
                   v-model="bulkAddForm.type"
                   label="Type"
-                  :items="[
-                    { title: 'Auto', value: 'auto' },
-                    { title: 'Manual', value: 'manual' }
-                  ]"
+                  :items="typeItems"
                   variant="outlined"
                   density="compact"
+                  clearable
+                  hint="Select from list or type a custom value"
+                  persistent-hint
                   class="mb-4"
                 />
               </v-col>
@@ -1165,8 +1259,8 @@
                   label="Status"
                   :items="[
                     { title: 'Active', value: 'active' },
-                    { title: 'Completed', value: 'completed' },
-                    { title: 'Disabled', value: 'disabled' }
+                    { title: 'Testing', value: 'testing' },
+                    { title: 'Blocked', value: 'blocked' }
                   ]"
                   variant="outlined"
                   density="compact"
@@ -1418,6 +1512,11 @@ const editingCells = ref({});
 const editingValues = ref({});
 const menuStates = ref({});
 
+// Bulk edit mode state
+const isBulkEditMode = ref(false);
+const bulkEditValues = ref({});
+const isSavingBulk = ref(false);
+
 // Filter state
 const searchInput = ref('');
 const searchQuery = ref('');
@@ -1440,6 +1539,7 @@ const activeOnly = ref(false);
 // Table configuration
 const itemsPerPage = ref(25); // Increased for better performance with pagination
 const currentPage = ref(1);
+const showThumbnails = ref(true); // Toggle for showing thumbnail column
 
 // Modal state
 const showPreview = ref(false);
@@ -1454,7 +1554,7 @@ const deleteLoading = ref(false);
 // Form state
 const sparkForm = ref({
   name: '',
-  creator: undefined,  // No default, user must select
+  creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
   tiktokLink: '',
   sparkCode: '',
   type: 'auto',
@@ -1465,7 +1565,7 @@ const sparkForm = ref({
 const bulkAddForm = ref({
   baseName: '',
   type: 'auto',
-  creator: undefined,
+  creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
   status: 'active',
   sparkCodes: '',
   tiktokLinks: ''
@@ -1537,8 +1637,8 @@ const showSnackbar = ref(false);
 const snackbarText = ref('');
 const snackbarColor = ref('success');
 
-// Table headers
-const headers = ref([
+// Base table headers
+const baseHeaders = [
   { title: 'Date', key: 'created_at' },
   { title: 'Preview', key: 'thumbnail', sortable: false, width: '120px' },
   { title: 'TikTok Link', key: 'tiktok_link', sortable: false },
@@ -1548,20 +1648,51 @@ const headers = ref([
   { title: 'Creator', key: 'creator' },
   { title: 'Name', key: 'name' },
   { title: 'Actions', key: 'actions', sortable: false }
-]);
+];
 
-// Options for filters
+// Computed headers based on showThumbnails toggle and bulk edit mode
+const headers = computed(() => {
+  let headers = baseHeaders;
+  
+  // Hide thumbnail if toggle is off
+  if (!showThumbnails.value) {
+    headers = headers.filter(h => h.key !== 'thumbnail');
+  }
+  
+  // Hide TikTok link and Actions columns in bulk edit mode
+  if (isBulkEditMode.value) {
+    headers = headers.filter(h => h.key !== 'tiktok_link' && h.key !== 'actions');
+    // Make spark_code column wider in bulk edit mode
+    headers = headers.map(h => {
+      if (h.key === 'spark_code') {
+        return { ...h, width: '250px' };
+      }
+      return h;
+    });
+  }
+  
+  return headers;
+});
+
+// Common type items for combobox (without 'All Types' option)
+const typeItems = ref(['CPI', 'Sweeps', 'Cash', 'PayPal', 'Auto', 'Home']);
+
+// Options for filters (includes 'All Types')
 const typeOptions = ref([
   { title: 'All Types', value: 'all' },
-  { title: 'Auto', value: 'auto' },
-  { title: 'Manual', value: 'manual' }
+  { title: 'CPI', value: 'CPI' },
+  { title: 'Sweeps', value: 'Sweeps' },
+  { title: 'Cash', value: 'Cash' },
+  { title: 'PayPal', value: 'PayPal' },
+  { title: 'Auto', value: 'Auto' },
+  { title: 'Home', value: 'Home' }
 ]);
 
 const statusOptions = ref([
   { title: 'All Status', value: 'all' },
   { title: 'Active', value: 'active' },
-  { title: 'Completed', value: 'completed' },
-  { title: 'Disabled', value: 'disabled' }
+  { title: 'Testing', value: 'testing' },
+  { title: 'Blocked', value: 'blocked' }
 ]);
 
 const creatorOptions = ref([
@@ -1753,6 +1884,26 @@ const fetchSparks = async () => {
         creator: spark.creator || 'None'  // Show "None" instead of "Unknown"
       })));
       
+      // Update type options dynamically based on actual types in data
+      const uniqueTypes = [...new Set(sparks.value.map(s => s.type).filter(t => t))];
+      
+      // Update typeItems to include any new custom types
+      const existingTypeItems = new Set(typeItems.value);
+      uniqueTypes.forEach(type => {
+        if (!existingTypeItems.has(type)) {
+          typeItems.value.push(type);
+        }
+      });
+      
+      // Update typeOptions for the filter dropdown
+      typeOptions.value = [
+        { title: 'All Types', value: 'all' },
+        ...uniqueTypes.sort().map(t => ({ 
+          title: t.charAt(0).toUpperCase() + t.slice(1), 
+          value: t 
+        }))
+      ];
+      
       // Use virtual assistants for creator options if available
       const uniqueCreators = [...new Set(sparks.value.map(s => s.creator).filter(c => c))];
       
@@ -1843,17 +1994,38 @@ const clearFilters = () => {
   statusFilter.value = 'all';
   creatorFilter.value = 'all';
   activeOnly.value = false;
+  showThumbnails.value = true;
   currentPage.value = 1;
+};
+
+const getTypeColor = (type) => {
+  const lowerType = (type || 'Auto').toLowerCase();
+  switch (lowerType) {
+    case 'cpi':
+      return 'blue';
+    case 'sweeps':
+      return 'purple';
+    case 'cash':
+      return 'green';
+    case 'paypal':
+      return 'orange';
+    case 'auto':
+      return 'indigo';
+    case 'home':
+      return 'teal';
+    default:
+      return 'grey';
+  }
 };
 
 const getStatusColor = (status) => {
   switch (status) {
     case 'active':
       return 'success';
-    case 'completed':
-      return 'blue';
-    case 'disabled':
-      return 'grey';
+    case 'testing':
+      return 'warning';
+    case 'blocked':
+      return 'error';
     default:
       return 'grey';
   }
@@ -1863,10 +2035,10 @@ const getStatusLabel = (status) => {
   switch (status) {
     case 'active':
       return 'Active';
-    case 'completed':
-      return 'Completed';
-    case 'disabled':
-      return 'Disabled';
+    case 'testing':
+      return 'Testing';
+    case 'blocked':
+      return 'Blocked';
     default:
       return status;
   }
@@ -1895,7 +2067,7 @@ const openCreateModal = () => {
   editingSparkData.value = null;
   sparkForm.value = {
     name: '',
-    creator: undefined,  // No default, user must select
+    creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
     tiktokLink: '',
     sparkCode: '',
     type: 'auto',
@@ -1969,10 +2141,13 @@ const isEditing = (itemId, field) => {
 };
 
 const startInlineEdit = (item, field) => {
+  // Get the current item from the sparks array to ensure we have the latest data
+  const currentItem = sparks.value.find(s => s.id === item.id) || item;
+  
   // Set the editing state
-  const key = `${item.id}-${field}`;
+  const key = `${currentItem.id}-${field}`;
   editingCells.value[key] = true;
-  editingValues.value[key] = item[field];
+  editingValues.value[key] = currentItem[field];
   // Open menu for select fields
   menuStates.value[key] = true;
 };
@@ -2018,10 +2193,21 @@ const saveInlineEdit = async (item, field) => {
     updateData[apiField] = newValue;
     
     // Update the spark
-    await sparksApi.updateSpark(item.id, updateData);
+    const response = await sparksApi.updateSpark(item.id, updateData);
     
-    // Update local data with the original field name
-    item[field] = newValue;
+    if (response.success) {
+      // Since the sparks array is frozen, we need to find and replace the item
+      const index = sparks.value.findIndex(s => s.id === item.id);
+      if (index !== -1) {
+        // Create a new array with the updated item
+        const updatedSparks = [...sparks.value];
+        updatedSparks[index] = Object.freeze({
+          ...item,
+          [field]: newValue
+        });
+        sparks.value = Object.freeze(updatedSparks);
+      }
+    }
     
     // Clear editing state
     cancelInlineEdit(item.id, field);
@@ -2061,7 +2247,7 @@ const bulkAdd = () => {
   bulkAddForm.value = {
     baseName: '',
     type: 'auto',
-    creator: undefined,
+    creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
     status: 'active',
     sparkCodes: '',
     tiktokLinks: ''
@@ -3013,6 +3199,93 @@ const showWarning = (message) => {
   snackbarText.value = message;
   snackbarColor.value = 'warning';
   showSnackbar.value = true;
+};
+
+// Bulk Edit Functions
+const startBulkEdit = () => {
+  isBulkEditMode.value = true;
+  bulkEditValues.value = {};
+  
+  // Initialize bulk edit values with current values
+  filteredSparks.value.forEach(spark => {
+    bulkEditValues.value[`${spark.id}-name`] = spark.name;
+    bulkEditValues.value[`${spark.id}-type`] = spark.type;
+    bulkEditValues.value[`${spark.id}-status`] = spark.status;
+    bulkEditValues.value[`${spark.id}-creator`] = spark.creator;
+    bulkEditValues.value[`${spark.id}-spark_code`] = spark.spark_code;
+  });
+};
+
+const cancelBulkEdit = () => {
+  isBulkEditMode.value = false;
+  bulkEditValues.value = {};
+};
+
+const saveBulkEdit = async () => {
+  isSavingBulk.value = true;
+  
+  try {
+    const updates = [];
+    
+    // Collect all changes
+    filteredSparks.value.forEach(spark => {
+      const hasChanges = 
+        bulkEditValues.value[`${spark.id}-name`] !== spark.name ||
+        bulkEditValues.value[`${spark.id}-type`] !== spark.type ||
+        bulkEditValues.value[`${spark.id}-status`] !== spark.status ||
+        bulkEditValues.value[`${spark.id}-creator`] !== spark.creator ||
+        bulkEditValues.value[`${spark.id}-spark_code`] !== spark.spark_code;
+      
+      if (hasChanges) {
+        updates.push({
+          id: spark.id,
+          name: bulkEditValues.value[`${spark.id}-name`],
+          type: bulkEditValues.value[`${spark.id}-type`],
+          status: bulkEditValues.value[`${spark.id}-status`],
+          creator: bulkEditValues.value[`${spark.id}-creator`],
+          sparkCode: bulkEditValues.value[`${spark.id}-spark_code`],
+          tiktokLink: spark.tiktok_link // Keep existing value
+        });
+      }
+    });
+    
+    if (updates.length === 0) {
+      showSuccess('No changes to save');
+      cancelBulkEdit();
+      return;
+    }
+    
+    // Save all updates
+    let successCount = 0;
+    let failedCount = 0;
+    
+    for (const update of updates) {
+      try {
+        await sparksApi.updateSpark(update.id, update);
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to update spark ${update.id}:`, error);
+        failedCount++;
+      }
+    }
+    
+    if (successCount > 0) {
+      showSuccess(`Successfully updated ${successCount} spark${successCount > 1 ? 's' : ''}`);
+      // Refresh the data
+      await fetchSparks();
+    }
+    
+    if (failedCount > 0) {
+      showError(`Failed to update ${failedCount} spark${failedCount > 1 ? 's' : ''}`);
+    }
+    
+    cancelBulkEdit();
+  } catch (error) {
+    console.error('Bulk save error:', error);
+    showError('Failed to save bulk changes');
+  } finally {
+    isSavingBulk.value = false;
+  }
 };
 
 // Lifecycle
