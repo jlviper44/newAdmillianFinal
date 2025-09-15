@@ -8,1037 +8,122 @@
       <v-tab v-if="!isAssistingUser" value="invoices">Invoices</v-tab>
     </v-tabs>
 
-    <!-- Sparks Tab Content -->
+    <!-- Tab Content -->
     <v-window v-model="activeTab">
       <v-window-item value="sparks">
-        <!-- Search and Filters Bar -->
-        <v-card class="mb-4">
-          <v-card-text>
-            <v-row align="center">
-              <v-col cols="12" md="3">
-                <v-text-field
-                  v-model="searchInput"
-                  label="Search sparks..."
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  prepend-inner-icon="mdi-magnify"
-                  clearable
-                />
-              </v-col>
-
-              <v-col cols="12" md="2">
-                <v-select
-                  v-model="typeFilter"
-                  :items="typeOptions"
-                  label="Type"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-
-              <v-col cols="12" md="2">
-                <v-select
-                  v-model="statusFilter"
-                  :items="statusOptions"
-                  label="Status"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-
-              <v-col cols="12" md="2">
-                <v-select
-                  v-model="creatorFilter"
-                  :items="creatorOptions"
-                  label="Creator"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-
-              <v-col cols="auto">
-                <v-checkbox
-                  v-model="activeOnly"
-                  label="Active Only"
-                  hide-details
-                  density="compact"
-                />
-              </v-col>
-
-              <v-col cols="auto">
-                <v-checkbox
-                  v-model="showThumbnails"
-                  label="Show Thumbnails"
-                  hide-details
-                  density="compact"
-                />
-              </v-col>
-
-              <v-col cols="auto" class="ml-auto">
-                <v-btn
-                  v-if="!isBulkEditMode"
-                  variant="tonal"
-                  color="warning"
-                  class="mr-2"
-                  @click="startBulkEdit"
-                  prepend-icon="mdi-pencil-box-multiple"
-                >
-                  Edit All
-                </v-btn>
-                <template v-if="isBulkEditMode">
-                  <v-btn
-                    color="success"
-                    variant="elevated"
-                    class="mr-2"
-                    @click="saveBulkEdit"
-                    prepend-icon="mdi-check-all"
-                    :loading="isSavingBulk"
-                  >
-                    Save All
-                  </v-btn>
-                  <v-btn
-                    color="error"
-                    variant="tonal"
-                    class="mr-2"
-                    @click="cancelBulkEdit"
-                    prepend-icon="mdi-close"
-                  >
-                    Cancel
-                  </v-btn>
-                </template>
-                <v-btn
-                  v-if="!isBulkEditMode"
-                  variant="tonal"
-                  color="primary"
-                  class="mr-2"
-                  @click="exportToCSV"
-                  prepend-icon="mdi-download"
-                >
-                  Export CSV
-                </v-btn>
-                <v-btn
-                  v-if="!isBulkEditMode"
-                  color="primary"
-                  variant="elevated"
-                  class="mr-2"
-                  @click="openCreateModal"
-                  prepend-icon="mdi-plus"
-                >
-                  Add Spark
-                </v-btn>
-                <v-btn
-                  v-if="!isBulkEditMode"
-                  color="secondary"
-                  variant="elevated"
-                  class="mr-2"
-                  @click="bulkAdd"
-                  prepend-icon="mdi-plus-box-multiple"
-                >
-                  Bulk Add
-                </v-btn>
-                <v-btn
-                  v-if="!isBulkEditMode"
-                  variant="text"
-                  @click="clearFilters"
-                  prepend-icon="mdi-filter-remove"
-                >
-                  Clear Filters
-                </v-btn>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-
-        <!-- Data Table -->
-        <v-card>
-          <v-card-text class="pa-2">
-            <v-alert
-              type="info"
-              variant="tonal"
-              density="compact"
-              class="mb-2"
-            >
-              Double-click any cell to edit inline. Press Enter to save or Esc to cancel.
-            </v-alert>
-          </v-card-text>
-          <v-data-table
-            :headers="headers"
-            :items="filteredSparks"
-            :items-per-page="itemsPerPage"
-            :loading="isLoading"
-            :items-per-page-options="[10, 25, 50, 100]"
-            :page="currentPage"
-            @update:page="currentPage = $event"
-            class="sparks-table"
-            hover
-            fixed-header
-            height="600"
-          >
-            <!-- Thumbnail Column -->
-            <template v-slot:item.thumbnail="{ item }">
-              <div class="thumbnail-container my-2">
-                <v-img
-                  :src="item.thumbnail || defaultThumbnail"
-                  :alt="item.name"
-                  width="150"
-                  height="150"
-                  cover
-                  class="rounded cursor-pointer"
-                  @click="showLargePreview(item)"
-                  @error="handleImageError"
-                />
-              </div>
-            </template>
-
-            <!-- Name Column (editable) -->
-            <template v-slot:item.name="{ item }">
-              <div 
-                v-if="!isBulkEditMode"
-                @dblclick="startInlineEdit(item, 'name')"
-                class="editable-cell"
-                :title="'Double-click to edit'"
-              >
-                <v-text-field
-                  v-if="isEditing(item.id, 'name')"
-                  v-model="editingValues[`${item.id}-name`]"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  single-line
-                  autofocus
-                  @blur="saveInlineEdit(item, 'name')"
-                  @keyup.enter="saveInlineEdit(item, 'name')"
-                  @keyup.esc="cancelInlineEdit(item.id, 'name')"
-                />
-                <span v-else class="font-weight-medium">{{ item.name }}</span>
-              </div>
-              <v-text-field
-                v-else
-                v-model="bulkEditValues[`${item.id}-name`]"
-                density="compact"
-                variant="outlined"
-                hide-details
-                single-line
-              />
-            </template>
-
-            <!-- Type Column (editable) -->
-            <template v-slot:item.type="{ item }">
-              <div 
-                v-if="!isBulkEditMode"
-                @dblclick="startInlineEdit(item, 'type')"
-                class="editable-cell"
-                :title="'Double-click to edit'"
-              >
-                <v-combobox
-                  v-if="isEditing(item.id, 'type')"
-                  v-model="editingValues[`${item.id}-type`]"
-                  :items="typeItems"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  clearable
-                  autofocus
-                  @change="saveInlineEdit(item, 'type')"
-                  @keyup.enter.stop="saveInlineEdit(item, 'type')"
-                  @keyup.esc="cancelInlineEdit(item.id, 'type')"
-                />
-                <v-chip
-                  v-else
-                  size="small"
-                  :color="getTypeColor(item.type)"
-                  variant="flat"
-                >
-                  {{ item.type || 'auto' }}
-                </v-chip>
-              </div>
-              <v-combobox
-                v-else
-                v-model="bulkEditValues[`${item.id}-type`]"
-                :items="typeItems"
-                density="compact"
-                variant="outlined"
-                hide-details
-                clearable
-              />
-            </template>
-
-            <!-- Status Column (editable) -->
-            <template v-slot:item.status="{ item }">
-              <div 
-                v-if="!isBulkEditMode"
-                @dblclick="startInlineEdit(item, 'status')"
-                class="editable-cell"
-                :title="'Double-click to edit'"
-              >
-                <v-select
-                  v-if="isEditing(item.id, 'status')"
-                  v-model="editingValues[`${item.id}-status`]"
-                  :items="['active', 'testing', 'blocked']"
-                  :menu="menuStates[`${item.id}-status`]"
-                  @update:menu="val => menuStates[`${item.id}-status`] = val"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  autofocus
-                  @update:model-value="val => { editingValues[`${item.id}-status`] = val; saveInlineEdit(item, 'status'); }"
-                />
-                <v-chip
-                  v-else
-                  size="small"
-                  :color="getStatusColor(item.status)"
-                  variant="flat"
-                >
-                  {{ getStatusLabel(item.status) }}
-                </v-chip>
-              </div>
-              <v-select
-                v-else
-                v-model="bulkEditValues[`${item.id}-status`]"
-                :items="['active', 'testing', 'blocked']"
-                density="compact"
-                variant="outlined"
-                hide-details
-              />
-            </template>
-
-            <!-- Creator Column (editable) -->
-            <template v-slot:item.creator="{ item }">
-              <div 
-                v-if="!isBulkEditMode"
-                @dblclick="startInlineEdit(item, 'creator')"
-                class="editable-cell"
-                :title="'Double-click to edit'"
-              >
-                <v-select
-                  v-if="isEditing(item.id, 'creator')"
-                  v-model="editingValues[`${item.id}-creator`]"
-                  :items="virtualAssistants"
-                  :menu="menuStates[`${item.id}-creator`]"
-                  @update:menu="val => menuStates[`${item.id}-creator`] = val"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  autofocus
-                  @update:model-value="val => { editingValues[`${item.id}-creator`] = val; saveInlineEdit(item, 'creator'); }"
-                />
-                <span v-else>{{ item.creator || '-' }}</span>
-              </div>
-              <v-select
-                v-else
-                v-model="bulkEditValues[`${item.id}-creator`]"
-                :items="virtualAssistants"
-                density="compact"
-                variant="outlined"
-                hide-details
-              />
-            </template>
-
-            <!-- TikTok Link Column -->
-            <template v-slot:item.tiktok_link="{ item }">
-              <v-btn
-                icon
-                variant="text"
-                size="small"
-                :href="item.tiktok_link"
-                target="_blank"
-                @click.stop
-              >
-                <v-icon>mdi-open-in-new</v-icon>
-              </v-btn>
-            </template>
-
-            <!-- Spark Code Column (editable) -->
-            <template v-slot:item.spark_code="{ item }">
-              <div 
-                v-if="!isBulkEditMode"
-                @dblclick="startInlineEdit(item, 'spark_code')"
-                class="editable-cell d-flex align-center"
-                :title="'Double-click to edit'"
-              >
-                <v-text-field
-                  v-if="isEditing(item.id, 'spark_code')"
-                  v-model="editingValues[`${item.id}-spark_code`]"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  single-line
-                  autofocus
-                  @blur="saveInlineEdit(item, 'spark_code')"
-                  @keyup.enter="saveInlineEdit(item, 'spark_code')"
-                  @keyup.esc="cancelInlineEdit(item.id, 'spark_code')"
-                />
-                <template v-else>
-                  <div class="d-flex align-center">
-                    <code class="mr-2 text-truncate spark-code-truncate">{{ item.spark_code }}</code>
-                    <v-btn
-                      icon
-                      variant="text"
-                      size="x-small"
-                      @click.stop="copyCode(item.spark_code)"
-                    >
-                      <v-icon size="small">mdi-content-copy</v-icon>
-                    </v-btn>
-                  </div>
-                </template>
-              </div>
-              <v-text-field
-                v-else
-                v-model="bulkEditValues[`${item.id}-spark_code`]"
-                density="compact"
-                variant="outlined"
-                hide-details
-                single-line
-              />
-            </template>
-
-            <!-- Created Date Column -->
-            <template v-slot:item.created_at="{ item }">
-              {{ formatDate(item.created_at) }}
-            </template>
-
-            <!-- Actions Column -->
-            <template v-slot:item.actions="{ item }">
-              <v-btn
-                icon
-                variant="text"
-                size="small"
-                color="primary"
-                @click.stop="editSpark(item)"
-              >
-                <v-icon>mdi-pencil</v-icon>
-              </v-btn>
-              <v-btn
-                icon
-                variant="text"
-                size="small"
-                color="error"
-                @click.stop="deleteSpark(item)"
-              >
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
-            </template>
-          </v-data-table>
-        </v-card>
+        <SparksTab
+          :sparks="sparks"
+          :is-loading="isLoading"
+          v-model:search-input="searchInput"
+          v-model:type-filter="typeFilter"
+          v-model:status-filter="statusFilter"
+          v-model:creator-filter="creatorFilter"
+          v-model:active-only="activeOnly"
+          v-model:show-thumbnails="showThumbnails"
+          :is-bulk-edit-mode="isBulkEditMode"
+          :is-saving-bulk="isSavingBulk"
+          v-model:items-per-page="itemsPerPage"
+          v-model:current-page="currentPage"
+          :headers="headers"
+          :filtered-sparks="filteredSparks"
+          :editing-cells="editingCells"
+          :editing-values="editingValues"
+          :menu-states="menuStates"
+          :bulk-edit-values="bulkEditValues"
+          :type-options="typeOptions"
+          :status-options="statusOptions"
+          :creator-options="creatorOptions"
+          :virtual-assistants="virtualAssistants"
+          :type-items="typeItems"
+          :default-thumbnail="defaultThumbnail"
+          @clear-filters="clearFilters"
+          @start-bulk-edit="startBulkEdit"
+          @save-bulk-edit="saveBulkEdit"
+          @cancel-bulk-edit="cancelBulkEdit"
+          @export-to-csv="exportToCSV"
+          @open-create-modal="openCreateModal"
+          @bulk-add="bulkAdd"
+          @show-large-preview="showLargePreview"
+          @handle-image-error="handleImageError"
+          @start-inline-edit="startInlineEdit"
+          @save-inline-edit="saveInlineEdit"
+          @cancel-inline-edit="cancelInlineEdit"
+          @copy-code="copyCode"
+          @edit-spark="editSpark"
+          @delete-spark="deleteSpark"
+          @show-batch-update-success="handleBatchUpdateSuccess"
+          @show-batch-update-warning="showWarning"
+          @apply-batch-updates="applyBatchUpdates"
+        />
       </v-window-item>
 
       <!-- Payments Tab Content -->
       <v-window-item value="payments">
-        <!-- Undo Button -->
-        <v-slide-y-transition>
-          <v-alert
-            v-if="showUndoButton"
-            type="success"
-            variant="tonal"
-            closable
-            @click:close="showUndoButton = false"
-            class="mb-4"
-          >
-            <div class="d-flex align-center justify-space-between">
-              <span>Payment marked successfully for {{ lastPaymentAction?.creator }}</span>
-              <v-btn
-                color="warning"
-                variant="elevated"
-                size="small"
-                @click="undoLastPayment"
-                prepend-icon="mdi-undo"
-              >
-                Undo
-              </v-btn>
-            </div>
-          </v-alert>
-        </v-slide-y-transition>
-        
-        <!-- Summary Cards -->
-        <v-row class="mb-4">
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-primary mb-2">${{ totalOwed }}</h3>
-                <p class="text-body-2 text-grey">Total Owed</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-success mb-2">${{ totalPaid }}</h3>
-                <p class="text-body-2 text-grey">Total Paid</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-warning mb-2">{{ unpaidSparks }}</h3>
-                <p class="text-body-2 text-grey">Unpaid Videos</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-info mb-2">{{ activeCreators }}</h3>
-                <p class="text-body-2 text-grey">Active Creators</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Payment Settings -->
-        <v-card class="mb-4">
-          <v-card-title>
-            <span>Payment Settings</span>
-            <v-spacer />
-            <v-btn
-              color="primary"
-              variant="elevated"
-              :loading="isSavingSettings"
-              @click="savePaymentSettings"
-              prepend-icon="mdi-content-save"
-            >
-              Save Settings
-            </v-btn>
-          </v-card-title>
-          <v-card-text>
-            <v-row>
-              <v-col cols="12" md="4">
-                <v-text-field
-                  v-model="defaultRate"
-                  label="Default Rate per Video"
-                  prefix="$"
-                  type="number"
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field
-                  v-model="defaultCommissionRate"
-                  label="Default Commission"
-                  :suffix="defaultCommissionType === 'percentage' ? '%' : '$'"
-                  type="number"
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-select
-                  v-model="defaultCommissionType"
-                  label="Commission Type"
-                  :items="[{title: 'Percentage', value: 'percentage'}, {title: 'Fixed Amount', value: 'fixed'}]"
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-            </v-row>
-
-            <h4 class="text-h6 mb-3">Creator Custom Rates & Commissions</h4>
-            <v-row>
-              <v-col
-                v-for="creator in creators"
-                :key="creator.id"
-                cols="12"
-              >
-                <v-card variant="outlined" class="pa-3">
-                  <div class="font-weight-medium mb-2">{{ creator.name }}</div>
-                  <v-row>
-                    <v-col cols="12" md="4">
-                      <v-text-field
-                        v-model="creator.rate"
-                        label="Rate per Video"
-                        prefix="$"
-                        type="number"
-                        variant="outlined"
-                        density="compact"
-                        hide-details
-                      />
-                    </v-col>
-                    <v-col cols="12" md="4">
-                      <v-text-field
-                        v-model="creator.commissionRate"
-                        label="Commission"
-                        :suffix="creator.commissionType === 'percentage' ? '%' : '$'"
-                        type="number"
-                        variant="outlined"
-                        density="compact"
-                        hide-details
-                      />
-                    </v-col>
-                    <v-col cols="12" md="4">
-                      <v-select
-                        v-model="creator.commissionType"
-                        label="Type"
-                        :items="[{title: 'Percentage', value: 'percentage'}, {title: 'Fixed', value: 'fixed'}]"
-                        variant="outlined"
-                        density="compact"
-                        hide-details
-                      />
-                    </v-col>
-                  </v-row>
-                </v-card>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-
-        <!-- Payments List -->
-        <v-card>
-          <v-card-title>Payment Summary by Creator</v-card-title>
-          <v-card-text>
-            <v-expansion-panels
-              v-if="paymentsByCreator.length > 0"
-              variant="accordion"
-            >
-              <v-expansion-panel
-                v-for="creatorPayment in paymentsByCreator"
-                :key="creatorPayment.creator"
-              >
-                <v-expansion-panel-title>
-                  <v-row align="center" class="flex-grow-0">
-                    <v-col cols="auto">
-                      <v-avatar color="primary" size="32">
-                        <span>{{ creatorPayment.creator.charAt(0) }}</span>
-                      </v-avatar>
-                    </v-col>
-                    <v-col>
-                      <div class="font-weight-medium">{{ creatorPayment.creator }}</div>
-                      <div class="text-caption text-grey">
-                        {{ creatorPayment.videos.length }} video{{ creatorPayment.videos.length !== 1 ? 's' : '' }} • 
-                        ${{ creatorPayment.rate }}/video
-                        <span v-if="creatorPayment.commissionRate > 0">
-                          + {{ creatorPayment.commissionRate }}{{ creatorPayment.commissionType === 'percentage' ? '%' : '$' }} commission
-                        </span>
-                      </div>
-                    </v-col>
-                    <v-col cols="auto">
-                      <div class="text-right">
-                        <div class="text-h6 text-primary">${{ creatorPayment.total }}</div>
-                        <div class="text-caption text-grey">
-                          Base: ${{ creatorPayment.baseAmount }}
-                          <span v-if="creatorPayment.commissionAmount > 0">
-                            + Commission: ${{ creatorPayment.commissionAmount }}
-                          </span>
-                        </div>
-                      </div>
-                    </v-col>
-                  </v-row>
-                </v-expansion-panel-title>
-                <v-expansion-panel-text>
-                  <v-list density="compact">
-                    <v-list-item
-                      v-for="video in creatorPayment.videos"
-                      :key="video.id"
-                      class="pl-0"
-                    >
-                      <template v-slot:prepend>
-                        <v-icon size="small" color="grey">mdi-video</v-icon>
-                      </template>
-                      <v-list-item-title>{{ video.name }}</v-list-item-title>
-                      <v-list-item-subtitle>
-                        <v-chip size="x-small" variant="flat" class="mr-2">{{ video.spark_code }}</v-chip>
-                        <span class="text-caption">{{ formatDate(video.created_at) }}</span>
-                      </v-list-item-subtitle>
-                      <template v-slot:append>
-                        <v-btn
-                          icon
-                          variant="text"
-                          size="x-small"
-                          :href="video.tiktok_link"
-                          target="_blank"
-                        >
-                          <v-icon size="small">mdi-open-in-new</v-icon>
-                        </v-btn>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                  <v-divider class="my-2"></v-divider>
-                  <div class="d-flex justify-end">
-                    <v-btn
-                      color="success"
-                      variant="tonal"
-                      size="small"
-                      @click="markCreatorPaid(creatorPayment.creator)"
-                    >
-                      Mark All Paid
-                    </v-btn>
-                  </div>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
-            <v-alert
-              v-else
-              type="info"
-              variant="tonal"
-              class="mt-4"
-            >
-              No unpaid videos found
-            </v-alert>
-          </v-card-text>
-        </v-card>
+        <PaymentsTab
+          v-model:show-undo-button="showUndoButton"
+          :last-payment-action="lastPaymentAction"
+          :total-owed="totalOwed"
+          :total-paid="totalPaid"
+          :unpaid-sparks="unpaidSparks"
+          :active-creators="activeCreators"
+          v-model:default-rate="defaultRate"
+          v-model:default-commission-rate="defaultCommissionRate"
+          v-model:default-commission-type="defaultCommissionType"
+          :is-saving-settings="isSavingSettings"
+          :creators="creators"
+          :payments-by-creator="paymentsByCreator"
+          @undo-last-payment="undoLastPayment"
+          @save-payment-settings="savePaymentSettings"
+          @mark-creator-paid="markCreatorPaid"
+        />
       </v-window-item>
 
       <!-- Payment History Tab Content -->
       <v-window-item value="history">
-        <!-- Date Range Filter -->
-        <v-card class="mb-4">
-          <v-card-text>
-            <v-row align="center">
-              <v-col cols="12" md="3">
-                <v-text-field
-                  v-model="historyDateFrom"
-                  label="From Date"
-                  type="date"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" md="3">
-                <v-text-field
-                  v-model="historyDateTo"
-                  label="To Date"
-                  type="date"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" md="3">
-                <v-select
-                  v-model="historyCreatorFilter"
-                  :items="historyCreatorOptions"
-                  label="Creator"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="auto">
-                <v-btn
-                  color="primary"
-                  variant="tonal"
-                  @click="filterPaymentHistory"
-                  prepend-icon="mdi-filter"
-                >
-                  Apply Filter
-                </v-btn>
-              </v-col>
-              <v-col cols="auto">
-                <v-btn
-                  variant="text"
-                  @click="clearHistoryFilters"
-                  prepend-icon="mdi-filter-remove"
-                >
-                  Clear
-                </v-btn>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-
-        <!-- Payment History Summary -->
-        <v-row class="mb-4">
-          <v-col cols="12" md="4">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-success mb-2">${{ totalPaidInPeriod }}</h3>
-                <p class="text-body-2 text-grey">Total Paid in Period</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-info mb-2">{{ totalPayments }}</h3>
-                <p class="text-body-2 text-grey">Total Payments</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-primary mb-2">{{ totalVideosPaid }}</h3>
-                <p class="text-body-2 text-grey">Videos Paid</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Payment History Table -->
-        <v-card>
-          <v-card-title>
-            Payment Records
-            <v-spacer />
-            <v-btn
-              variant="tonal"
-              color="primary"
-              @click="exportPaymentHistory"
-              prepend-icon="mdi-download"
-              size="small"
-            >
-              Export History
-            </v-btn>
-          </v-card-title>
-          <v-card-text>
-            <v-data-table
-              :headers="paymentHistoryHeaders"
-              :items="paymentHistory"
-              :items-per-page="itemsPerPage"
-              :loading="isLoadingHistory"
-              class="elevation-0"
-            >
-              <!-- Payment Date Column -->
-              <template v-slot:item.paymentDate="{ item }">
-                {{ formatDate(item.paymentDate) }}
-              </template>
-
-              <!-- Creator Column with Avatar -->
-              <template v-slot:item.creator="{ item }">
-                <div class="d-flex align-center">
-                  <v-avatar size="28" color="primary" class="mr-2">
-                    <span class="text-caption">{{ item.creator.charAt(0) }}</span>
-                  </v-avatar>
-                  {{ item.creator }}
-                </div>
-              </template>
-
-              <!-- Amount Column -->
-              <template v-slot:item.amount="{ item }">
-                <span class="text-success font-weight-medium">${{ item.amount }}</span>
-              </template>
-
-              <!-- Status Column -->
-              <template v-slot:item.status="{ item }">
-                <v-chip
-                  :color="item.status === 'paid' ? 'success' : 'warning'"
-                  size="small"
-                  variant="flat"
-                >
-                  {{ item.status }}
-                </v-chip>
-              </template>
-
-              <!-- Details Column -->
-              <template v-slot:item.details="{ item }">
-                <v-btn
-                  icon
-                  variant="text"
-                  size="small"
-                  @click="showPaymentDetails(item)"
-                >
-                  <v-icon>mdi-information-outline</v-icon>
-                </v-btn>
-              </template>
-            </v-data-table>
-          </v-card-text>
-        </v-card>
+        <PaymentHistoryTab
+          v-model:history-date-from="historyDateFrom"
+          v-model:history-date-to="historyDateTo"
+          v-model:history-creator-filter="historyCreatorFilter"
+          :history-creator-options="historyCreatorOptions"
+          :total-paid-in-period="totalPaidInPeriod"
+          :total-payments="totalPayments"
+          :total-videos-paid="totalVideosPaid"
+          :payment-history-headers="paymentHistoryHeaders"
+          :payment-history="paymentHistory"
+          :items-per-page="itemsPerPage"
+          :is-loading-history="isLoadingHistory"
+          @filter-payment-history="filterPaymentHistory"
+          @clear-history-filters="clearHistoryFilters"
+          @export-payment-history="exportPaymentHistory"
+          @show-payment-details="showPaymentDetails"
+        />
       </v-window-item>
 
       <!-- Invoices Tab Content -->
       <v-window-item value="invoices">
-        <!-- Invoice Actions Bar -->
-        <v-card class="mb-4">
-          <v-card-text>
-            <v-row align="center">
-              <v-col cols="12" md="3">
-                <v-select
-                  v-model="invoiceStatusFilter"
-                  :items="invoiceStatusOptions"
-                  label="Status"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" md="3">
-                <v-select
-                  v-model="invoiceCreatorFilter"
-                  :items="invoiceCreatorOptions"
-                  label="Creator"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-text-field
-                  v-model="invoiceDateFrom"
-                  label="From Date"
-                  type="date"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-text-field
-                  v-model="invoiceDateTo"
-                  label="To Date"
-                  type="date"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                />
-              </v-col>
-              <v-col cols="auto">
-                <v-btn
-                  color="primary"
-                  variant="elevated"
-                  @click="openInvoiceGenerator"
-                  prepend-icon="mdi-file-document-plus"
-                >
-                  Create Invoice
-                </v-btn>
-              </v-col>
-              <v-col cols="auto">
-                <v-btn
-                  color="secondary"
-                  variant="tonal"
-                  @click="openInvoiceSettings"
-                  prepend-icon="mdi-cog"
-                >
-                  Settings
-                </v-btn>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-
-        <!-- Invoice Statistics -->
-        <v-row class="mb-4">
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-primary mb-2">{{ totalInvoices }}</h3>
-                <p class="text-body-2 text-grey">Total Invoices</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-success mb-2">${{ totalInvoiced }}</h3>
-                <p class="text-body-2 text-grey">Total Invoiced</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-warning mb-2">{{ pendingInvoices }}</h3>
-                <p class="text-body-2 text-grey">Pending</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-card>
-              <v-card-text class="text-center">
-                <h3 class="text-h4 text-info mb-2">${{ paidInvoices }}</h3>
-                <p class="text-body-2 text-grey">Paid</p>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Invoices List -->
-        <v-card>
-          <v-card-title>
-            Invoices
-            <v-spacer />
-            <v-btn
-              variant="text"
-              color="primary"
-              @click="refreshInvoices"
-              prepend-icon="mdi-refresh"
-            >
-              Refresh
-            </v-btn>
-          </v-card-title>
-          <v-card-text>
-            <v-data-table
-              :headers="invoiceHeaders"
-              :items="invoices"
-              :loading="isLoadingInvoices"
-              items-per-page="10"
-              class="elevation-0"
-            >
-              <!-- Invoice Number Column -->
-              <template v-slot:item.invoice_number="{ item }">
-                <span class="font-weight-medium">{{ item.invoice_number }}</span>
-              </template>
-
-              <!-- Status Column -->
-              <template v-slot:item.status="{ item }">
-                <v-chip
-                  :color="getInvoiceStatusColor(item.status)"
-                  size="small"
-                  variant="tonal"
-                >
-                  {{ item.status }}
-                </v-chip>
-              </template>
-
-              <!-- Date Column -->
-              <template v-slot:item.invoice_date="{ item }">
-                {{ formatDate(item.invoice_date) }}
-              </template>
-
-              <!-- Amount Column -->
-              <template v-slot:item.total_amount="{ item }">
-                <span class="font-weight-medium">${{ item.total_amount.toFixed(2) }}</span>
-              </template>
-
-              <!-- Actions Column -->
-              <template v-slot:item.actions="{ item }">
-                <v-btn
-                  icon="mdi-eye"
-                  size="small"
-                  variant="text"
-                  @click="viewInvoice(item)"
-                  title="View Invoice"
-                />
-                <v-btn
-                  icon="mdi-download"
-                  size="small"
-                  variant="text"
-                  @click="downloadInvoice(item)"
-                  title="Download PDF"
-                />
-                <v-btn
-                  v-if="item.status === 'pending'"
-                  icon="mdi-check"
-                  size="small"
-                  variant="text"
-                  color="success"
-                  @click="markInvoicePaid(item)"
-                  title="Mark as Paid"
-                />
-                <v-btn
-                  v-if="item.status === 'pending'"
-                  icon="mdi-pencil"
-                  size="small"
-                  variant="text"
-                  @click="editInvoice(item)"
-                  title="Edit Invoice"
-                />
-                <v-btn
-                  v-if="item.status !== 'voided'"
-                  icon="mdi-close"
-                  size="small"
-                  variant="text"
-                  color="error"
-                  @click="voidInvoice(item)"
-                  title="Void Invoice"
-                />
-              </template>
-            </v-data-table>
-          </v-card-text>
-        </v-card>
+        <InvoicesTab
+          v-model:invoice-status-filter="invoiceStatusFilter"
+          v-model:invoice-creator-filter="invoiceCreatorFilter"
+          v-model:invoice-date-from="invoiceDateFrom"
+          v-model:invoice-date-to="invoiceDateTo"
+          :invoice-status-options="invoiceStatusOptions"
+          :invoice-creator-options="invoiceCreatorOptions"
+          :total-invoices="totalInvoices"
+          :total-invoiced="totalInvoiced"
+          :pending-invoices="pendingInvoices"
+          :paid-invoices="paidInvoices"
+          :invoice-headers="invoiceHeaders"
+          :invoices="invoices"
+          :is-loading-invoices="isLoadingInvoices"
+          @open-invoice-generator="openInvoiceGenerator"
+          @open-invoice-settings="openInvoiceSettings"
+          @refresh-invoices="refreshInvoices"
+          @view-invoice="viewInvoice"
+          @download-invoice="downloadInvoice"
+          @mark-invoice-paid="markInvoicePaid"
+          @edit-invoice="editInvoice"
+          @void-invoice="voidInvoice"
+        />
       </v-window-item>
     </v-window>
 
@@ -1482,6 +567,12 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { sparksApi, templatesApi, usersApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
 import jsPDF from 'jspdf';
+
+// Import tab components
+import SparksTab from './components/SparksTab.vue';
+import PaymentsTab from './components/PaymentsTab.vue';
+import PaymentHistoryTab from './components/PaymentHistoryTab.vue';
+import InvoicesTab from './components/InvoicesTab.vue';
 
 // Get auth state
 const { user, isAssistingUser } = useAuth();
@@ -2196,23 +1287,14 @@ const saveInlineEdit = async (item, field) => {
     const response = await sparksApi.updateSpark(item.id, updateData);
     
     if (response.success) {
-      // Since the sparks array is frozen, we need to find and replace the item
-      const index = sparks.value.findIndex(s => s.id === item.id);
-      if (index !== -1) {
-        // Create a new array with the updated item
-        const updatedSparks = [...sparks.value];
-        updatedSparks[index] = Object.freeze({
-          ...item,
-          [field]: newValue
-        });
-        sparks.value = Object.freeze(updatedSparks);
-      }
+      // Clear editing state
+      cancelInlineEdit(item.id, field);
+      
+      showSuccess(`${field.replace('_', ' ')} updated successfully`);
+      
+      // Refresh the sparks data to ensure we have the latest data
+      await fetchSparks();
     }
-    
-    // Clear editing state
-    cancelInlineEdit(item.id, field);
-    
-    showSuccess(`${field.replace('_', ' ')} updated successfully`);
   } catch (error) {
     console.error('Failed to update inline:', error);
     showError('Failed to update field: ' + (error.message || 'Unknown error'));
@@ -3199,6 +2281,27 @@ const showWarning = (message) => {
   snackbarText.value = message;
   snackbarColor.value = 'warning';
   showSnackbar.value = true;
+};
+
+// Handle batch update success
+const handleBatchUpdateSuccess = (data) => {
+  const fieldLabels = {
+    type: 'Type',
+    status: 'Status',
+    creator: 'Creator'
+  };
+  const field = typeof data === 'string' ? data : data.field;
+  const count = typeof data === 'object' ? data.count : 'all';
+  showSuccess(`${fieldLabels[field] || field} applied to ${count} selected item${count !== 1 ? 's' : ''}`);
+};
+
+// Apply batch updates from child component
+const applyBatchUpdates = (updates) => {
+  // Create a new object to trigger reactivity
+  bulkEditValues.value = {
+    ...bulkEditValues.value,
+    ...updates
+  };
 };
 
 // Bulk Edit Functions
