@@ -9,6 +9,16 @@
 import { executeQuery } from '../SQL/SQL.js';
 // Import admin check function from Auth
 import { isAdminUser } from '../Auth/Auth.js';
+// Import queue functions
+import { 
+  initializeQueueTables,
+  createJob,
+  getJob,
+  getUserJobs,
+  cancelJob,
+  getJobLogs,
+  getQueueStats
+} from './CommentBotQueue.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -185,6 +195,7 @@ async function getUserTeamId(env, userId) {
  * @param {Object} session - The user session from requireAuth middleware
  */
 export async function handleCommentBotData(request, env, session) {
+  
   // Handle CORS for CommentBot requests
   const corsResponse = handleCommentBotCors(request);
   if (corsResponse) {
@@ -199,6 +210,7 @@ export async function handleCommentBotData(request, env, session) {
   
   // Initialize tables if needed (this will only create them if they don't exist)
   await initializeCommentGroupTables(env);
+  await initializeQueueTables(env);
   
   // Get user's team ID
   const teamId = await getUserTeamId(env, userId);
@@ -228,17 +240,50 @@ export async function handleCommentBotData(request, env, session) {
         return await getOrderStatus(orderId, env, userId, teamId);
       case 'orders':
         return await getOrders(request, env, userId, teamId);
+      case 'jobs':
+        return await getJobs(request, env, userId, teamId);
+      case 'job-status':
+        const jobId = url.searchParams.get('job_id');
+        if (!jobId) {
+          return jsonResponse({ error: 'Job ID is required' }, 400);
+        }
+        return await getJobStatus(jobId, env, userId, teamId);
+      case 'job-logs':
+        const jobLogId = url.searchParams.get('job_id');
+        if (!jobLogId) {
+          return jsonResponse({ error: 'Job ID is required' }, 400);
+        }
+        return await getJobLogsEndpoint(jobLogId, env, userId, teamId);
+      case 'queue-stats':
+        return await getQueueStatsEndpoint(env);
       default:
-        // Handle POST, PUT, DELETE requests based on path
-        if (request.method === 'POST') {
-          const path = url.pathname;
-          
-          if (path === '/api/commentbot/comment-groups') {
-            return await createCommentGroup(request, env, userId, teamId);
-          }
+        break; // Exit switch to handle other methods below
+    }
+    
+    // If we got here from a valid case, we should have returned already
+    // Handle POST, PUT, DELETE requests based on path
+    if (request.method === 'POST') {
+      const path = url.pathname;
+      
+      if (path === '/api/commentbot/comment-groups') {
+        return await createCommentGroup(request, env, userId, teamId);
+      }
           
           if (path === '/api/commentbot/create-order') {
-            return await createOrder(request, env, userId, teamId);
+            // Use queue system instead of direct API call
+            return await createOrderWithQueue(request, env, userId, teamId);
+          }
+          
+          if (path === '/api/commentbot/create-job') {
+            return await createJobEndpoint(request, env, userId, teamId);
+          }
+          
+          if (path === '/api/commentbot/cancel-job') {
+            const jobId = url.searchParams.get('job_id');
+            if (!jobId) {
+              return jsonResponse({ error: 'Job ID is required' }, 400);
+            }
+            return await cancelJobEndpoint(jobId, env, userId, teamId);
           }
           
           if (path === '/api/commentbot/check-accounts') {
@@ -295,9 +340,8 @@ export async function handleCommentBotData(request, env, session) {
           return await exportCommentBotLogs(request, env);
         }
         
-        // If no specific type is requested, return error
-        return jsonResponse({ error: 'Invalid request type or method' }, 400);
-    }
+    // If no specific type is requested, return error
+    return jsonResponse({ error: 'Invalid request type or method' }, 400);
   } catch (error) {
     console.error('Error in handleCommentBotData:', error);
     return jsonResponse({ 
@@ -362,13 +406,8 @@ async function fetchAPI(path, options = {}) {
     // Make the fetch request
     const response = await fetch(apiUrl, fetchOptions);
     
-    // Log response details for debugging
-    console.log(`Response status: ${response.status}`);
-    console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
-    
-    // Get response text first to log it
+    // Get response text
     const responseText = await response.text();
-    console.log(`Response body: ${responseText}`);
     
     // Try to parse as JSON
     let responseData;
@@ -1157,11 +1196,6 @@ async function createOrder(request, env, userId, teamId) {
       };
     }
     
-    // console.log(JSON.stringify(apiData));
-
-    // Log the API request for debugging
-    console.log('Creating order with data:', JSON.stringify(apiData, null, 2));
-    
     // Call API to create order
     const createdOrder = await fetchAPI(
       `/api/orders/create`, 
@@ -1170,8 +1204,6 @@ async function createOrder(request, env, userId, teamId) {
         body: JSON.stringify(apiData)
       }
     );
-    
-    console.log('API Response:', JSON.stringify(createdOrder, null, 2));
     
     // Save order to local database if API call was successful
     if (createdOrder && createdOrder.order_id) {
@@ -1205,21 +1237,9 @@ async function createOrder(request, env, userId, teamId) {
             createdOrder.created_at || new Date().toISOString()
           )
           .run();
-          
-        console.log(`Order ${createdOrder.order_id} saved to database successfully`);
-        console.log('Database insert result:', dbResult);
-        
-        // Verify the order was saved
-        const verifyQuery = 'SELECT * FROM orders WHERE order_id = ?';
-        const verifyResult = await env.COMMENT_BOT_DB.prepare(verifyQuery).bind(createdOrder.order_id).first();
-        console.log('Verification query result:', verifyResult);
       } catch (dbError) {
-        console.error('Failed to save order to database:', dbError);
-        console.error('Database error details:', dbError.message, dbError.cause);
         // Continue even if database save fails - API call was successful
       }
-    } else {
-      console.error('No order_id in API response:', createdOrder);
     }
     
     return jsonResponse({
@@ -1475,7 +1495,6 @@ async function getOrderStatus(orderId, env = null, userId = null, teamId = null)
  * @param {Object} env - Environment bindings
  */
 async function getCommentBotLogs(request, env) {
-  console.log('getCommentBotLogs called');
   try {
     // Initialize tables if needed
     await initializeCommentGroupTables(env);
@@ -1488,8 +1507,6 @@ async function getCommentBotLogs(request, env) {
     const startDate = url.searchParams.get('startDate') || '';
     const endDate = url.searchParams.get('endDate') || '';
     const offset = (page - 1) * limit;
-    
-    console.log('Logs request params:', { page, limit, search, status, startDate, endDate, offset });
     
     // Build query conditions
     let whereConditions = [];
@@ -1544,10 +1561,6 @@ async function getCommentBotLogs(request, env) {
     params.push(limit, offset);
     const logsResult = await executeQuery(env.COMMENT_BOT_DB, logsQuery, params);
     
-    console.log('Logs query:', logsQuery);
-    console.log('Logs params:', params);
-    console.log('Logs result count:', logsResult.data?.length || 0);
-    
     // Get user emails from USERS_DB for the logs
     if (logsResult.success && logsResult.data.length > 0) {
       const userIds = [...new Set(logsResult.data.map(log => log.user_id))];
@@ -1576,12 +1589,10 @@ async function getCommentBotLogs(request, env) {
     try {
       const debugQuery = 'SELECT COUNT(*) as count FROM orders';
       const debugResult = await executeQuery(env.COMMENT_BOT_DB, debugQuery, []);
-      console.log('Total orders in database:', debugResult);
       
       // Also try to get a sample order
       const sampleQuery = 'SELECT * FROM orders LIMIT 1';
       const sampleResult = await executeQuery(env.COMMENT_BOT_DB, sampleQuery, []);
-      console.log('Sample order:', sampleResult);
     } catch (debugError) {
       console.error('Debug query error:', debugError);
     }
@@ -1597,14 +1608,12 @@ async function getCommentBotLogs(request, env) {
     `;
     
     const statsResult = await executeQuery(env.COMMENT_BOT_DB, statsQuery, []);
-    console.log('Stats query result:', statsResult);
     const stats = statsResult.success && statsResult.data.length > 0 ? statsResult.data[0] : {
       totalOrders: 0,
       completedOrders: 0,
       failedOrders: 0,
       activeOrders: 0
     };
-    console.log('Stats:', stats);
     
     return jsonResponse({
       success: true,
@@ -1751,6 +1760,334 @@ async function exportCommentBotLogs(request, env) {
     console.error('Error exporting comment bot logs:', error);
     return jsonResponse({ 
       error: 'Failed to export logs', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Create an order using the queue system
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user ID
+ * @param {string|null} teamId - The team ID
+ */
+async function createOrderWithQueue(request, env, userId, teamId) {
+  
+  try {
+    // Parse request body
+    const orderData = await request.json();
+    
+    // Validate required fields
+    if (!orderData.post_id) {
+      return jsonResponse({ error: 'TikTok post ID is required' }, 400);
+    }
+    
+    // Validate TikTok post ID format
+    const postIdStr = String(orderData.post_id).trim();
+    if (!/^\d{19}$/.test(postIdStr)) {
+      return jsonResponse({ 
+        error: 'Invalid TikTok post ID format. Must be exactly 19 digits' 
+      }, 400);
+    }
+    
+    // Ensure at least one interaction type is specified
+    if (
+      (!orderData.like_count || orderData.like_count <= 0) && 
+      (!orderData.save_count || orderData.save_count <= 0) && 
+      (!orderData.comment_group_id)
+    ) {
+      return jsonResponse({ 
+        error: 'At least one interaction type (like, save, or comment) must be specified' 
+      }, 400);
+    }
+    
+    // Prepare comment data if comment group is selected
+    let commentData = null;
+    if (orderData.comment_group_id) {
+      // Get comment group details
+      let groupQuery;
+      let groupParams;
+      
+      if (teamId) {
+        const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+        const teamMembersResult = await executeQuery(env.USERS_DB, teamMembersQuery, [teamId]);
+        
+        if (teamMembersResult.success && teamMembersResult.data.length > 0) {
+          const memberIds = teamMembersResult.data.map(m => m.user_id);
+          groupQuery = `
+            SELECT * FROM comment_groups 
+            WHERE id = ? 
+            AND (user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)
+          `;
+          groupParams = [orderData.comment_group_id, ...memberIds, teamId];
+        } else {
+          groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND team_id = ?`;
+          groupParams = [orderData.comment_group_id, teamId];
+        }
+      } else {
+        groupQuery = `SELECT * FROM comment_groups WHERE id = ? AND user_id = ?`;
+        groupParams = [orderData.comment_group_id, userId];
+      }
+      
+      const groupResult = await executeQuery(env.COMMENT_BOT_DB, groupQuery, groupParams);
+      
+      if (!groupResult.success || groupResult.data.length === 0) {
+        return jsonResponse({ error: 'Comment group not found' }, 404);
+      }
+      
+      const commentGroup = groupResult.data[0];
+      
+      // Parse legends and format for API
+      let legendsData = [];
+      try {
+        legendsData = JSON.parse(commentGroup.legends || '[]');
+      } catch (e) {
+        console.error('Error parsing legends JSON:', e);
+      }
+      
+      // Build comment_data
+      const legends = legendsData.map(legend => {
+        const conversations = (legend.conversations || []).map((conv, index) => ({
+          user: String.fromCharCode(65 + (index % 3)), // A, B, C pattern
+          text: conv.comment_text
+        }));
+        
+        return {
+          conversations: conversations
+        };
+      });
+      
+      commentData = {
+        legends: legends
+      };
+    }
+    
+    // Create a job in the queue
+    const job = await createJob(env, {
+      userId: userId,
+      teamId: teamId,
+      type: 'create_order',
+      payload: {
+        post_id: postIdStr,
+        like_count: orderData.like_count || 0,
+        save_count: orderData.save_count || 0,
+        comment_group_id: orderData.comment_group_id || null,
+        comment_data: commentData,
+        save_to_db: true
+      },
+      priority: orderData.priority || 0
+    });
+    
+    
+    const response = {
+      success: true,
+      job: {
+        job_id: job.job_id,
+        status: job.status,
+        queue_position: job.queue_position,
+        estimated_completion_time: job.estimatedCompletionTime
+      },
+      message: 'Order has been queued for processing'
+    };
+    
+    
+    return jsonResponse(response);
+  } catch (error) {
+    console.error('Error creating order with queue:', error);
+    return jsonResponse({ 
+      error: 'Failed to queue order', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Get jobs for the user
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user ID
+ * @param {string|null} teamId - The team ID
+ */
+async function getJobs(request, env, userId, teamId) {
+  
+  try {
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const offset = parseInt(url.searchParams.get('offset') || '0');
+    const status = url.searchParams.get('status') || null;
+    
+    
+    const filters = {
+      limit,
+      offset,
+      status
+    };
+    
+    const jobs = await getUserJobs(env, userId, teamId, filters);
+    
+    return jsonResponse({
+      success: true,
+      jobs: jobs,
+      pagination: {
+        limit,
+        offset,
+        total: jobs.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching jobs:', error);
+    return jsonResponse({ 
+      error: 'Failed to fetch jobs', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Get job status
+ * @param {string} jobId - Job ID
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user ID
+ * @param {string|null} teamId - The team ID
+ */
+async function getJobStatus(jobId, env, userId, teamId) {
+  try {
+    const job = await getJob(env, jobId, userId, teamId);
+    
+    if (!job) {
+      return jsonResponse({ error: 'Job not found' }, 404);
+    }
+    
+    return jsonResponse({
+      success: true,
+      job: job
+    });
+  } catch (error) {
+    console.error('Error fetching job status:', error);
+    return jsonResponse({ 
+      error: 'Failed to fetch job status', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Get job logs
+ * @param {string} jobId - Job ID
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user ID
+ * @param {string|null} teamId - The team ID
+ */
+async function getJobLogsEndpoint(jobId, env, userId, teamId) {
+  try {
+    // Verify job ownership
+    const job = await getJob(env, jobId, userId, teamId);
+    
+    if (!job) {
+      return jsonResponse({ error: 'Job not found' }, 404);
+    }
+    
+    const logs = await getJobLogs(env, jobId);
+    
+    return jsonResponse({
+      success: true,
+      logs: logs
+    });
+  } catch (error) {
+    console.error('Error fetching job logs:', error);
+    return jsonResponse({ 
+      error: 'Failed to fetch job logs', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Cancel a job
+ * @param {string} jobId - Job ID
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user ID
+ * @param {string|null} teamId - The team ID
+ */
+async function cancelJobEndpoint(jobId, env, userId, teamId) {
+  try {
+    const cancelled = await cancelJob(env, jobId, userId, teamId);
+    
+    if (!cancelled) {
+      return jsonResponse({ error: 'Unable to cancel job' }, 400);
+    }
+    
+    return jsonResponse({
+      success: true,
+      message: 'Job cancelled successfully'
+    });
+  } catch (error) {
+    console.error('Error cancelling job:', error);
+    return jsonResponse({ 
+      error: 'Failed to cancel job', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Create a generic job
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @param {string} userId - The user ID
+ * @param {string|null} teamId - The team ID
+ */
+async function createJobEndpoint(request, env, userId, teamId) {
+  try {
+    const jobData = await request.json();
+    
+    if (!jobData.type) {
+      return jsonResponse({ error: 'Job type is required' }, 400);
+    }
+    
+    if (!jobData.payload) {
+      return jsonResponse({ error: 'Job payload is required' }, 400);
+    }
+    
+    const job = await createJob(env, {
+      userId: userId,
+      teamId: teamId,
+      type: jobData.type,
+      payload: jobData.payload,
+      priority: jobData.priority || 0,
+      maxAttempts: jobData.maxAttempts || 3
+    });
+    
+    return jsonResponse({
+      success: true,
+      job: job
+    });
+  } catch (error) {
+    console.error('Error creating job:', error);
+    return jsonResponse({ 
+      error: 'Failed to create job', 
+      details: error.message 
+    }, 500);
+  }
+}
+
+/**
+ * Get queue statistics
+ * @param {Object} env - Environment bindings
+ */
+async function getQueueStatsEndpoint(env) {
+  try {
+    const stats = await getQueueStats(env);
+    
+    return jsonResponse({
+      success: true,
+      stats: stats
+    });
+  } catch (error) {
+    console.error('Error fetching queue stats:', error);
+    return jsonResponse({ 
+      error: 'Failed to fetch queue stats', 
       details: error.message 
     }, 500);
   }

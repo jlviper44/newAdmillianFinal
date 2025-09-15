@@ -12,6 +12,41 @@ import { handleTeams } from './Teams/Teams';
 import { handleLinkSplitter } from './Dashboard/LinkSplitter/LinkSplitterHandler';
 import { handleAdLaunches } from './Dashboard/AdLaunches/AdLaunches';
 
+// Global state for background worker
+let workerRunning = false;
+let lastWorkerRun = 0;
+
+// Simple background job processor
+async function processBackgroundJobs(env) {
+  const now = Date.now();
+  
+  // Only run if it's been at least 5 seconds since last run
+  if (now - lastWorkerRun < 5000) {
+    return;
+  }
+  
+  // Prevent concurrent runs
+  if (workerRunning) {
+    return;
+  }
+  
+  workerRunning = true;
+  lastWorkerRun = now;
+  
+  try {
+    const { processCronJobs } = await import('./CommentBot/CommentBotWorker.js');
+    const processedCount = await processCronJobs(env, 1); // Process only 1 job at a time
+    
+    if (processedCount > 0) {
+      console.log(`Background: Processed ${processedCount} CommentBot job`);
+    }
+  } catch (error) {
+    console.error('Background job processor error:', error);
+  } finally {
+    workerRunning = false;
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -22,6 +57,9 @@ export default {
       await initializeAuthTables(env);
       env.DB_INITIALIZED = true;
     }
+    
+    // Process background jobs on every request (with throttling)
+    ctx.waitUntil(processBackgroundJobs(env));
     
     // PRIORITY: Handle /l/ routes before ANYTHING else, including assets
     // This ensures short links work like Bitly
@@ -372,6 +410,29 @@ export default {
         console.log(`Generated ${invoiceResult.generated} scheduled invoices for Sparks`);
       } catch (error) {
         console.error('Failed to generate weekly payroll or invoices:', error);
+      }
+    }
+    
+    // Process comment bot queue jobs every hour
+    if (currentMinute === 0) {
+      console.log('Processing comment bot queue jobs...');
+      
+      try {
+        // Import the queue worker
+        const { processCronJobs } = await import('./CommentBot/CommentBotWorker');
+        
+        // Process up to 20 jobs from the queue
+        const processedCount = await processCronJobs(env, 20);
+        
+        console.log(`Successfully processed ${processedCount} comment bot jobs`);
+        
+        // Clean up old completed jobs (older than 7 days)
+        const { cleanupOldJobs } = await import('./CommentBot/CommentBotQueue');
+        const cleanedCount = await cleanupOldJobs(env);
+        
+        console.log(`Cleaned up ${cleanedCount} old comment bot jobs`);
+      } catch (error) {
+        console.error('Failed to process comment bot queue:', error);
       }
     }
     

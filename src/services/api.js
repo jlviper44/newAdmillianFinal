@@ -132,6 +132,20 @@ export const commentBotApi = {
   deleteOrder: (id) => api.delete(`/commentbot/orders/${id}`),
   getOrderStatus: (orderId) => api.get(`/commentbot?type=order-status&order_id=${orderId}`),
   
+  // Job queue endpoints
+  getJobs: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.status) queryParams.append('status', params.status);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.offset) queryParams.append('offset', params.offset);
+    // Don't add 'type' from params - it's already set to 'jobs' in the URL
+    return api.get(`/commentbot?type=jobs&${queryParams.toString()}`);
+  },
+  getJobStatus: (jobId) => api.get(`/commentbot?type=job-status&job_id=${jobId}`),
+  getJobLogs: (jobId) => api.get(`/commentbot?type=job-logs&job_id=${jobId}`),
+  cancelJob: (jobId) => api.post(`/commentbot/cancel-job?job_id=${jobId}`),
+  getQueueStats: () => api.get('/commentbot?type=queue-stats'),
+  
   // Other endpoints
   checkAccounts: (type) => api.post(`/commentbot/check-accounts?type=${type}`),
   getCommentGroupDetail: (id) => api.get(`/commentbot?type=comment-group-detail&id=${id}`),

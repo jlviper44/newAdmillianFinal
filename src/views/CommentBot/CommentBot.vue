@@ -15,6 +15,7 @@ import CreateCommentGroup from './components/CreateCommentGroup.vue';
 import EditCommentGroup from './components/EditCommentGroup.vue';
 import CommentBotCredits from './components/CommentBotCredits.vue';
 import CommentBotLogs from './components/CommentBotLogs.vue';
+import JobQueue from './components/JobQueue.vue';
 import { formatDateTime, getUserTimezone } from '@/utils/dateFormatter';
 
 // Get route
@@ -171,6 +172,8 @@ const isProcessingOrders = ref(false);
 const processOrdersTimeout = ref(null);
 
 const createOrder = async (newOrder) => {
+  console.log('=== Creating new order ===', newOrder);
+  
   // Add order to pending list
   pendingOrders.value.push(newOrder);
   
@@ -187,6 +190,8 @@ const createOrder = async (newOrder) => {
       error.value.createOrder = null;
       
       try {
+        console.log('Processing', pendingOrders.value.length, 'pending orders');
+        
         // Calculate total credits needed - 1 credit per order
         const totalCreditsNeeded = pendingOrders.value.length;
         
@@ -196,20 +201,31 @@ const createOrder = async (newOrder) => {
           productType: 'comment_bot'
         });
       
+        console.log('Credits deduction result:', creditResult);
+        
         if (!creditResult.success) {
           throw new Error('Failed to deduct credits');
         }
         
-        // Create all orders
-        const orderPromises = pendingOrders.value.map(order => 
-          commentBotApi.createOrder(order)
-        );
+        // Create all orders (now returns jobs instead of orders)
+        const orderPromises = pendingOrders.value.map(order => {
+          console.log('Calling createOrder API for:', order);
+          return commentBotApi.createOrder(order);
+        });
         
         const results = await Promise.all(orderPromises);
         
-        // Start polling for new orders
+        console.log('=== Create order API results ===', results);
+        
+        // Start polling for jobs instead of orders
         results.forEach(data => {
-          if (data.order && data.order.order_id) {
+          console.log('Processing result:', data);
+          if (data.job && data.job.job_id) {
+            console.log('Starting to poll job:', data.job.job_id);
+            startPollingJob(data.job.job_id);
+          } else if (data.order && data.order.order_id) {
+            // Fallback for old API response format
+            console.log('Got old format order, polling order:', data.order.order_id);
             startPollingOrder(data.order.order_id);
           }
         });
@@ -306,6 +322,65 @@ const startPollingOrder = (orderId) => {
   pollingIntervals.value[orderId] = setInterval(() => {
     pollOrderStatus(orderId);
   }, 20000);
+};
+
+// Job polling functions for queue-based system
+const startPollingJob = (jobId) => {
+  // Clear existing interval if any
+  if (pollingIntervals.value[`job_${jobId}`]) {
+    clearInterval(pollingIntervals.value[`job_${jobId}`]);
+  }
+  
+  // Poll immediately once
+  pollJobStatus(jobId);
+  
+  // Then poll every 5 seconds for job status
+  pollingIntervals.value[`job_${jobId}`] = setInterval(() => {
+    pollJobStatus(jobId);
+  }, 5000);
+};
+
+const pollJobStatus = async (jobId) => {
+  try {
+    const response = await commentBotApi.getJobStatus(jobId);
+    
+    if (response.job) {
+      const job = response.job;
+      
+      // Update UI based on job status
+      if (job.status === 'completed' && job.result) {
+        // Job completed successfully, add the order to active orders
+        const order = job.result;
+        if (order.order_id) {
+          // Stop polling the job
+          if (pollingIntervals.value[`job_${jobId}`]) {
+            clearInterval(pollingIntervals.value[`job_${jobId}`]);
+            delete pollingIntervals.value[`job_${jobId}`];
+          }
+          
+          // Start polling the actual order
+          startPollingOrder(order.order_id);
+          
+          // Refresh orders to show the new order
+          await fetchOrders();
+        }
+      } else if (job.status === 'failed' || job.status === 'cancelled') {
+        // Stop polling on failure or cancellation
+        if (pollingIntervals.value[`job_${jobId}`]) {
+          clearInterval(pollingIntervals.value[`job_${jobId}`]);
+          delete pollingIntervals.value[`job_${jobId}`];
+        }
+        
+        // Show error message to user
+        if (job.status === 'failed') {
+          error.value.createOrder = `Job failed: ${job.error || 'Unknown error'}`;
+        }
+      }
+      // For 'pending' or 'processing' status, continue polling
+    }
+  } catch (err) {
+    console.error(`Error polling job ${jobId}:`, err);
+  }
 };
 
 // Comment Group Detail functions
@@ -537,6 +612,9 @@ onUnmounted(() => {
                       />
                     </v-card-text>
                   </v-card>
+
+                  <!-- Job Queue Section -->
+                  <JobQueue class="mb-6" />
 
                   <!-- Active Orders Section -->
                   <v-card class="elevation-1 rounded-lg">

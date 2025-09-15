@@ -3117,10 +3117,18 @@ async function handleEndVirtualAssistantMode(request, env) {
 
 // Middleware to check authentication
 async function requireAuth(request, env, handler) {
+  // Debug logging for queue endpoints
+  const url = new URL(request.url);
+  const type = url.searchParams.get('type');
+  if (type === 'jobs' || type === 'queue-stats') {
+    console.log('requireAuth: Queue endpoint detected:', type);
+  }
+  
   const sessionId = getSessionIdFromCookie(request);
   
   if (!sessionId) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    console.log('requireAuth: No session ID found for:', request.url);
+    return new Response(JSON.stringify({ error: 'Unauthorized - No session' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -3128,7 +3136,8 @@ async function requireAuth(request, env, handler) {
   
   let session = await getSession(env.USERS_DB, sessionId);
   if (!session) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    console.log('requireAuth: Invalid session for:', request.url);
+    return new Response(JSON.stringify({ error: 'Unauthorized - Invalid session' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
     });
