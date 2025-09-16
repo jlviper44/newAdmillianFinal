@@ -14,6 +14,33 @@ console.log('Sparks.js loaded - handleInvoiceManagement:', typeof handleInvoiceM
  */
 async function initializeSparksTable(db) {
   try {
+    // Initialize thumbnail cache table
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS thumbnail_cache (
+        url TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        content_type TEXT DEFAULT 'image/jpeg',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    // Create index for faster lookups
+    await db.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_thumbnail_cache_created 
+      ON thumbnail_cache(created_at)
+    `).run();
+    
+    // Clean up old cache entries (older than 30 days)
+    try {
+      await db.prepare(`
+        DELETE FROM thumbnail_cache 
+        WHERE created_at < datetime('now', '-30 days')
+      `).run();
+    } catch (cleanupError) {
+      console.error('Error cleaning up old thumbnails:', cleanupError);
+    }
+    
     // First check if table exists and what columns it has
     const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
     
@@ -403,7 +430,16 @@ export async function handleSparkData(request, env) {
     // Proxy TikTok thumbnail
     if (path.startsWith('/proxy/tiktok-thumbnail/')) {
       const videoId = path.replace('/proxy/tiktok-thumbnail/', '');
-      return await proxyTikTokThumbnail(videoId);
+      return await proxyTikTokThumbnail(videoId, db);
+    }
+    
+    // Thumbnail cache management
+    if (path === '/thumbnail-cache/stats' && method === 'GET') {
+      return await getThumbnailCacheStats(db, corsHeaders);
+    }
+    
+    if (path === '/thumbnail-cache/clear' && method === 'POST') {
+      return await clearThumbnailCache(request, db, corsHeaders);
     }
     
     // Unknown endpoint
@@ -510,9 +546,44 @@ async function extractTikTokThumbnail(request, corsHeaders) {
 
 /**
  * Proxy TikTok thumbnail - this function actually fetches a real frame from the video
+ * Now with caching support
  */
-async function proxyTikTokThumbnail(videoId) {
+async function proxyTikTokThumbnail(videoId, db) {
   try {
+    // Check cache first
+    const cacheKey = `tiktok_${videoId}`;
+    
+    if (db) {
+      try {
+        const cached = await db.prepare(`
+          SELECT data, content_type FROM thumbnail_cache 
+          WHERE url = ?
+        `).bind(cacheKey).first();
+        
+        if (cached && cached.data) {
+          // Update last accessed time
+          await db.prepare(`
+            UPDATE thumbnail_cache 
+            SET last_accessed = CURRENT_TIMESTAMP 
+            WHERE url = ?
+          `).bind(cacheKey).run();
+          
+          // Return cached thumbnail
+          const imageData = Uint8Array.from(atob(cached.data), c => c.charCodeAt(0));
+          return new Response(imageData, {
+            headers: {
+              'Content-Type': cached.content_type || 'image/jpeg',
+              'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+              'X-Cache': 'HIT'
+            }
+          });
+        }
+      } catch (cacheError) {
+        console.error('Cache lookup error:', cacheError);
+      }
+    }
+    
+    // If not in cache, fetch from TikTok
     // Method 1: Try the direct TikTok thumbnail URL pattern
     const directUrl = `https://www.tiktok.com/api/img/?itemId=${videoId}&location=0`;
     
@@ -524,10 +595,27 @@ async function proxyTikTokThumbnail(videoId) {
       });
       
       if (directResponse.ok) {
-        return new Response(await directResponse.arrayBuffer(), {
+        const imageBuffer = await directResponse.arrayBuffer();
+        const contentType = directResponse.headers.get('Content-Type') || 'image/jpeg';
+        
+        // Save to cache
+        if (db) {
+          try {
+            const imageBase64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+            await db.prepare(`
+              INSERT OR REPLACE INTO thumbnail_cache (url, data, content_type) 
+              VALUES (?, ?, ?)
+            `).bind(cacheKey, imageBase64, contentType).run();
+          } catch (cacheSaveError) {
+            console.error('Error saving to cache:', cacheSaveError);
+          }
+        }
+        
+        return new Response(imageBuffer, {
           headers: {
-            'Content-Type': directResponse.headers.get('Content-Type') || 'image/jpeg',
-            'Cache-Control': 'public, max-age=86400'
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=2592000',
+            'X-Cache': 'MISS'
           }
         });
       }
@@ -575,10 +663,27 @@ async function proxyTikTokThumbnail(videoId) {
       const imgResponse = await fetch(imageUrl);
       
       if (imgResponse.ok) {
-        return new Response(await imgResponse.arrayBuffer(), {
+        const imageBuffer = await imgResponse.arrayBuffer();
+        const contentType = imgResponse.headers.get('Content-Type') || 'image/jpeg';
+        
+        // Save to cache
+        if (db) {
+          try {
+            const imageBase64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+            await db.prepare(`
+              INSERT OR REPLACE INTO thumbnail_cache (url, data, content_type) 
+              VALUES (?, ?, ?)
+            `).bind(cacheKey, imageBase64, contentType).run();
+          } catch (cacheSaveError) {
+            console.error('Error saving to cache:', cacheSaveError);
+          }
+        }
+        
+        return new Response(imageBuffer, {
           headers: {
-            'Content-Type': imgResponse.headers.get('Content-Type') || 'image/jpeg',
-            'Cache-Control': 'public, max-age=86400'
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=2592000',
+            'X-Cache': 'MISS'
           }
         });
       }
@@ -597,10 +702,27 @@ async function proxyTikTokThumbnail(videoId) {
           const thumbnailResponse = await fetch(oembedData.thumbnail_url);
           
           if (thumbnailResponse.ok) {
-            return new Response(await thumbnailResponse.arrayBuffer(), {
+            const imageBuffer = await thumbnailResponse.arrayBuffer();
+            const contentType = thumbnailResponse.headers.get('Content-Type') || 'image/jpeg';
+            
+            // Save to cache
+            if (db) {
+              try {
+                const imageBase64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+                await db.prepare(`
+                  INSERT OR REPLACE INTO thumbnail_cache (url, data, content_type) 
+                  VALUES (?, ?, ?)
+                `).bind(cacheKey, imageBase64, contentType).run();
+              } catch (cacheSaveError) {
+                console.error('Error saving to cache:', cacheSaveError);
+              }
+            }
+            
+            return new Response(imageBuffer, {
               headers: {
-                'Content-Type': thumbnailResponse.headers.get('Content-Type') || 'image/jpeg',
-                'Cache-Control': 'public, max-age=86400'
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=2592000',
+                'X-Cache': 'MISS'
               }
             });
           }
@@ -1389,32 +1511,156 @@ async function getSparkStats(sparkId, request, db, corsHeaders, env) {
 }
 
 /**
- * Helper function to extract TikTok video ID from URL
+ * Get thumbnail cache statistics
+ */
+async function getThumbnailCacheStats(db, corsHeaders) {
+  try {
+    const stats = await db.prepare(`
+      SELECT 
+        COUNT(*) as total_count,
+        SUM(LENGTH(data)) as total_size,
+        MIN(created_at) as oldest_entry,
+        MAX(created_at) as newest_entry,
+        AVG(LENGTH(data)) as avg_size
+      FROM thumbnail_cache
+    `).first();
+    
+    const recentlyUsed = await db.prepare(`
+      SELECT COUNT(*) as count
+      FROM thumbnail_cache
+      WHERE last_accessed > datetime('now', '-1 day')
+    `).first();
+    
+    return new Response(
+      JSON.stringify({
+        success: true,
+        stats: {
+          totalThumbnails: stats.total_count || 0,
+          totalSizeBytes: stats.total_size || 0,
+          totalSizeMB: ((stats.total_size || 0) / (1024 * 1024)).toFixed(2),
+          averageSizeKB: ((stats.avg_size || 0) / 1024).toFixed(2),
+          oldestEntry: stats.oldest_entry,
+          newestEntry: stats.newest_entry,
+          recentlyUsedCount: recentlyUsed.count || 0
+        }
+      }),
+      { 
+        status: 200, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders 
+        } 
+      }
+    );
+  } catch (error) {
+    console.error('Error getting cache stats:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Failed to get cache statistics',
+        message: error.message
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders 
+        } 
+      }
+    );
+  }
+}
+
+/**
+ * Clear thumbnail cache
+ */
+async function clearThumbnailCache(request, db, corsHeaders) {
+  try {
+    const { olderThanDays = 0 } = await request.json().catch(() => ({}));
+    
+    let query;
+    if (olderThanDays > 0) {
+      // Clear only old entries
+      query = db.prepare(`
+        DELETE FROM thumbnail_cache 
+        WHERE created_at < datetime('now', '-${olderThanDays} days')
+      `);
+    } else {
+      // Clear all entries
+      query = db.prepare(`DELETE FROM thumbnail_cache`);
+    }
+    
+    const result = await query.run();
+    
+    return new Response(
+      JSON.stringify({
+        success: true,
+        deletedCount: result.changes || 0,
+        message: olderThanDays > 0 
+          ? `Cleared thumbnails older than ${olderThanDays} days`
+          : 'Cleared all cached thumbnails'
+      }),
+      { 
+        status: 200, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders 
+        } 
+      }
+    );
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Failed to clear cache',
+        message: error.message
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders 
+        } 
+      }
+    );
+  }
+}
+
+/**
+ * Helper function to extract TikTok content ID and type from URL
  */
 function extractTikTokVideoId(url) {
   try {
     // Handle various TikTok URL formats
-    // https://www.tiktok.com/@username/video/1234567890123456789
-    // https://vm.tiktok.com/XXXXXXXXX/
-    // https://m.tiktok.com/v/1234567890123456789
+    // Video: https://www.tiktok.com/@username/video/1234567890123456789
+    // Photo: https://www.tiktok.com/@username/photo/1234567890123456789
+    // Short: https://vm.tiktok.com/XXXXXXXXX/
+    // Mobile: https://m.tiktok.com/v/1234567890123456789
     
-    const patterns = [
+    // Check for video URLs
+    const videoPatterns = [
       /tiktok\.com\/@[\w.-]+\/video\/(\d+)/,
       /tiktok\.com\/v\/(\d+)/,
       /vm\.tiktok\.com\/(\w+)/,
       /m\.tiktok\.com\/v\/(\d+)/
     ];
     
-    for (const pattern of patterns) {
+    for (const pattern of videoPatterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
         return match[1];
       }
     }
     
+    // Check for photo URLs - treat them the same as videos for ID extraction
+    const photoPattern = /tiktok\.com\/@[\w.-]+\/photo\/(\d+)/;
+    const photoMatch = url.match(photoPattern);
+    if (photoMatch && photoMatch[1]) {
+      return photoMatch[1];
+    }
+    
     return null;
   } catch (error) {
-    console.error('Error extracting TikTok video ID:', error);
+    console.error('Error extracting TikTok content ID:', error);
     return null;
   }
 }
