@@ -251,6 +251,25 @@
     <!-- Data Table -->
     <v-card>
       <v-card-text class="pa-2">
+        <!-- Duplicate warnings -->
+        <v-alert
+          v-if="duplicateInfo && duplicateInfo.duplicateErrors && duplicateInfo.duplicateErrors.length > 0"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mb-2"
+        >
+          <div class="font-weight-bold mb-2">
+            <v-icon size="small" class="mr-1">mdi-alert-circle</v-icon>
+            Duplicate entries detected:
+          </div>
+          <ul class="pl-4">
+            <li v-for="(error, index) in duplicateInfo.duplicateErrors" :key="index" class="text-caption">
+              {{ error }}
+            </li>
+          </ul>
+          <div class="text-caption mt-2">Duplicate rows are highlighted in red.</div>
+        </v-alert>
         <v-alert
           type="info"
           variant="tonal"
@@ -275,6 +294,7 @@
         v-model="selectedItems"
         :item-value="item => item"
         return-object
+        :row-props="getRowProps"
       >
         <!-- Thumbnail Column -->
         <template v-slot:item.thumbnail="{ item }">
@@ -446,16 +466,29 @@
 
         <!-- TikTok Link Column -->
         <template v-slot:item.tiktok_link="{ item }">
-          <v-btn
-            icon
-            variant="text"
-            size="small"
-            :href="item.tiktok_link"
-            target="_blank"
-            @click.stop
-          >
-            <v-icon>mdi-open-in-new</v-icon>
-          </v-btn>
+          <div v-if="!isBulkEditMode">
+            <v-btn
+              icon
+              variant="text"
+              size="small"
+              :href="item.tiktok_link"
+              target="_blank"
+              @click.stop
+            >
+              <v-icon>mdi-open-in-new</v-icon>
+            </v-btn>
+          </div>
+          <v-text-field
+            v-else
+            :model-value="bulkEditValues[`${item.id}-tiktok_link`]"
+            @update:model-value="updateBulkEditValue(`${item.id}-tiktok_link`, $event)"
+            density="compact"
+            variant="outlined"
+            hide-details
+            single-line
+            class="bulk-edit-input"
+            placeholder="Enter TikTok link..."
+          />
         </template>
 
         <!-- Spark Code Column (editable) -->
@@ -562,7 +595,8 @@ const props = defineProps({
   creatorOptions: Array,
   virtualAssistants: Array,
   typeItems: Array,
-  defaultThumbnail: String
+  defaultThumbnail: String,
+  duplicateInfo: Object
 });
 
 const emit = defineEmits([
@@ -693,6 +727,17 @@ const applyBatchUpdate = (field) => {
   emit('showBatchUpdateSuccess', { field, count: selectedItems.value.length });
 };
 
+// Get row props for styling duplicate rows
+const getRowProps = ({ item }) => {
+  if (item.isDuplicate) {
+    return {
+      class: 'duplicate-row',
+      style: 'background-color: rgba(244, 67, 54, 0.08) !important;' // Very light red background with transparency
+    };
+  }
+  return {};
+};
+
 // Helper methods that need to be passed directly
 const isEditing = (itemId, field) => props.editingCells[`${itemId}-${field}`] === true;
 const getTypeColor = (type) => {
@@ -798,5 +843,46 @@ const getStatusLabel = (status) => {
 .batch-update-card .v-alert {
   background: rgba(255, 255, 255, 0.1);
   color: white;
+}
+
+/* Duplicate row styling - subtle red tint */
+.duplicate-row {
+  background-color: rgba(244, 67, 54, 0.08) !important;
+  position: relative;
+}
+
+.duplicate-row:hover {
+  background-color: rgba(244, 67, 54, 0.12) !important;
+}
+
+/* Add a red left border for additional visual indicator */
+.duplicate-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: #f44336;
+}
+
+/* Dark mode support for duplicate rows */
+.v-theme--dark .duplicate-row {
+  background-color: rgba(244, 67, 54, 0.15) !important;
+}
+
+.v-theme--dark .duplicate-row:hover {
+  background-color: rgba(244, 67, 54, 0.2) !important;
+}
+
+/* Ensure duplicate row style overrides table hover styles */
+.sparks-table :deep(.duplicate-row td) {
+  background-color: inherit !important;
+}
+
+/* Ensure text remains readable on duplicate rows */
+.duplicate-row :deep(*) {
+  color: inherit !important;
+  opacity: 1 !important;
 }
 </style>

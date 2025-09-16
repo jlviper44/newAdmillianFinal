@@ -36,6 +36,7 @@
           :virtual-assistants="virtualAssistants"
           :type-items="typeItems"
           :default-thumbnail="defaultThumbnail"
+          :duplicate-info="duplicateInfo"
           @clear-filters="clearFilters"
           @start-bulk-edit="startBulkEdit"
           @save-bulk-edit="saveBulkEdit"
@@ -750,12 +751,15 @@ const headers = computed(() => {
     headers = headers.filter(h => h.key !== 'thumbnail');
   }
   
-  // Hide TikTok link and Actions columns in bulk edit mode
+  // Hide only Actions column in bulk edit mode (keep TikTok link editable)
   if (isBulkEditMode.value) {
-    headers = headers.filter(h => h.key !== 'tiktok_link' && h.key !== 'actions');
-    // Make spark_code column wider in bulk edit mode
+    headers = headers.filter(h => h.key !== 'actions');
+    // Adjust column widths in bulk edit mode
     headers = headers.map(h => {
       if (h.key === 'spark_code') {
+        return { ...h, width: '200px' };
+      }
+      if (h.key === 'tiktok_link') {
         return { ...h, width: '250px' };
       }
       return h;
@@ -792,6 +796,61 @@ const creatorOptions = ref([
 
 // Default thumbnail
 const defaultThumbnail = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjRTBFMEUwIi8+CjxwYXRoIGQ9Ik0yNSAxOEwyOSAyNUwyNSAzMkwyMSAyNVoiIGZpbGw9IiM5RTlFOUUiLz4KPC9zdmc+';
+
+// Computed property for duplicate detection
+const duplicateInfo = computed(() => {
+  const linkMap = new Map();
+  const codeMap = new Map();
+  const duplicateIds = new Set();
+  const duplicateErrors = [];
+  
+  // Check for duplicates in all sparks
+  sparks.value.forEach(spark => {
+    // Check for duplicate TikTok links
+    if (spark.tiktok_link) {
+      if (linkMap.has(spark.tiktok_link)) {
+        const existingIds = linkMap.get(spark.tiktok_link);
+        existingIds.push(spark.id);
+        // Mark all instances as duplicates
+        existingIds.forEach(id => duplicateIds.add(id));
+      } else {
+        linkMap.set(spark.tiktok_link, [spark.id]);
+      }
+    }
+    
+    // Check for duplicate spark codes
+    if (spark.spark_code) {
+      if (codeMap.has(spark.spark_code)) {
+        const existingIds = codeMap.get(spark.spark_code);
+        existingIds.push(spark.id);
+        // Mark all instances as duplicates
+        existingIds.forEach(id => duplicateIds.add(id));
+      } else {
+        codeMap.set(spark.spark_code, [spark.id]);
+      }
+    }
+  });
+  
+  // Generate error messages
+  linkMap.forEach((ids, link) => {
+    if (ids.length > 1) {
+      duplicateErrors.push(`Duplicate TikTok link found: ${link} (${ids.length} occurrences)`);
+    }
+  });
+  
+  codeMap.forEach((ids, code) => {
+    if (ids.length > 1) {
+      duplicateErrors.push(`Duplicate spark code found: ${code} (${ids.length} occurrences)`);
+    }
+  });
+  
+  return {
+    duplicateIds,
+    duplicateErrors,
+    linkDuplicates: linkMap,
+    codeDuplicates: codeMap
+  };
+});
 
 // Computed properties
 const filteredSparks = computed(() => {
@@ -835,7 +894,11 @@ const filteredSparks = computed(() => {
     });
   }
 
-  return filtered;
+  // Add duplicate flag to each spark
+  return filtered.map(spark => ({
+    ...spark,
+    isDuplicate: duplicateInfo.value.duplicateIds.has(spark.id)
+  }));
 });
 
 // Computed property for payments grouped by creator
@@ -2316,6 +2379,7 @@ const startBulkEdit = () => {
     bulkEditValues.value[`${spark.id}-status`] = spark.status;
     bulkEditValues.value[`${spark.id}-creator`] = spark.creator;
     bulkEditValues.value[`${spark.id}-spark_code`] = spark.spark_code;
+    bulkEditValues.value[`${spark.id}-tiktok_link`] = spark.tiktok_link;
   });
 };
 
@@ -2337,7 +2401,8 @@ const saveBulkEdit = async () => {
         bulkEditValues.value[`${spark.id}-type`] !== spark.type ||
         bulkEditValues.value[`${spark.id}-status`] !== spark.status ||
         bulkEditValues.value[`${spark.id}-creator`] !== spark.creator ||
-        bulkEditValues.value[`${spark.id}-spark_code`] !== spark.spark_code;
+        bulkEditValues.value[`${spark.id}-spark_code`] !== spark.spark_code ||
+        bulkEditValues.value[`${spark.id}-tiktok_link`] !== spark.tiktok_link;
       
       if (hasChanges) {
         updates.push({
@@ -2347,7 +2412,7 @@ const saveBulkEdit = async () => {
           status: bulkEditValues.value[`${spark.id}-status`],
           creator: bulkEditValues.value[`${spark.id}-creator`],
           sparkCode: bulkEditValues.value[`${spark.id}-spark_code`],
-          tiktokLink: spark.tiktok_link // Keep existing value
+          tiktokLink: bulkEditValues.value[`${spark.id}-tiktok_link`]
         });
       }
     });
