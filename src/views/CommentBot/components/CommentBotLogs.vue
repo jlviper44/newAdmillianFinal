@@ -280,7 +280,7 @@ const itemsPerPage = ref(100);
 const totalLogs = ref(0);
 
 // Items per page options
-const itemsPerPageOptions = [25, 50, 100, 200];
+const itemsPerPageOptions = [25, 50, 100, 200, 500, 1000];
 
 // Dialogs
 const showDetailDialog = ref(false);

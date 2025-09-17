@@ -135,7 +135,8 @@
             >
               Bulk Add
             </v-btn>
-            <v-btn
+            <!-- Comment Bot button hidden for now -->
+            <!-- <v-btn
               v-if="!isBulkEditMode && !isCommentBotMode && hasCommentBotAccess"
               color="primary"
               variant="elevated"
@@ -144,7 +145,7 @@
               prepend-icon="mdi-robot"
             >
               Comment Bot
-            </v-btn>
+            </v-btn> -->
             <v-btn
               v-if="isCommentBotMode"
               color="error"

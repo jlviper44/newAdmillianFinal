@@ -413,27 +413,33 @@ export default {
       }
     }
     
-    // Process comment bot queue jobs every hour
-    if (currentMinute === 0) {
-      console.log('Processing comment bot queue jobs...');
+    // Process comment bot queue jobs every minute
+    console.log(`[CRON ${currentHour}:${currentMinute}] Processing comment bot queue jobs...`);
+    
+    try {
+      // Import the queue worker
+      const { processCronJobs } = await import('./CommentBot/CommentBotWorker');
       
-      try {
-        // Import the queue worker
-        const { processCronJobs } = await import('./CommentBot/CommentBotWorker');
-        
-        // Process up to 20 jobs from the queue
-        const processedCount = await processCronJobs(env, 20);
-        
-        console.log(`Successfully processed ${processedCount} comment bot jobs`);
-        
-        // Clean up old completed jobs (older than 7 days)
+      // Process only 1 job from the queue per minute
+      const processedCount = await processCronJobs(env, 1);
+      
+      if (processedCount > 0) {
+        console.log(`[CRON ${currentHour}:${currentMinute}] Successfully processed ${processedCount} comment bot job(s)`);
+      } else {
+        console.log(`[CRON ${currentHour}:${currentMinute}] No jobs to process`);
+      }
+      
+      // Clean up old completed jobs (older than 7 days) - only once per hour
+      if (currentMinute === 0) {
         const { cleanupOldJobs } = await import('./CommentBot/CommentBotQueue');
         const cleanedCount = await cleanupOldJobs(env);
         
-        console.log(`Cleaned up ${cleanedCount} old comment bot jobs`);
-      } catch (error) {
-        console.error('Failed to process comment bot queue:', error);
+        if (cleanedCount > 0) {
+          console.log(`Cleaned up ${cleanedCount} old comment bot jobs`);
+        }
       }
+    } catch (error) {
+      console.error('Failed to process comment bot queue:', error);
     }
     
     // You can add other scheduled tasks here based on the cron schedule

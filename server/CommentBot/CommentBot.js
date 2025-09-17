@@ -68,10 +68,7 @@ function handleCommentBotCors(request) {
  */
 async function saveOrderProgress(request, env, orderId, userId, teamId) {
   try {
-    console.log('saveOrderProgress called for order:', orderId, 'userId:', userId, 'teamId:', teamId);
-    
     const data = await request.json();
-    console.log('Request data:', data);
     
     // Verify the order belongs to this user/team
     let verifyQuery;
@@ -85,22 +82,17 @@ async function saveOrderProgress(request, env, orderId, userId, teamId) {
       verifyParams = [orderId, userId];
     }
     
-    console.log('Verify query:', verifyQuery, 'params:', verifyParams);
     const verifyResult = await executeQuery(env.COMMENT_BOT_DB, verifyQuery, verifyParams);
-    console.log('Verify result:', verifyResult);
     
     if (!verifyResult.success || verifyResult.data.length === 0) {
-      console.log('Order not found or access denied');
       return jsonResponse({ error: 'Order not found or access denied' }, 404);
     }
     
     // Create the order_progress table if it doesn't exist
-    console.log('Initializing order progress table...');
     await initializeOrderProgressTable(env);
     
     // Insert or update the progress data
     const progressData = JSON.stringify(data.progress);
-    console.log('Progress data to save:', progressData);
     
     const query = `
       INSERT INTO order_progress (order_id, progress_data, saved_at)
@@ -111,28 +103,27 @@ async function saveOrderProgress(request, env, orderId, userId, teamId) {
         saved_at = datetime('now')
     `;
     
-    console.log('Executing insert/update query...');
     const result = await env.COMMENT_BOT_DB.prepare(query)
       .bind(orderId, progressData)
       .run();
-    console.log('Insert/update result:', result);
     
     // Update the order status if provided
     if (data.status === 'completed' && data.completed_at) {
-      console.log('Updating order status to completed...');
-      const updateOrderQuery = `
-        UPDATE orders 
-        SET status = ?, completed_at = ?, updated_at = datetime('now')
-        WHERE order_id = ?
-      `;
-      
-      const updateResult = await env.COMMENT_BOT_DB.prepare(updateOrderQuery)
-        .bind(data.status, data.completed_at, orderId)
-        .run();
-      console.log('Update order result:', updateResult);
+      // First check if completed_at column exists, if not just update status
+      try {
+        const updateOrderQuery = `
+          UPDATE orders 
+          SET status = ?, updated_at = datetime('now')
+          WHERE order_id = ?
+        `;
+        
+        const updateResult = await env.COMMENT_BOT_DB.prepare(updateOrderQuery)
+          .bind(data.status, orderId)
+          .run();
+      } catch (updateError) {
+        // Continue anyway - progress was saved
+      }
     }
-    
-    console.log('Progress saved successfully');
     return jsonResponse({
       success: true,
       message: 'Progress saved successfully'
@@ -327,25 +318,13 @@ export async function handleCommentBotData(request, env, session) {
   const path = url.pathname;
   
   try {
-    // Log all incoming requests for debugging
-    console.log('CommentBot request:', {
-      method: request.method,
-      path: path,
-      type: type,
-      url: request.url
-    });
-    
     // Handle POST, PUT, DELETE requests based on path first (regardless of type parameter)
     if (request.method === 'POST') {
-      console.log('POST request path:', path);
-      
       // Save order progress endpoint
       // Match pattern: /api/commentbot/orders/{orderId}/save-progress
       const saveProgressMatch = path.match(/^\/api\/commentbot\/orders\/([^\/]+)\/save-progress$/);
-      console.log('Save progress match result:', saveProgressMatch);
       if (saveProgressMatch) {
         const orderId = saveProgressMatch[1];
-        console.log('Matched save-progress endpoint for order:', orderId);
         return await saveOrderProgress(request, env, orderId, userId, teamId);
       }
       
@@ -354,7 +333,7 @@ export async function handleCommentBotData(request, env, session) {
       }
           
           if (path === '/api/commentbot/create-order') {
-            // Use queue system instead of direct API call
+            // Use queue system for order processing
             return await createOrderWithQueue(request, env, userId, teamId);
           }
           
@@ -377,6 +356,89 @@ export async function handleCommentBotData(request, env, session) {
               return jsonResponse({ error: 'Account type is required' }, 400);
             }
             return await checkAccounts(accountType);
+          }
+          
+          // Manual trigger for processing queue (for testing)
+          if (path === '/api/commentbot/process-queue') {
+            try {
+              console.log('[MANUAL] Processing queue...');
+              const { processCronJobs } = await import('./CommentBotWorker.js');
+              const processedCount = await processCronJobs(env, 1);
+              
+              return jsonResponse({
+                success: true,
+                message: `Processed ${processedCount} job(s)`,
+                processedCount: processedCount
+              });
+            } catch (error) {
+              console.error('[MANUAL] Queue processing error:', error);
+              return jsonResponse({
+                success: false,
+                error: error.message
+              }, 500);
+            }
+          }
+          
+          // Test endpoint to debug API calls and queue
+          if (path === '/api/commentbot/test-api') {
+            const testMode = url.searchParams.get('mode') || 'direct'; // 'direct' or 'queue'
+            const orderData = await request.json();
+            
+            if (testMode === 'direct') {
+              // Test direct API call
+              try {
+                // Build the exact API data structure
+                let apiData = {
+                  post_id: orderData.post_id,
+                  like_count: orderData.like_count || 0,
+                  save_count: orderData.save_count || 0
+                };
+                
+                // Add comment data if provided
+                if (orderData.comment_data) {
+                  apiData.comment_data = orderData.comment_data;
+                }
+                
+                console.log('[TEST] Direct API call with data:', JSON.stringify(apiData, null, 2));
+                
+                const response = await fetchAPI('/api/orders/create', {
+                  method: 'POST',
+                  body: JSON.stringify(apiData)
+                });
+                
+                console.log('[TEST] API Response:', JSON.stringify(response, null, 2));
+                
+                // Poll status once to see current state
+                if (response.order_id) {
+                  await new Promise(resolve => setTimeout(resolve, 5000));
+                  const statusResponse = await fetchAPI(`/api/orders/${response.order_id}/status`);
+                  console.log('[TEST] Status Response:', JSON.stringify(statusResponse, null, 2));
+                  
+                  return jsonResponse({
+                    success: true,
+                    apiResponse: response,
+                    statusResponse: statusResponse,
+                    requestSent: apiData
+                  });
+                }
+                
+                return jsonResponse({
+                  success: true,
+                  apiResponse: response,
+                  requestSent: apiData
+                });
+              } catch (error) {
+                console.error('[TEST] API Error:', error);
+                return jsonResponse({
+                  success: false,
+                  error: error.message,
+                  requestSent: orderData
+                });
+              }
+            } else {
+              // Test via queue
+              return await createOrderWithQueue(request, env, userId, teamId);
+            }
           }
     }
     
@@ -1227,6 +1289,8 @@ async function createOrder(request, env, userId, teamId) {
     // Parse request body
     const orderData = await request.json();
     
+    console.log('[CREATE ORDER] Received payload:', JSON.stringify(orderData, null, 2));
+    
     const targetUserId = userId;
     const targetTeamId = teamId;
     
@@ -1247,7 +1311,8 @@ async function createOrder(request, env, userId, teamId) {
     if (
       (!orderData.like_count || orderData.like_count <= 0) && 
       (!orderData.save_count || orderData.save_count <= 0) && 
-      (!orderData.comment_group_id)
+      (!orderData.comment_group_id) &&
+      (!orderData.comment_data)
     ) {
       return jsonResponse({ 
         error: 'At least one interaction type (like, save, or comment) must be specified' 
@@ -1261,8 +1326,13 @@ async function createOrder(request, env, userId, teamId) {
       save_count: orderData.save_count || 0
     };
     
-    // If comment_group_id is provided, fetch comment group details and format them
-    if (orderData.comment_group_id) {
+    // If comment_data is provided directly, use it
+    if (orderData.comment_data) {
+      apiData.comment_data = orderData.comment_data;
+      console.log('[CREATE ORDER] Using direct comment_data:', JSON.stringify(apiData.comment_data, null, 2));
+    }
+    // Otherwise, if comment_group_id is provided, fetch comment group details and format them
+    else if (orderData.comment_group_id) {
       // Get comment group details and verify user has access
       let groupQuery;
       let groupParams;
@@ -1310,12 +1380,14 @@ async function createOrder(request, env, userId, teamId) {
         legendsData = [];
       }
       
+      console.log('[DEBUG] Raw legendsData from DB:', JSON.stringify(legendsData, null, 2));
+      
       // Build comment_data with legends and conversations
       const legends = legendsData.map(legend => {
         // Format conversations to match the new API structure
         const conversations = (legend.conversations || []).map((conv, index) => ({
           user: String.fromCharCode(65 + (index % 3)), // A, B, C pattern
-          text: conv.comment_text
+          text: conv.comment_text || conv.text || '' // Handle both old and new field names
         }));
         
         return {
@@ -1327,6 +1399,8 @@ async function createOrder(request, env, userId, teamId) {
       apiData.comment_data = {
         legends: legends
       };
+      
+      console.log('[DEBUG] Final comment_data being sent:', JSON.stringify(apiData.comment_data, null, 2));
     }
     
     // Call API to create order
@@ -1662,9 +1736,9 @@ async function getCommentBotLogs(request, env) {
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
-    // Allow limit up to 200, default to 50
+    // Allow limit up to 1000, default to 50
     let limit = parseInt(url.searchParams.get('limit') || '50');
-    limit = Math.min(limit, 200); // Cap at 200 for performance
+    limit = Math.min(limit, 1000); // Cap at 1000
     const search = url.searchParams.get('search') || '';
     const statusFilter = url.searchParams.get('status') || '';
     const startDate = url.searchParams.get('startDate') || '';
@@ -1744,6 +1818,55 @@ async function getCommentBotLogs(request, env) {
     
     // Process logs to compute actual status and add user emails
     if (logsResult.success && logsResult.data.length > 0) {
+      // First, identify orders without progress data
+      const ordersWithoutProgress = logsResult.data.filter(log => 
+        log.status === 'completed' && !log.progress_data
+      );
+      
+      // Fetch progress data from API for orders that don't have it
+      if (ordersWithoutProgress.length > 0) {
+        console.log(`Found ${ordersWithoutProgress.length} orders without progress data, fetching from API...`);
+        
+        // Process in batches of 5 to avoid overwhelming the API
+        const batchSize = 5;
+        for (let i = 0; i < ordersWithoutProgress.length; i += batchSize) {
+          const batch = ordersWithoutProgress.slice(i, i + batchSize);
+          
+          await Promise.all(batch.map(async (log) => {
+            try {
+              // Fetch status from API
+              const orderStatus = await fetchAPI(`/api/orders/${log.order_id}/status`);
+              
+              if (orderStatus && orderStatus.progress) {
+                // Save progress to database
+                const progressData = JSON.stringify(orderStatus.progress);
+                const saveProgressQuery = `
+                  INSERT INTO order_progress (order_id, progress_data, saved_at)
+                  VALUES (?, ?, datetime('now'))
+                  ON CONFLICT(order_id) DO UPDATE SET
+                    progress_data = excluded.progress_data,
+                    saved_at = excluded.saved_at
+                `;
+                
+                try {
+                  await env.COMMENT_BOT_DB.prepare(saveProgressQuery)
+                    .bind(log.order_id, progressData)
+                    .run();
+                  
+                  // Add progress data to the log object
+                  log.progress_data = progressData;
+                  console.log(`Saved progress data for order ${log.order_id}`);
+                } catch (saveError) {
+                  console.error(`Error saving progress for order ${log.order_id}:`, saveError);
+                }
+              }
+            } catch (apiError) {
+              console.error(`Error fetching progress for order ${log.order_id}:`, apiError);
+            }
+          }));
+        }
+      }
+      
       // Get user emails from USERS_DB
       const userIds = [...new Set(logsResult.data.map(log => log.user_id))];
       const userEmailsQuery = `
@@ -1977,6 +2100,55 @@ async function exportCommentBotLogs(request, env) {
     
     if (!logsResult.success || logsResult.data.length === 0) {
       return jsonResponse({ error: 'No logs found to export' }, 404);
+    }
+    
+    // First, identify orders without progress data
+    const ordersWithoutProgress = logsResult.data.filter(log => 
+      log.status === 'completed' && !log.progress_data
+    );
+    
+    // Fetch progress data from API for orders that don't have it
+    if (ordersWithoutProgress.length > 0) {
+      console.log(`Export: Found ${ordersWithoutProgress.length} orders without progress data, fetching from API...`);
+      
+      // Process in batches of 5 to avoid overwhelming the API
+      const batchSize = 5;
+      for (let i = 0; i < ordersWithoutProgress.length; i += batchSize) {
+        const batch = ordersWithoutProgress.slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async (log) => {
+          try {
+            // Fetch status from API
+            const orderStatus = await fetchAPI(`/api/orders/${log.order_id}/status`);
+            
+            if (orderStatus && orderStatus.progress) {
+              // Save progress to database
+              const progressData = JSON.stringify(orderStatus.progress);
+              const saveProgressQuery = `
+                INSERT INTO order_progress (order_id, progress_data, saved_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(order_id) DO UPDATE SET
+                  progress_data = excluded.progress_data,
+                  saved_at = excluded.saved_at
+              `;
+              
+              try {
+                await env.COMMENT_BOT_DB.prepare(saveProgressQuery)
+                  .bind(log.order_id, progressData)
+                  .run();
+                
+                // Add progress data to the log object
+                log.progress_data = progressData;
+                console.log(`Export: Saved progress data for order ${log.order_id}`);
+              } catch (saveError) {
+                console.error(`Export: Error saving progress for order ${log.order_id}:`, saveError);
+              }
+            }
+          } catch (apiError) {
+            console.error(`Export: Error fetching progress for order ${log.order_id}:`, apiError);
+          }
+        }));
+      }
     }
     
     // Get user emails from USERS_DB for the logs

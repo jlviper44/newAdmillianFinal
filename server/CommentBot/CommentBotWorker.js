@@ -343,26 +343,59 @@ async function processCreateOrderJob(env, job) {
     hasComments: !!payload.comment_data
   });
   
-  // Prepare API data
-  const apiData = {
+  // Prepare API data - MUST match exactly what the old createOrder sends
+  let apiData = {
     post_id: payload.post_id,
     like_count: payload.like_count || 0,
     save_count: payload.save_count || 0
   };
   
-  // Add comment data if provided
+  // Add comment_data to API payload ONLY if it exists
+  // The payload.comment_data already has the structure: { legends: [...] }
+  // So we can directly assign it
   if (payload.comment_data) {
     apiData.comment_data = payload.comment_data;
   }
   
-  // Make API call to create order
-  const response = await fetchAPI('/api/orders/create', {
+  // Log the payload being sent to create order
+  console.log('[CREATE ORDER] Payload:', JSON.stringify(apiData, null, 2));
+  
+  // Log the API request details
+  await addJobLog(env, job.job_id, 'info', 'Calling API endpoint', {
+    url: `${API_CONFIG.baseUrl}/api/orders/create`,
     method: 'POST',
-    body: JSON.stringify(apiData)
+    dataSize: JSON.stringify(apiData).length,
+    hasCommentData: !!apiData.comment_data,
+    commentLegendsCount: apiData.comment_data?.legends?.length || 0,
+    fullData: JSON.stringify(apiData) // Include full data in logs too
   });
   
+  // Make API call to create order
+  let response;
+  try {
+    response = await fetchAPI('/api/orders/create', {
+      method: 'POST',
+      body: JSON.stringify(apiData)
+    });
+    
+    
+  } catch (apiError) {
+    
+    await addJobLog(env, job.job_id, 'error', 'API call failed', {
+      error: apiError.message,
+      endpoint: '/api/orders/create',
+      apiData: apiData
+    });
+    throw new Error(`Failed to create order via API: ${apiError.message}`);
+  }
+  
   if (!response || !response.order_id) {
-    throw new Error('Invalid API response: missing order_id');
+    
+    await addJobLog(env, job.job_id, 'error', 'Invalid API response', {
+      response: JSON.stringify(response),
+      expectedField: 'order_id'
+    });
+    throw new Error(`Invalid API response: missing order_id. Response: ${JSON.stringify(response)}`);
   }
   
   const orderId = response.order_id;
@@ -427,10 +460,8 @@ async function processCreateOrderJob(env, job) {
       const isOrderComplete = checkOrderCompletion(statusResponse);
       
       // Update order in database with the actual status
-      // Map 'completed_with_errors' to 'completed' for database compatibility
-      const dbStatus = isOrderComplete.actualStatus === 'completed_with_errors' 
-        ? 'completed' 
-        : isOrderComplete.actualStatus;
+      // Keep the actual status - don't mask failures as completed
+      const dbStatus = isOrderComplete.actualStatus;
         
       if (payload.save_to_db && env.COMMENT_BOT_DB && dbStatus !== lastStatus) {
         const updateQuery = `
@@ -449,7 +480,7 @@ async function processCreateOrderJob(env, job) {
       // If we detect the order is still processing but has made progress, extend timeout once
       if (!isOrderComplete.isComplete && !hasExtendedTimeout && statusResponse.progress) {
         const progressMade = Object.values(statusResponse.progress).some(p => 
-          p.completed > 0 || p.failed > 0
+          p && (p.completed > 0 || p.failed > 0)
         );
         
         if (progressMade) {
@@ -529,10 +560,8 @@ async function processCheckOrderStatusJob(env, job) {
   
   // Update order in database if needed
   if (payload.update_db && env.COMMENT_BOT_DB) {
-    // Map 'completed_with_errors' to 'completed' for database compatibility
-    const dbStatus = isOrderComplete.actualStatus === 'completed_with_errors' 
-      ? 'completed' 
-      : isOrderComplete.actualStatus;
+    // Keep the actual status - don't mask failures as completed
+    const dbStatus = isOrderComplete.actualStatus;
       
     const updateQuery = `
       UPDATE orders 
@@ -597,9 +626,9 @@ async function saveOrderToDatabase(env, job, orderResponse) {
  * @returns {Promise<Object>} - API response
  */
 async function fetchAPI(path, options = {}) {
+  const apiUrl = `${API_CONFIG.baseUrl}${path}`;
+  
   try {
-    const apiUrl = `${API_CONFIG.baseUrl}${path}`;
-    
     const fetchOptions = {
       ...options,
       headers: {
@@ -608,6 +637,7 @@ async function fetchAPI(path, options = {}) {
         ...(options.headers || {})
       }
     };
+    
     
     const response = await fetch(apiUrl, fetchOptions);
     
@@ -627,7 +657,6 @@ async function fetchAPI(path, options = {}) {
       throw new Error(`Invalid JSON response: ${responseText}`);
     }
   } catch (error) {
-    console.error(`API fetch error: ${error.message}`);
     throw error;
   }
 }
@@ -656,8 +685,6 @@ export function getWorkerStatus() {
 export async function processCronJobs(env, maxJobs = 10) {
   let processedCount = 0;
   
-  console.log(`Starting cron job processing (max: ${maxJobs} jobs)`);
-  
   for (let i = 0; i < maxJobs; i++) {
     const processed = await processNextJob(env);
     
@@ -671,6 +698,5 @@ export async function processCronJobs(env, maxJobs = 10) {
     await updateQueuePositions(env);
   }
   
-  console.log(`Cron job processing completed. Processed ${processedCount} jobs`);
   return processedCount;
 }

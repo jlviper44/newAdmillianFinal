@@ -3120,9 +3120,6 @@ async function requireAuth(request, env, handler) {
   // Debug logging for queue endpoints
   const url = new URL(request.url);
   const type = url.searchParams.get('type');
-  if (type === 'jobs' || type === 'queue-stats') {
-    console.log('requireAuth: Queue endpoint detected:', type);
-  }
   
   const sessionId = getSessionIdFromCookie(request);
   
