@@ -75,7 +75,7 @@
 
           <v-col cols="auto" class="ml-auto">
             <v-btn
-              v-if="!isBulkEditMode"
+              v-if="!isBulkEditMode && !isCommentBotMode"
               variant="tonal"
               color="warning"
               class="mr-2"
@@ -106,7 +106,7 @@
               </v-btn>
             </template>
             <v-btn
-              v-if="!isBulkEditMode"
+              v-if="!isBulkEditMode && !isCommentBotMode"
               variant="tonal"
               color="primary"
               class="mr-2"
@@ -116,7 +116,7 @@
               Export CSV
             </v-btn>
             <v-btn
-              v-if="!isBulkEditMode"
+              v-if="!isBulkEditMode && !isCommentBotMode"
               color="primary"
               variant="elevated"
               class="mr-2"
@@ -126,7 +126,7 @@
               Add Spark
             </v-btn>
             <v-btn
-              v-if="!isBulkEditMode"
+              v-if="!isBulkEditMode && !isCommentBotMode"
               color="secondary"
               variant="elevated"
               class="mr-2"
@@ -136,13 +136,148 @@
               Bulk Add
             </v-btn>
             <v-btn
-              v-if="!isBulkEditMode"
+              v-if="!isBulkEditMode && !isCommentBotMode && hasCommentBotAccess"
+              color="primary"
+              variant="elevated"
+              class="mr-2"
+              @click="$emit('startCommentBot')"
+              prepend-icon="mdi-robot"
+            >
+              Comment Bot
+            </v-btn>
+            <v-btn
+              v-if="isCommentBotMode"
+              color="error"
+              variant="tonal"
+              class="mr-2"
+              @click="$emit('cancelCommentBot')"
+              prepend-icon="mdi-close"
+            >
+              Cancel Comment Bot
+            </v-btn>
+            <v-btn
+              v-if="!isBulkEditMode && !isCommentBotMode"
               variant="text"
               @click="clearFilters"
               prepend-icon="mdi-filter-remove"
             >
               Clear Filters
             </v-btn>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
+    <!-- Comment Bot Controls (visible in comment bot mode) -->
+    <v-card v-if="isCommentBotMode" class="mb-4 batch-update-card">
+      <!-- Credits Display -->
+      <v-alert
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-0"
+      >
+        <div class="d-flex align-center justify-space-between">
+          <div>
+            <v-icon size="small" class="mr-1">mdi-coin</v-icon>
+            <strong>Available Credits:</strong> {{ userCredits || 0 }}
+          </div>
+          <div>
+            <v-icon size="small" class="mr-1">mdi-calculator</v-icon>
+            <strong>Cost per Order:</strong> 1 credit
+          </div>
+          <div>
+            <v-icon size="small" class="mr-1">mdi-cash</v-icon>
+            <strong>Total Cost:</strong> {{ selectedForBot.length }} credits
+          </div>
+        </div>
+      </v-alert>
+      
+      <v-card-title class="text-h6 pb-2">
+        <v-icon class="mr-2">mdi-robot</v-icon>
+        Comment Bot - Configure Settings for Selected Items
+        <v-spacer />
+        <v-chip class="mr-2" color="primary" variant="flat">
+          {{ selectedForBot.length }} selected
+        </v-chip>
+        <v-btn
+          size="small"
+          variant="tonal"
+          class="mr-2"
+          @click="selectAllForBot"
+        >
+          Select All Valid
+        </v-btn>
+        <v-btn
+          size="small"
+          variant="tonal"
+          class="mr-2"
+          @click="selectedItems = []"
+        >
+          Clear Selection
+        </v-btn>
+        <v-btn
+          color="success"
+          variant="elevated"
+          size="small"
+          @click="$emit('executeCommentBot')"
+          :loading="isProcessingBot"
+          :disabled="selectedForBot.length === 0"
+        >
+          <v-icon start>mdi-cart-plus</v-icon>
+          Create Order
+        </v-btn>
+      </v-card-title>
+      <v-card-text>
+        <v-row align="center" dense>
+          <v-col cols="12" md="4">
+            <v-select
+              :model-value="commentBotSettings.comment_group_id"
+              @update:model-value="updateCommentBotSetting('comment_group_id', $event)"
+              :items="commentGroups"
+              item-title="name"
+              item-value="id"
+              label="Comment Group"
+              density="compact"
+              variant="outlined"
+              hide-details
+              clearable
+            />
+          </v-col>
+          
+          <v-col cols="12" md="3">
+            <v-text-field
+              :model-value="commentBotSettings.like_count"
+              @update:model-value="updateCommentBotSetting('like_count', $event)"
+              type="number"
+              label="Likes per Spark"
+              density="compact"
+              variant="outlined"
+              hide-details
+              :rules="[v => v >= 0 && v <= 3000 || 'Max 3,000']"
+              placeholder="0-3000"
+            />
+          </v-col>
+          
+          <v-col cols="12" md="3">
+            <v-text-field
+              :model-value="commentBotSettings.save_count"
+              @update:model-value="updateCommentBotSetting('save_count', $event)"
+              type="number"
+              label="Saves per Spark"
+              density="compact"
+              variant="outlined"
+              hide-details
+              :rules="[v => v >= 0 && v <= 500 || 'Max 500']"
+              placeholder="0-500"
+            />
+          </v-col>
+          
+          <v-col cols="12" md="2">
+            <v-chip color="info" variant="tonal" class="w-100 justify-center">
+              Total: {{ selectedForBot.length * (commentBotSettings.like_count || 0) }} likes, 
+              {{ selectedForBot.length * (commentBotSettings.save_count || 0) }} saves
+            </v-chip>
           </v-col>
         </v-row>
       </v-card-text>
@@ -286,11 +421,11 @@
         :loading="isLoading"
         :items-per-page-options="[10, 25, 50, 100, 200]"
         v-model:page="localCurrentPage"
-        :class="['sparks-table', { 'bulk-edit-table': isBulkEditMode }]"
+        :class="['sparks-table', { 'bulk-edit-table': isBulkEditMode, 'comment-bot-table': isCommentBotMode }]"
         hover
         fixed-header
         height="600"
-        :show-select="isBulkEditMode"
+        :show-select="isBulkEditMode || isCommentBotMode"
         v-model="selectedItems"
         :item-value="item => item"
         return-object
@@ -390,6 +525,27 @@
         </template>
 
         <!-- Status Column (editable) -->
+        <!-- Bot Status Column -->
+        <template v-slot:item.bot_status="{ item }">
+          <v-chip 
+            :color="getBotStatusColor(item.bot_status)"
+            size="small"
+            variant="tonal"
+          >
+            <v-progress-circular
+              v-if="item.bot_status === 'processing'"
+              size="12"
+              width="2"
+              indeterminate
+              class="mr-1"
+            />
+            <v-icon v-else start size="x-small">
+              {{ getBotStatusIcon(item.bot_status) }}
+            </v-icon>
+            {{ formatBotStatus(item.bot_status) }}
+          </v-chip>
+        </template>
+        
         <template v-slot:item.status="{ item }">
           <div 
             v-if="!isBulkEditMode"
@@ -569,7 +725,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits, ref, watch, computed } from 'vue';
+import { defineProps, defineEmits, ref, watch, computed, nextTick } from 'vue';
 
 const props = defineProps({
   sparks: Array,
@@ -582,6 +738,8 @@ const props = defineProps({
   showThumbnails: Boolean,
   isBulkEditMode: Boolean,
   isSavingBulk: Boolean,
+  isCommentBotMode: Boolean,
+  isProcessingBot: Boolean,
   itemsPerPage: Number,
   currentPage: Number,
   headers: Array,
@@ -590,13 +748,18 @@ const props = defineProps({
   editingValues: Object,
   menuStates: Object,
   bulkEditValues: Object,
+  commentBotSettings: Object,
+  selectedForBot: Array,
+  commentGroups: Array,
   typeOptions: Array,
   statusOptions: Array,
   creatorOptions: Array,
   virtualAssistants: Array,
   typeItems: Array,
   defaultThumbnail: String,
-  duplicateInfo: Object
+  duplicateInfo: Object,
+  hasCommentBotAccess: Boolean,
+  userCredits: Number
 });
 
 const emit = defineEmits([
@@ -608,10 +771,17 @@ const emit = defineEmits([
   'update:showThumbnails',
   'update:currentPage',
   'update:itemsPerPage',
+  'update:selectedForBot',
+  'update:selected-for-bot',
   'clearFilters',
   'startBulkEdit',
   'saveBulkEdit',
   'cancelBulkEdit',
+  'startCommentBot',
+  'executeCommentBot',
+  'cancelCommentBot',
+  'toggleBotSelection',
+  'updateCommentBotSettings',
   'exportToCSV',
   'openCreateModal',
   'bulkAdd',
@@ -632,6 +802,33 @@ const emit = defineEmits([
 const localItemsPerPage = ref(props.itemsPerPage);
 const localCurrentPage = ref(props.currentPage);
 
+// Bot Status Helper Functions
+const getBotStatusColor = (status) => {
+  const colors = {
+    'not_botted': 'grey',
+    'queued': 'blue',
+    'processing': 'orange',
+    'completed': 'success',
+    'failed': 'error'
+  };
+  return colors[status] || 'grey';
+};
+
+const getBotStatusIcon = (status) => {
+  const icons = {
+    'not_botted': 'mdi-robot-off',
+    'queued': 'mdi-clock-outline',
+    'processing': 'mdi-cog',
+    'completed': 'mdi-check-circle',
+    'failed': 'mdi-alert-circle'
+  };
+  return icons[status] || 'mdi-help-circle';
+};
+
+const formatBotStatus = (status) => {
+  return status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Not Botted';
+};
+
 // Batch update state
 const batchUpdate = ref({
   name: '',
@@ -642,6 +839,19 @@ const batchUpdate = ref({
 // Selected items for bulk operations
 const selectedItems = ref([]);
 
+// Comment Bot functions
+const selectAllForBot = () => {
+  const validSparks = props.filteredSparks.filter(s => s.tiktok_link);
+  selectedItems.value = validSparks;
+};
+
+const updateCommentBotSetting = (key, value) => {
+  const updatedSettings = { ...props.commentBotSettings, [key]: value };
+  // This needs to be handled in parent component
+  // For now we'll just emit an event
+  emit('updateCommentBotSettings', updatedSettings);
+};
+
 // Computed property for headers (use regular headers since checkbox is handled by show-select)
 const headersWithCheckbox = computed(() => props.headers);
 
@@ -649,6 +859,38 @@ const headersWithCheckbox = computed(() => props.headers);
 watch(() => props.isBulkEditMode, (newVal) => {
   if (!newVal) {
     selectedItems.value = [];
+  }
+});
+
+// Watch for comment bot mode changes
+watch(() => props.isCommentBotMode, (newVal) => {
+  if (newVal) {
+    selectedItems.value = [];
+  }
+});
+
+// Sync selectedItems with selectedForBot when in comment bot mode
+let isUpdatingFromParent = false;
+let isUpdatingFromLocal = false;
+
+watch(selectedItems, (newVal) => {
+  if (props.isCommentBotMode && !isUpdatingFromParent) {
+    isUpdatingFromLocal = true;
+    const selectedIds = newVal.map(item => item.id);
+    emit('update:selected-for-bot', selectedIds);
+    nextTick(() => { isUpdatingFromLocal = false; });
+  }
+});
+
+// Also sync selectedForBot back to selectedItems
+watch(() => props.selectedForBot, (newVal) => {
+  if (props.isCommentBotMode && newVal && !isUpdatingFromLocal) {
+    isUpdatingFromParent = true;
+    // Find the full items from filteredSparks that match the IDs
+    selectedItems.value = props.filteredSparks.filter(item => 
+      newVal.includes(item.id)
+    );
+    nextTick(() => { isUpdatingFromParent = false; });
   }
 });
 

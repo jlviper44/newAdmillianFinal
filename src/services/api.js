@@ -128,9 +128,12 @@ export const commentBotApi = {
   getOrders: () => api.get('/commentbot?type=orders'),
   getOrder: (id) => api.get(`/commentbot/orders/${id}`),
   createOrder: (data) => api.post('/commentbot/create-order', data),
+  createBulkOrder: (data) => api.post('/commentbot/bulk-order', data),
   updateOrder: (id, data) => api.put(`/commentbot/orders/${id}`, data),
   deleteOrder: (id) => api.delete(`/commentbot/orders/${id}`),
   getOrderStatus: (orderId) => api.get(`/commentbot?type=order-status&order_id=${orderId}`),
+  cancelOrder: (orderId) => api.delete(`/commentbot/order/${orderId}`),
+  saveOrderProgress: (orderId, data) => api.post(`/commentbot/orders/${orderId}/save-progress`, data),
   
   // Job queue endpoints
   getJobs: (params = {}) => {
@@ -241,7 +244,11 @@ export const sparksApi = {
   getSparkStats: (id) => api.get(`/sparks/${id}/stats`),
   
   // Extract TikTok thumbnail
-  extractTikTokThumbnail: (tiktokUrl) => api.post('/sparks/extract-tiktok-thumbnail', { tiktokUrl })
+  extractTikTokThumbnail: (tiktokUrl) => api.post('/sparks/extract-tiktok-thumbnail', { tiktokUrl }),
+  
+  // Bot status operations
+  updateBotStatus: (sparkIds, status) => api.put('/sparks/bulk-bot-status', { spark_ids: sparkIds, status }),
+  getBotStatus: (sparkIds) => api.post('/sparks/bot-status', { spark_ids: sparkIds })
 }
 
 // Templates specific API methods

@@ -27,6 +27,129 @@ const WORKER_CONFIG = {
 };
 
 /**
+ * Check if an order is truly complete by examining the progress details
+ * @param {Object} statusResponse - The status response from the API
+ * @returns {Object} - Object with isComplete boolean and details
+ */
+function checkOrderCompletion(statusResponse) {
+  // If status indicates failure or cancellation, consider it complete
+  if (statusResponse.status === 'failed' || statusResponse.status === 'canceled') {
+    return {
+      isComplete: true,
+      actualStatus: statusResponse.status,
+      details: {
+        reason: `Order ${statusResponse.status}`
+      }
+    };
+  }
+  
+  // If status is not 'completed', it's not done yet
+  if (statusResponse.status !== 'completed') {
+    return {
+      isComplete: false,
+      actualStatus: 'processing',
+      details: {}
+    };
+  }
+  
+  // Status is 'completed', but we need to check the actual progress
+  const progress = statusResponse.progress;
+  
+  if (!progress) {
+    // No progress data, assume it's actually complete
+    return {
+      isComplete: true,
+      actualStatus: 'completed',
+      details: {
+        warning: 'No progress data available'
+      }
+    };
+  }
+  
+  // Check each interaction type
+  const interactionTypes = ['like', 'save', 'comment'];
+  let allComplete = true;
+  let hasPartialFailure = false;
+  let hasAnySuccess = false;
+  let totalRequested = 0;
+  let totalCompleted = 0;
+  let totalFailed = 0;
+  let completionDetails = {};
+  
+  for (const type of interactionTypes) {
+    const typeProgress = progress[type];
+    
+    if (typeProgress && typeProgress.total > 0) {
+      // This interaction type was requested
+      const completed = typeProgress.completed || 0;
+      const failed = typeProgress.failed || 0;
+      const remaining = typeProgress.remaining || 0;
+      const total = typeProgress.total || 0;
+      
+      completionDetails[type] = {
+        total: total,
+        completed: completed,
+        failed: failed,
+        remaining: remaining,
+        percent: typeProgress.percent || 0
+      };
+      
+      // Track totals
+      totalRequested += total;
+      totalCompleted += completed;
+      totalFailed += failed;
+      
+      // Check if there are any remaining items
+      if (remaining > 0) {
+        allComplete = false;
+      }
+      
+      // Check if there were any successes
+      if (completed > 0) {
+        hasAnySuccess = true;
+      }
+      
+      // Check if there were failures
+      if (failed > 0) {
+        hasPartialFailure = true;
+      }
+    }
+  }
+  
+  // Determine the actual status based on results
+  let actualStatus = 'completed';
+  let isComplete = false;
+  
+  if (!allComplete) {
+    // Still have remaining items to process
+    actualStatus = 'processing';
+    isComplete = false;
+  } else if (totalCompleted === 0 && totalFailed > 0) {
+    // Everything failed - this is a failed order
+    actualStatus = 'failed';
+    isComplete = true; // It's done, but failed
+  } else if (hasPartialFailure && hasAnySuccess) {
+    // Some succeeded, some failed
+    actualStatus = 'completed_with_errors';
+    isComplete = true;
+  } else if (totalCompleted === totalRequested) {
+    // Everything succeeded
+    actualStatus = 'completed';
+    isComplete = true;
+  } else {
+    // Edge case - no remaining but also no clear success/failure
+    actualStatus = statusResponse.status;
+    isComplete = statusResponse.status === 'completed';
+  }
+  
+  return {
+    isComplete: isComplete,
+    actualStatus: actualStatus,
+    details: completionDetails
+  };
+}
+
+/**
  * Worker state management
  */
 let isWorkerRunning = false;
@@ -209,8 +332,9 @@ async function processJobByType(env, job) {
 async function processCreateOrderJob(env, job) {
   const payload = job.payload;
   const startTime = Date.now();
-  const maxPollingTime = 1 * 60 * 1000; // 1 minute
+  let maxPollingTime = 2 * 60 * 1000; // Start with 2 minutes, will extend if needed
   const pollInterval = 10000; // Poll every 10 seconds
+  let hasExtendedTimeout = false; // Track if we've extended the timeout
   
   await addJobLog(env, job.job_id, 'info', 'Creating order with external API', {
     postId: payload.post_id,
@@ -299,18 +423,63 @@ async function processCreateOrderJob(env, job) {
         }
       }
       
-      // Check if order is complete
-      if (statusResponse.status === 'completed' || 
-          statusResponse.status === 'failed' || 
-          statusResponse.status === 'canceled') {
+      // Check if order is truly complete
+      const isOrderComplete = checkOrderCompletion(statusResponse);
+      
+      // Update order in database with the actual status
+      // Map 'completed_with_errors' to 'completed' for database compatibility
+      const dbStatus = isOrderComplete.actualStatus === 'completed_with_errors' 
+        ? 'completed' 
+        : isOrderComplete.actualStatus;
+        
+      if (payload.save_to_db && env.COMMENT_BOT_DB && dbStatus !== lastStatus) {
+        const updateQuery = `
+          UPDATE orders 
+          SET status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE order_id = ?
+        `;
+        
+        await env.COMMENT_BOT_DB.prepare(updateQuery)
+          .bind(dbStatus, orderId)
+          .run();
+          
+        lastStatus = dbStatus;
+      }
+      
+      // If we detect the order is still processing but has made progress, extend timeout once
+      if (!isOrderComplete.isComplete && !hasExtendedTimeout && statusResponse.progress) {
+        const progressMade = Object.values(statusResponse.progress).some(p => 
+          p.completed > 0 || p.failed > 0
+        );
+        
+        if (progressMade) {
+          // Extend timeout by 3 more minutes if we see progress
+          maxPollingTime += 3 * 60 * 1000;
+          hasExtendedTimeout = true;
+          
+          await addJobLog(env, job.job_id, 'info', 'Extending timeout due to ongoing progress', {
+            orderId: orderId,
+            newMaxPollingTime: maxPollingTime / 1000 + ' seconds',
+            currentProgress: statusResponse.progress
+          });
+        }
+      }
+      
+      if (isOrderComplete.isComplete) {
         orderComplete = true;
         
         await addJobLog(env, job.job_id, 'info', 'Order processing finished', {
           orderId: orderId,
           finalStatus: statusResponse.status,
+          actualStatus: isOrderComplete.actualStatus,
           pollCount: pollCount,
-          duration: Math.round((Date.now() - startTime) / 1000) + ' seconds'
+          duration: Math.round((Date.now() - startTime) / 1000) + ' seconds',
+          completionDetails: isOrderComplete.details
         });
+        
+        // Update the status response with actual completion status
+        statusResponse.actualCompletionStatus = isOrderComplete.actualStatus;
+        statusResponse.completionDetails = isOrderComplete.details;
         
         return statusResponse;
       }
@@ -355,8 +524,16 @@ async function processCheckOrderStatusJob(env, job) {
     progress: response.progress
   });
   
+  // Check the actual completion status
+  const isOrderComplete = checkOrderCompletion(response);
+  
   // Update order in database if needed
   if (payload.update_db && env.COMMENT_BOT_DB) {
+    // Map 'completed_with_errors' to 'completed' for database compatibility
+    const dbStatus = isOrderComplete.actualStatus === 'completed_with_errors' 
+      ? 'completed' 
+      : isOrderComplete.actualStatus;
+      
     const updateQuery = `
       UPDATE orders 
       SET status = ?, updated_at = CURRENT_TIMESTAMP
@@ -364,7 +541,7 @@ async function processCheckOrderStatusJob(env, job) {
     `;
     
     await env.COMMENT_BOT_DB.prepare(updateQuery)
-      .bind(response.status, orderId)
+      .bind(dbStatus, orderId)
       .run();
   }
   

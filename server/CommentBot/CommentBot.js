@@ -64,6 +64,111 @@ function handleCommentBotCors(request) {
 }
 
 /**
+ * Save order progress to D1 database
+ */
+async function saveOrderProgress(request, env, orderId, userId, teamId) {
+  try {
+    console.log('saveOrderProgress called for order:', orderId, 'userId:', userId, 'teamId:', teamId);
+    
+    const data = await request.json();
+    console.log('Request data:', data);
+    
+    // Verify the order belongs to this user/team
+    let verifyQuery;
+    let verifyParams;
+    
+    if (teamId) {
+      verifyQuery = 'SELECT order_id FROM orders WHERE order_id = ? AND team_id = ?';
+      verifyParams = [orderId, teamId];
+    } else {
+      verifyQuery = 'SELECT order_id FROM orders WHERE order_id = ? AND user_id = ?';
+      verifyParams = [orderId, userId];
+    }
+    
+    console.log('Verify query:', verifyQuery, 'params:', verifyParams);
+    const verifyResult = await executeQuery(env.COMMENT_BOT_DB, verifyQuery, verifyParams);
+    console.log('Verify result:', verifyResult);
+    
+    if (!verifyResult.success || verifyResult.data.length === 0) {
+      console.log('Order not found or access denied');
+      return jsonResponse({ error: 'Order not found or access denied' }, 404);
+    }
+    
+    // Create the order_progress table if it doesn't exist
+    console.log('Initializing order progress table...');
+    await initializeOrderProgressTable(env);
+    
+    // Insert or update the progress data
+    const progressData = JSON.stringify(data.progress);
+    console.log('Progress data to save:', progressData);
+    
+    const query = `
+      INSERT INTO order_progress (order_id, progress_data, saved_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(order_id) 
+      DO UPDATE SET 
+        progress_data = excluded.progress_data,
+        saved_at = datetime('now')
+    `;
+    
+    console.log('Executing insert/update query...');
+    const result = await env.COMMENT_BOT_DB.prepare(query)
+      .bind(orderId, progressData)
+      .run();
+    console.log('Insert/update result:', result);
+    
+    // Update the order status if provided
+    if (data.status === 'completed' && data.completed_at) {
+      console.log('Updating order status to completed...');
+      const updateOrderQuery = `
+        UPDATE orders 
+        SET status = ?, completed_at = ?, updated_at = datetime('now')
+        WHERE order_id = ?
+      `;
+      
+      const updateResult = await env.COMMENT_BOT_DB.prepare(updateOrderQuery)
+        .bind(data.status, data.completed_at, orderId)
+        .run();
+      console.log('Update order result:', updateResult);
+    }
+    
+    console.log('Progress saved successfully');
+    return jsonResponse({
+      success: true,
+      message: 'Progress saved successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error saving order progress:', error);
+    console.error('Error stack:', error.stack);
+    return jsonResponse({ 
+      error: 'Failed to save progress', 
+      details: error.message,
+      stack: error.stack
+    }, 500);
+  }
+}
+
+/**
+ * Initialize order progress table
+ */
+async function initializeOrderProgressTable(env) {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS order_progress (
+      order_id TEXT PRIMARY KEY,
+      progress_data TEXT,
+      saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  
+  try {
+    await env.COMMENT_BOT_DB.prepare(createTableQuery).run();
+  } catch (error) {
+    console.error('Error creating order_progress table:', error);
+  }
+}
+
+/**
  * Initialize comment groups tables if they don't exist
  * @param {Object} env - Environment bindings
  */
@@ -211,6 +316,7 @@ export async function handleCommentBotData(request, env, session) {
   // Initialize tables if needed (this will only create them if they don't exist)
   await initializeCommentGroupTables(env);
   await initializeQueueTables(env);
+  await initializeOrderProgressTable(env);
   
   // Get user's team ID
   const teamId = await getUserTeamId(env, userId);
@@ -218,52 +324,30 @@ export async function handleCommentBotData(request, env, session) {
   // Get the query parameters
   const url = new URL(request.url);
   const type = url.searchParams.get('type');
+  const path = url.pathname;
   
   try {
-    // Based on the type parameter, return different data
-    switch(type) {
-      case 'comment-groups':
-        return await getCommentGroups(request, env, userId, teamId);
-      case 'comment-group-detail':
-        const groupId = url.searchParams.get('id');
-        if (!groupId) {
-          return jsonResponse({ error: 'Comment Group ID is required' }, 400);
-        }
-        return await getCommentGroupDetail(groupId, env, userId, teamId);
-      case 'account-pools':
-        return await getAccountPools();
-      case 'order-status':
-        const orderId = url.searchParams.get('order_id');
-        if (!orderId) {
-          return jsonResponse({ error: 'Order ID is required' }, 400);
-        }
-        return await getOrderStatus(orderId, env, userId, teamId);
-      case 'orders':
-        return await getOrders(request, env, userId, teamId);
-      case 'jobs':
-        return await getJobs(request, env, userId, teamId);
-      case 'job-status':
-        const jobId = url.searchParams.get('job_id');
-        if (!jobId) {
-          return jsonResponse({ error: 'Job ID is required' }, 400);
-        }
-        return await getJobStatus(jobId, env, userId, teamId);
-      case 'job-logs':
-        const jobLogId = url.searchParams.get('job_id');
-        if (!jobLogId) {
-          return jsonResponse({ error: 'Job ID is required' }, 400);
-        }
-        return await getJobLogsEndpoint(jobLogId, env, userId, teamId);
-      case 'queue-stats':
-        return await getQueueStatsEndpoint(env);
-      default:
-        break; // Exit switch to handle other methods below
-    }
+    // Log all incoming requests for debugging
+    console.log('CommentBot request:', {
+      method: request.method,
+      path: path,
+      type: type,
+      url: request.url
+    });
     
-    // If we got here from a valid case, we should have returned already
-    // Handle POST, PUT, DELETE requests based on path
+    // Handle POST, PUT, DELETE requests based on path first (regardless of type parameter)
     if (request.method === 'POST') {
-      const path = url.pathname;
+      console.log('POST request path:', path);
+      
+      // Save order progress endpoint
+      // Match pattern: /api/commentbot/orders/{orderId}/save-progress
+      const saveProgressMatch = path.match(/^\/api\/commentbot\/orders\/([^\/]+)\/save-progress$/);
+      console.log('Save progress match result:', saveProgressMatch);
+      if (saveProgressMatch) {
+        const orderId = saveProgressMatch[1];
+        console.log('Matched save-progress endpoint for order:', orderId);
+        return await saveOrderProgress(request, env, orderId, userId, teamId);
+      }
       
       if (path === '/api/commentbot/comment-groups') {
         return await createCommentGroup(request, env, userId, teamId);
@@ -277,6 +361,7 @@ export async function handleCommentBotData(request, env, session) {
           if (path === '/api/commentbot/create-job') {
             return await createJobEndpoint(request, env, userId, teamId);
           }
+          
           
           if (path === '/api/commentbot/cancel-job') {
             const jobId = url.searchParams.get('job_id');
@@ -293,7 +378,47 @@ export async function handleCommentBotData(request, env, session) {
             }
             return await checkAccounts(accountType);
           }
-        }
+    }
+    
+    // Handle GET requests with type parameter
+    if (request.method === 'GET' && type) {
+      switch(type) {
+        case 'comment-groups':
+          return await getCommentGroups(request, env, userId, teamId);
+        case 'comment-group-detail':
+          const groupId = url.searchParams.get('id');
+          if (!groupId) {
+            return jsonResponse({ error: 'Comment Group ID is required' }, 400);
+          }
+          return await getCommentGroupDetail(groupId, env, userId, teamId);
+        case 'account-pools':
+          return await getAccountPools();
+        case 'order-status':
+          const orderId = url.searchParams.get('order_id');
+          if (!orderId) {
+            return jsonResponse({ error: 'Order ID is required' }, 400);
+          }
+          return await getOrderStatus(orderId, env, userId, teamId);
+        case 'orders':
+          return await getOrders(request, env, userId, teamId);
+        case 'jobs':
+          return await getJobs(request, env, userId, teamId);
+        case 'job-status':
+          const jobId = url.searchParams.get('job_id');
+          if (!jobId) {
+            return jsonResponse({ error: 'Job ID is required' }, 400);
+          }
+          return await getJobStatus(jobId, env, userId, teamId);
+        case 'job-logs':
+          const jobLogId = url.searchParams.get('job_id');
+          if (!jobLogId) {
+            return jsonResponse({ error: 'Job ID is required' }, 400);
+          }
+          return await getJobLogsEndpoint(jobLogId, env, userId, teamId);
+        case 'queue-stats':
+          return await getQueueStatsEndpoint(env);
+      }
+    }
         
         // Handle PUT requests for updating comment groups
         if (request.method === 'PUT' && url.pathname.match(/^\/api\/commentbot\/comment-groups\/\d+$/)) {
@@ -341,7 +466,15 @@ export async function handleCommentBotData(request, env, session) {
         }
         
     // If no specific type is requested, return error
-    return jsonResponse({ error: 'Invalid request type or method' }, 400);
+    console.log('Unhandled request:', request.method, url.pathname, 'type:', type);
+    return jsonResponse({ 
+      error: 'Invalid request type or method',
+      details: {
+        method: request.method,
+        path: url.pathname,
+        type: type
+      }
+    }, 400);
   } catch (error) {
     console.error('Error in handleCommentBotData:', error);
     return jsonResponse({ 
@@ -1396,9 +1529,37 @@ async function getOrders(request, env, userId, teamId) {
       }
     }
     
+    // Fetch saved progress data for these orders
+    let orderProgress = {};
+    if (orders.length > 0) {
+      const orderIds = orders.map(o => o.order_id);
+      const progressQuery = `
+        SELECT order_id, progress_data 
+        FROM order_progress 
+        WHERE order_id IN (${orderIds.map(() => '?').join(',')})
+      `;
+      
+      try {
+        const progressResult = await executeQuery(env.COMMENT_BOT_DB, progressQuery, orderIds);
+        if (progressResult.success) {
+          progressResult.data.forEach(row => {
+            try {
+              orderProgress[row.order_id] = JSON.parse(row.progress_data);
+            } catch (e) {
+              console.error('Error parsing progress data:', e);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error fetching saved progress:', e);
+        // Continue without saved progress data
+      }
+    }
+    
     return jsonResponse({
       success: true,
       orders: orders,
+      orderProgress: orderProgress,
       pagination: {
         total: total,
         limit: limit,
@@ -1501,9 +1662,11 @@ async function getCommentBotLogs(request, env) {
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '50');
+    // Allow limit up to 200, default to 50
+    let limit = parseInt(url.searchParams.get('limit') || '50');
+    limit = Math.min(limit, 200); // Cap at 200 for performance
     const search = url.searchParams.get('search') || '';
-    const status = url.searchParams.get('status') || '';
+    const statusFilter = url.searchParams.get('status') || '';
     const startDate = url.searchParams.get('startDate') || '';
     const endDate = url.searchParams.get('endDate') || '';
     const offset = (page - 1) * limit;
@@ -1518,10 +1681,8 @@ async function getCommentBotLogs(request, env) {
       params.push(searchPattern, searchPattern, searchPattern);
     }
     
-    if (status && status !== 'all') {
-      whereConditions.push('o.status = ?');
-      params.push(status);
-    }
+    // Note: We don't filter by status in the SQL query anymore since we compute 
+    // the actual status from progress data. We'll filter after processing.
     
     if (startDate) {
       whereConditions.push('o.created_at >= ?');
@@ -1544,25 +1705,46 @@ async function getCommentBotLogs(request, env) {
     `;
     
     const countResult = await executeQuery(env.COMMENT_BOT_DB, countQuery, params);
-    const total = countResult.success && countResult.data.length > 0 ? countResult.data[0].total : 0;
+    let total = countResult.success && countResult.data.length > 0 ? countResult.data[0].total : 0;
     
-    // Get logs with pagination
-    const logsQuery = `
-      SELECT 
-        o.*,
-        cg.name as comment_group_name
-      FROM orders o
-      LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
-      ${whereClause}
-      ORDER BY o.created_at DESC
-      LIMIT ? OFFSET ?
-    `;
+    // Get logs - if filtering by status, we need to get all records first,
+    // then filter after computing actual status
+    let logsQuery;
+    if (statusFilter && statusFilter !== 'all') {
+      // Get all records matching other filters (no pagination yet)
+      logsQuery = `
+        SELECT 
+          o.*,
+          cg.name as comment_group_name,
+          op.progress_data
+        FROM orders o
+        LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+        LEFT JOIN order_progress op ON o.order_id = op.order_id
+        ${whereClause}
+        ORDER BY o.created_at DESC
+      `;
+    } else {
+      // Normal paginated query when not filtering by status
+      logsQuery = `
+        SELECT 
+          o.*,
+          cg.name as comment_group_name,
+          op.progress_data
+        FROM orders o
+        LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+        LEFT JOIN order_progress op ON o.order_id = op.order_id
+        ${whereClause}
+        ORDER BY o.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      params.push(limit, offset);
+    }
     
-    params.push(limit, offset);
     const logsResult = await executeQuery(env.COMMENT_BOT_DB, logsQuery, params);
     
-    // Get user emails from USERS_DB for the logs
+    // Process logs to compute actual status and add user emails
     if (logsResult.success && logsResult.data.length > 0) {
+      // Get user emails from USERS_DB
       const userIds = [...new Set(logsResult.data.map(log => log.user_id))];
       const userEmailsQuery = `
         SELECT user_id, user_email
@@ -1579,25 +1761,65 @@ async function getCommentBotLogs(request, env) {
         });
       }
       
-      // Add user emails to logs
+      // Process each log to add user email and compute actual status
       logsResult.data.forEach(log => {
         log.user_email = userEmailMap[log.user_id] || null;
+        
+        // Compute actual status from progress data if available
+        if (log.status === 'completed' && log.progress_data) {
+          try {
+            const progress = JSON.parse(log.progress_data);
+            
+            // Calculate totals across all interaction types
+            let totalRequested = 0;
+            let totalCompleted = 0;
+            let totalFailed = 0;
+            
+            ['like', 'save', 'comment'].forEach(type => {
+              if (progress[type] && progress[type].total > 0) {
+                totalRequested += progress[type].total || 0;
+                totalCompleted += progress[type].completed || 0;
+                totalFailed += progress[type].failed || 0;
+              }
+            });
+            
+            // Determine actual status based on progress
+            if (totalRequested > 0) {
+              if (totalCompleted === 0 && totalFailed > 0) {
+                // Everything failed
+                log.status = 'failed';
+              } else if (totalFailed > 0 && totalCompleted > 0) {
+                // Mixed results - keep as completed but could show partial in UI
+                log.status = 'completed';
+                log.partial_failure = true;
+                log.success_rate = Math.round((totalCompleted / totalRequested) * 100);
+              }
+              // else keep as completed (all successful)
+            }
+          } catch (e) {
+            // If we can't parse progress, keep original status
+            console.error('Error parsing progress data for order', log.order_id, e);
+          }
+        }
+        
+        // Remove progress_data from response to reduce payload size
+        delete log.progress_data;
       });
-    }
-    
-    // Debug: Check all orders
-    try {
-      const debugQuery = 'SELECT COUNT(*) as count FROM orders';
-      const debugResult = await executeQuery(env.COMMENT_BOT_DB, debugQuery, []);
       
-      // Also try to get a sample order
-      const sampleQuery = 'SELECT * FROM orders LIMIT 1';
-      const sampleResult = await executeQuery(env.COMMENT_BOT_DB, sampleQuery, []);
-    } catch (debugError) {
-      console.error('Debug query error:', debugError);
+      // Filter by status if specified (after computing actual status)
+      if (statusFilter && statusFilter !== 'all') {
+        const filteredLogs = logsResult.data.filter(log => log.status === statusFilter);
+        // Update total for proper pagination
+        total = filteredLogs.length;
+        // Apply pagination to filtered results
+        const start = offset;
+        const end = offset + limit;
+        logsResult.data = filteredLogs.slice(start, end);
+      }
     }
     
-    // Get stats
+    
+    // Get basic stats from orders table
     const statsQuery = `
       SELECT 
         COUNT(*) as totalOrders,
@@ -1608,12 +1830,71 @@ async function getCommentBotLogs(request, env) {
     `;
     
     const statsResult = await executeQuery(env.COMMENT_BOT_DB, statsQuery, []);
-    const stats = statsResult.success && statsResult.data.length > 0 ? statsResult.data[0] : {
+    let stats = statsResult.success && statsResult.data.length > 0 ? statsResult.data[0] : {
       totalOrders: 0,
       completedOrders: 0,
       failedOrders: 0,
       activeOrders: 0
     };
+    
+    // For completed orders, check progress data to identify actual failures
+    // This is needed because legacy orders may have been marked as 'completed' even when failed
+    if (stats.completedOrders > 0) {
+      const progressCheckQuery = `
+        SELECT 
+          o.order_id,
+          o.status,
+          op.progress_data
+        FROM orders o
+        LEFT JOIN order_progress op ON o.order_id = op.order_id
+        WHERE o.status = 'completed'
+      `;
+      
+      const progressResult = await executeQuery(env.COMMENT_BOT_DB, progressCheckQuery, []);
+      
+      if (progressResult.success && progressResult.data.length > 0) {
+        let actualFailed = 0;
+        let actualCompleted = 0;
+        
+        for (const order of progressResult.data) {
+          if (order.progress_data) {
+            try {
+              const progress = JSON.parse(order.progress_data);
+              
+              // Calculate totals across all interaction types
+              let totalRequested = 0;
+              let totalCompleted = 0;
+              let totalFailed = 0;
+              
+              ['like', 'save', 'comment'].forEach(type => {
+                if (progress[type] && progress[type].total > 0) {
+                  totalRequested += progress[type].total || 0;
+                  totalCompleted += progress[type].completed || 0;
+                  totalFailed += progress[type].failed || 0;
+                }
+              });
+              
+              // Determine if this order actually failed
+              if (totalRequested > 0 && totalCompleted === 0 && totalFailed > 0) {
+                actualFailed++;
+              } else {
+                actualCompleted++;
+              }
+            } catch (e) {
+              // If we can't parse progress, count as completed
+              actualCompleted++;
+            }
+          } else {
+            // No progress data, count as completed
+            actualCompleted++;
+          }
+        }
+        
+        // Update stats with actual values
+        stats.completedOrders = actualCompleted;
+        stats.failedOrders = stats.failedOrders + actualFailed;
+      }
+    }
     
     return jsonResponse({
       success: true,
@@ -1660,10 +1941,8 @@ async function exportCommentBotLogs(request, env) {
       params.push(searchPattern, searchPattern, searchPattern);
     }
     
-    if (status && status !== 'all') {
-      whereConditions.push('o.status = ?');
-      params.push(status);
-    }
+    // Note: We don't filter by status in the SQL query anymore since we compute 
+    // the actual status from progress data. We'll filter after processing.
     
     if (startDate) {
       whereConditions.push('o.created_at >= ?');

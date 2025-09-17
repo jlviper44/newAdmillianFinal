@@ -27,6 +27,118 @@ const showCreator = computed(() => {
   return user.value?.team != null;
 });
 
+// Helper function to get detailed status info
+const getOrderStatusDetails = (order) => {
+  // If status is NOT completed, show Processing
+  if (order.status !== 'completed') {
+    return {
+      status: 'processing',
+      color: 'info',
+      message: 'Processing'
+    };
+  }
+  
+  // Status is completed - compute based on progress data
+  const progress = props.orderProgress[order.order_id];
+  
+  // Debug log to see what we're receiving
+  console.log(`Computing status for order ${order.order_id}:`, {
+    hasProgress: !!progress,
+    progressData: progress,
+    like: progress?.like,
+    save: progress?.save,
+    comment: progress?.comment
+  });
+  
+  // If no progress data available, show as completed
+  if (!progress || (!progress.like && !progress.save && !progress.comment)) {
+    console.log(`No progress data for ${order.order_id}, showing as Completed`);
+    return {
+      status: 'completed',
+      color: 'success',
+      message: 'Completed'
+    };
+  }
+  
+  // Calculate totals across all interaction types
+  let totalRequested = 0;
+  let totalCompleted = 0;
+  let totalFailed = 0;
+  
+  ['like', 'save', 'comment'].forEach(type => {
+    if (progress[type] && progress[type].total > 0) {
+      totalRequested += progress[type].total;
+      totalCompleted += (progress[type].completed || 0);
+      totalFailed += (progress[type].failed || 0);
+      console.log(`  ${type}: total=${progress[type].total}, completed=${progress[type].completed}, failed=${progress[type].failed}`);
+    }
+  });
+  
+  console.log(`Totals for ${order.order_id}: requested=${totalRequested}, completed=${totalCompleted}, failed=${totalFailed}`);
+  
+  // If no activity was requested, show as completed
+  if (totalRequested === 0) {
+    console.log(`No activity requested for ${order.order_id}, showing as Completed`);
+    return {
+      status: 'completed',
+      color: 'success', 
+      message: 'Completed'
+    };
+  }
+  
+  // Determine success/failure based on results
+  if (totalCompleted === 0 && totalFailed > 0) {
+    // Everything failed
+    console.log(`Everything failed for ${order.order_id}, showing as Failed`);
+    return {
+      status: 'failed',
+      color: 'error',
+      message: 'Failed'
+    };
+  } else if (totalFailed === 0 && totalCompleted > 0) {
+    // Everything succeeded
+    return {
+      status: 'completed',
+      color: 'success',
+      message: 'Completed'
+    };
+  } else if (totalFailed > 0 && totalCompleted > 0) {
+    // Mixed results
+    const successRate = Math.round((totalCompleted / totalRequested) * 100);
+    if (successRate < 50) {
+      return {
+        status: 'mostly_failed',
+        color: 'deep-orange',
+        message: `Partial (${successRate}% success)`
+      };
+    } else {
+      return {
+        status: 'completed_with_errors',
+        color: 'orange',
+        message: `Completed (${successRate}% success)`
+      };
+    }
+  }
+  
+  // Default: completed
+  return {
+    status: 'completed',
+    color: 'success',
+    message: 'Completed'
+  };
+};
+
+const getStatusColor = (status) => {
+  switch(status) {
+    case 'completed': return 'success';
+    case 'processing': return 'info';
+    case 'failed': return 'error';
+    case 'partial': return 'warning';
+    case 'completed_with_errors': return 'orange';
+    default: return 'warning';
+  }
+};
+
 // Computed properties
 const hasActiveOrders = computed(() => {
   return props.orders && props.orders.length > 0;
@@ -90,14 +202,10 @@ watch(() => props.orders.length, () => {
             <div class="d-flex align-center">
               <v-chip
                 size="small"
-                :color="
-                  order.status === 'completed' ? 'success' :
-                  order.status === 'processing' ? 'info' :
-                  order.status === 'failed' ? 'error' : 'warning'
-                "
+                :color="getOrderStatusDetails(order).color"
                 class="mr-2"
               >
-                {{ order.status }}
+                {{ getOrderStatusDetails(order).message }}
               </v-chip>
               <span class="text-caption text-medium-emphasis">
                 {{ formatDateTime(order.created_at) }}
@@ -133,11 +241,7 @@ watch(() => props.orders.length, () => {
             </div>
             <v-progress-linear
               :model-value="orderProgress[order.order_id]?.overall || 0"
-              :color="
-                order.status === 'completed' ? 'success' :
-                order.status === 'processing' ? 'info' :
-                order.status === 'failed' ? 'error' : 'warning'
-              "
+              :color="getOrderStatusDetails(order).color"
               height="6"
               rounded
             ></v-progress-linear>
@@ -146,15 +250,30 @@ watch(() => props.orders.length, () => {
             <div v-if="orderProgress[order.order_id]" class="mt-2 text-caption">
               <div v-if="orderProgress[order.order_id].comment" class="d-flex justify-space-between">
                 <span>Comments:</span>
-                <span>{{ orderProgress[order.order_id].comment.completed }}/{{ orderProgress[order.order_id].comment.total }}</span>
+                <span>
+                  {{ orderProgress[order.order_id].comment.completed }}/{{ orderProgress[order.order_id].comment.total }}
+                  <span v-if="orderProgress[order.order_id].comment.failed > 0" class="text-error">
+                    ({{ orderProgress[order.order_id].comment.failed }} failed)
+                  </span>
+                </span>
               </div>
-              <div v-if="order.like_count > 0" class="d-flex justify-space-between">
+              <div v-if="orderProgress[order.order_id].like" class="d-flex justify-space-between">
                 <span>Likes:</span>
-                <span>{{ order.like_count }}</span>
+                <span>
+                  {{ orderProgress[order.order_id].like.completed }}/{{ orderProgress[order.order_id].like.total }}
+                  <span v-if="orderProgress[order.order_id].like.failed > 0" class="text-error">
+                    ({{ orderProgress[order.order_id].like.failed }} failed)
+                  </span>
+                </span>
               </div>
-              <div v-if="order.save_count > 0" class="d-flex justify-space-between">
+              <div v-if="orderProgress[order.order_id].save" class="d-flex justify-space-between">
                 <span>Saves:</span>
-                <span>{{ order.save_count }}</span>
+                <span>
+                  {{ orderProgress[order.order_id].save.completed }}/{{ orderProgress[order.order_id].save.total }}
+                  <span v-if="orderProgress[order.order_id].save.failed > 0" class="text-error">
+                    ({{ orderProgress[order.order_id].save.failed }} failed)
+                  </span>
+                </span>
               </div>
             </div>
           </div>
@@ -206,13 +325,9 @@ watch(() => props.orders.length, () => {
             <td>
               <v-chip
                 size="small"
-                :color="
-                  order.status === 'completed' ? 'success' :
-                  order.status === 'processing' ? 'info' :
-                  order.status === 'failed' ? 'error' : 'warning'
-                "
+                :color="getOrderStatusDetails(order).color"
               >
-                {{ order.status }}
+                {{ getOrderStatusDetails(order).message }}
               </v-chip>
             </td>
             <td>
@@ -222,11 +337,7 @@ watch(() => props.orders.length, () => {
                     <v-progress-linear
                       v-if="orderProgress[order.order_id] && orderProgress[order.order_id].overall"
                       :model-value="orderProgress[order.order_id].overall"
-                      :color="
-                        order.status === 'completed' ? 'success' :
-                        order.status === 'processing' ? 'info' :
-                        order.status === 'failed' ? 'error' : 'warning'
-                      "
+                      :color="getOrderStatusDetails(order).color"
                       height="8"
                       rounded
                     ></v-progress-linear>
@@ -239,12 +350,23 @@ watch(() => props.orders.length, () => {
                   <div v-if="orderProgress[order.order_id].comment">
                     Comments: {{ orderProgress[order.order_id].comment.completed }}/{{ orderProgress[order.order_id].comment.total }}
                     ({{ orderProgress[order.order_id].comment.percent }}%)
+                    <span v-if="orderProgress[order.order_id].comment.failed > 0" class="text-error">
+                      - {{ orderProgress[order.order_id].comment.failed }} failed
+                    </span>
                   </div>
-                  <div v-if="order.like_count > 0">
-                    Likes: {{ order.like_count }}
+                  <div v-if="orderProgress[order.order_id].like">
+                    Likes: {{ orderProgress[order.order_id].like.completed }}/{{ orderProgress[order.order_id].like.total }}
+                    ({{ orderProgress[order.order_id].like.percent }}%)
+                    <span v-if="orderProgress[order.order_id].like.failed > 0" class="text-error">
+                      - {{ orderProgress[order.order_id].like.failed }} failed
+                    </span>
                   </div>
-                  <div v-if="order.save_count > 0">
-                    Saves: {{ order.save_count }}
+                  <div v-if="orderProgress[order.order_id].save">
+                    Saves: {{ orderProgress[order.order_id].save.completed }}/{{ orderProgress[order.order_id].save.total }}
+                    ({{ orderProgress[order.order_id].save.percent }}%)
+                    <span v-if="orderProgress[order.order_id].save.failed > 0" class="text-error">
+                      - {{ orderProgress[order.order_id].save.failed }} failed
+                    </span>
                   </div>
                 </div>
               </v-tooltip>

@@ -104,31 +104,75 @@ const fetchOrders = async () => {
   error.value.orders = null;
   
   try {
+    // Fetch orders with their saved progress from D1
     const data = await commentBotApi.getOrders();
     activeOrders.value = data.orders || [];
     
-    // Debug timestamp issue
-    console.log('=== Comment Bot Order Timestamp Debug ===');
-    console.log('Total orders:', activeOrders.value.length);
-    if (activeOrders.value.length > 0) {
-      const firstOrder = activeOrders.value[0];
-      console.log('First order:', firstOrder);
-      console.log('Raw created_at:', firstOrder.created_at);
-      const date = new Date(firstOrder.created_at);
-      console.log('Date object:', date);
-      console.log('UTC String:', date.toUTCString());
-      console.log('Local String:', date.toString());
-      console.log('Your timezone:', getUserTimezone());
-      console.log('Formatted:', formatDateTime(firstOrder.created_at, { showTimezone: true }));
+    // If orders include saved progress, load it
+    if (data.orderProgress) {
+      orderProgress.value = data.orderProgress;
+      console.log('Loaded saved progress from D1:', data.orderProgress);
     }
-    console.log('==============================');
     
-    // Start polling for active orders
-    activeOrders.value.forEach(order => {
-      if (!['completed', 'failed', 'canceled'].includes(order.status)) {
-        startPollingOrder(order.order_id);
+    // Process each order
+    for (const order of activeOrders.value) {
+      // Check if we already have progress data for this order (either from D1 or memory)
+      const hasProgressData = orderProgress.value[order.order_id] && 
+        (orderProgress.value[order.order_id].like || 
+         orderProgress.value[order.order_id].save || 
+         orderProgress.value[order.order_id].comment);
+      
+      if (hasProgressData) {
+        // Already have data from D1, don't fetch or poll
+        console.log(`Order ${order.order_id} already has saved progress data, skipping API call`);
+        continue;
       }
-    });
+      
+      // No saved data, need to check status and fetch if needed
+      if (order.status !== 'completed' && order.status !== 'canceled' && order.status !== 'failed') {
+        // Not completed yet, start polling
+        console.log(`Starting polling for order ${order.order_id} (status: ${order.status})`);
+        startPollingOrder(order.order_id);
+      } else if (order.status === 'completed') {
+        // Status is completed but no saved progress, fetch from API
+        console.log(`Order ${order.order_id} is completed but has no saved progress, fetching from API...`);
+        try {
+          const statusData = await commentBotApi.getOrderStatus(order.order_id);
+          
+          if (statusData.progress) {
+            let progressData = null;
+            
+            // Check if progress contains a nested progress field
+            if (statusData.progress.progress && typeof statusData.progress.progress === 'object') {
+              progressData = statusData.progress.progress;
+              orderProgress.value[order.order_id] = statusData.progress.progress;
+            } else if (statusData.progress.like || statusData.progress.save || statusData.progress.comment) {
+              progressData = statusData.progress;
+              orderProgress.value[order.order_id] = statusData.progress;
+            }
+            
+            // Save the fetched progress to D1 for future use
+            if (progressData) {
+              console.log(`Got progress for ${order.order_id}, saving to D1...`);
+              try {
+                await commentBotApi.saveOrderProgress(order.order_id, {
+                  status: order.status,
+                  progress: progressData,
+                  completed_at: order.completed_at || new Date().toISOString()
+                });
+                console.log(`Saved progress for ${order.order_id} to D1`);
+              } catch (saveErr) {
+                console.error(`Failed to save progress to D1:`, saveErr);
+              }
+            } else {
+              console.warn(`No valid progress in response for completed order ${order.order_id}`);
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch progress for order ${order.order_id}:`, err);
+        }
+      }
+    }
   } catch (err) {
     error.value.orders = err.message || 'Failed to fetch orders';
   } finally {
@@ -296,20 +340,54 @@ const pollOrderStatus = async (orderId) => {
         activeOrders.value[index] = order;
       }
       
-      // Update order progress
+      // Update order progress - API returns { success, order, progress }
+      let progressData = null;
       if (data.progress) {
-        orderProgress.value[orderId] = data.progress;
+        // Check if progress contains a nested progress field
+        if (data.progress.progress && typeof data.progress.progress === 'object') {
+          progressData = data.progress.progress;
+          orderProgress.value[orderId] = data.progress.progress;
+        } else if (data.progress.like || data.progress.save || data.progress.comment) {
+          progressData = data.progress;
+          orderProgress.value[orderId] = data.progress;
+        }
       }
       
-      // Stop polling if order is completed, failed, or canceled
-      if (['completed', 'failed', 'canceled'].includes(order.status)) {
+      // Check if order is completed and we have valid progress data
+      if (order.status === 'completed' && progressData && 
+          (progressData.like || progressData.save || progressData.comment)) {
+        
+        console.log(`Order ${orderId} completed with progress data, saving to D1...`);
+        
+        // Save the completed state to D1
+        try {
+          await commentBotApi.saveOrderProgress(orderId, {
+            status: order.status,
+            progress: progressData,
+            completed_at: new Date().toISOString()
+          });
+          console.log(`Successfully saved progress for order ${orderId} to D1`);
+        } catch (saveErr) {
+          console.error(`Failed to save progress for order ${orderId} to D1:`, saveErr);
+        }
+        
+        // Stop polling since we have the final data
         if (pollingIntervals.value[orderId]) {
           clearInterval(pollingIntervals.value[orderId]);
           delete pollingIntervals.value[orderId];
+          console.log(`Stopped polling for completed order ${orderId}`);
+        }
+      } else if (['failed', 'canceled'].includes(order.status)) {
+        // Stop polling for failed/canceled orders
+        if (pollingIntervals.value[orderId]) {
+          clearInterval(pollingIntervals.value[orderId]);
+          delete pollingIntervals.value[orderId];
+          console.log(`Stopped polling for ${order.status} order ${orderId}`);
         }
       }
     }
   } catch (err) {
+    console.error(`Error polling order ${orderId}:`, err);
   }
 };
 

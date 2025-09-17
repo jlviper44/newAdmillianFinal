@@ -22,6 +22,8 @@
           v-model:show-thumbnails="showThumbnails"
           :is-bulk-edit-mode="isBulkEditMode"
           :is-saving-bulk="isSavingBulk"
+          :is-comment-bot-mode="isCommentBotMode"
+          :is-processing-bot="isProcessingBot"
           v-model:items-per-page="itemsPerPage"
           v-model:current-page="currentPage"
           :headers="headers"
@@ -30,6 +32,9 @@
           :editing-values="editingValues"
           :menu-states="menuStates"
           :bulk-edit-values="bulkEditValues"
+          :comment-bot-settings="commentBotSettings"
+          v-model:selected-for-bot="selectedForBot"
+          :comment-groups="commentGroups"
           :type-options="typeOptions"
           :status-options="statusOptions"
           :creator-options="creatorOptions"
@@ -37,10 +42,17 @@
           :type-items="typeItems"
           :default-thumbnail="defaultThumbnail"
           :duplicate-info="duplicateInfo"
+          :has-comment-bot-access="hasCommentBotAccess"
+          :user-credits="userCredits"
           @clear-filters="clearFilters"
           @start-bulk-edit="startBulkEdit"
           @save-bulk-edit="saveBulkEdit"
           @cancel-bulk-edit="cancelBulkEdit"
+          @start-comment-bot="startCommentBotMode"
+          @execute-comment-bot="executeCommentBot"
+          @cancel-comment-bot="cancelCommentBotMode"
+          @toggle-bot-selection="toggleBotSelection"
+          @update-comment-bot-settings="commentBotSettings = $event"
           @export-to-csv="exportToCSV"
           @open-create-modal="openCreateModal"
           @bulk-add="bulkAdd"
@@ -564,8 +576,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import { sparksApi, templatesApi, usersApi } from '@/services/api';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { sparksApi, templatesApi, usersApi, commentBotApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
 import jsPDF from 'jspdf';
 
@@ -609,6 +621,16 @@ const isBulkEditMode = ref(false);
 const bulkEditValues = ref({});
 const isSavingBulk = ref(false);
 
+// Comment Bot bulk mode state
+const isCommentBotMode = ref(false);
+const isProcessingBot = ref(false);
+const commentBotSettings = ref({
+  comment_group_id: null,
+  like_count: 0,
+  save_count: 0
+});
+const selectedForBot = ref([]);
+
 // Filter state
 const searchInput = ref('');
 const searchQuery = ref('');
@@ -639,6 +661,11 @@ const previewSpark = ref(null);
 const showCreateModal = ref(false);
 const editingSparkData = ref(null);
 const showBulkAddModal = ref(false);
+
+// Comment Bot state
+const commentGroups = ref([]);
+const hasCommentBotAccess = ref(false);
+const userCredits = ref(0);
 const showDeleteModal = ref(false);
 const sparkToDelete = ref(null);
 const deleteLoading = ref(false);
@@ -736,6 +763,7 @@ const baseHeaders = [
   { title: 'TikTok Link', key: 'tiktok_link', sortable: false },
   { title: 'Spark Code', key: 'spark_code' },
   { title: 'Status', key: 'status' },
+  { title: 'Bot Status', key: 'bot_status', sortable: true, width: '120px', align: 'center' },
   { title: 'Type', key: 'type' },
   { title: 'Creator', key: 'creator' },
   { title: 'Name', key: 'name' },
@@ -2456,6 +2484,269 @@ const saveBulkEdit = async () => {
   }
 };
 
+// Comment Bot Functions
+const checkCommentBotAccess = async () => {
+  try {
+    // Check user subscriptions from the auth state
+    const currentUser = user.value;
+    console.log('Current user:', currentUser);
+    console.log('Full user object keys:', currentUser ? Object.keys(currentUser) : 'No user');
+    
+    // Try different possible subscription fields
+    const subscriptions = currentUser?.subscriptions || 
+                          currentUser?.subscription || 
+                          currentUser?.plans || 
+                          currentUser?.access || 
+                          [];
+    
+    console.log('Found subscriptions:', subscriptions);
+    
+    // Check if user has both Comment Bot and Dashboard subscriptions
+    const hasCommentBot = subscriptions.includes('comment_bot');
+    const hasDashboard = subscriptions.includes('dashboard');
+    
+    // Check if user is admin (admins get access to all features)
+    const isAdmin = currentUser?.isAdmin === true;
+    
+    console.log('Has comment_bot subscription:', hasCommentBot);
+    console.log('Has dashboard subscription:', hasDashboard);
+    console.log('Is admin:', isAdmin);
+    
+    // Grant access if user has subscriptions OR is an admin
+    hasCommentBotAccess.value = (hasCommentBot && hasDashboard) || isAdmin;
+    console.log('Comment Bot access granted:', hasCommentBotAccess.value);
+    
+    if (hasCommentBotAccess.value) {
+      // Fetch comment groups
+      try {
+        const groupsResponse = await commentBotApi.getCommentGroups();
+        console.log('Comment groups API response:', groupsResponse);
+        
+        // Check if the response has the expected structure
+        if (groupsResponse.success && groupsResponse.data) {
+          commentGroups.value = groupsResponse.data;
+        } else if (Array.isArray(groupsResponse)) {
+          commentGroups.value = groupsResponse;
+        } else if (groupsResponse.commentGroups) {
+          commentGroups.value = groupsResponse.commentGroups;
+        } else {
+          // Try to use the response directly if it looks like an array
+          commentGroups.value = groupsResponse || [];
+        }
+        
+        console.log('Processed comment groups:', commentGroups.value);
+      } catch (error) {
+        console.error('Failed to fetch comment groups:', error);
+        showWarning('Comment groups unavailable');
+      }
+      
+      // Fetch user credits - same as Comment Bot page
+      try {
+        const creditsResponse = await usersApi.checkAccess();
+        console.log('Credits response:', creditsResponse);
+        
+        // Get Comment Bot specific credits (matching CommentBot.vue logic)
+        const commentBotData = creditsResponse.subscriptions?.comment_bot;
+        userCredits.value = commentBotData?.totalCredits || 0;
+        
+        console.log('User credits:', userCredits.value);
+      } catch (error) {
+        console.error('Failed to fetch user credits:', error);
+        userCredits.value = 0;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to check Comment Bot access:', error);
+    hasCommentBotAccess.value = false;
+  }
+};
+
+const startCommentBotMode = () => {
+  if (!hasCommentBotAccess.value) {
+    showWarning('Comment Bot subscription required for this feature');
+    return;
+  }
+  
+  // Reset state first before enabling mode
+  selectedForBot.value = [];
+  commentBotSettings.value = {
+    comment_group_id: null,
+    like_count: 0,
+    save_count: 0
+  };
+  
+  // Then enable mode
+  isBulkEditMode.value = false; // Ensure bulk edit is off
+  
+  // Use nextTick to avoid recursive updates
+  nextTick(() => {
+    isCommentBotMode.value = true;
+  });
+};
+
+const cancelCommentBotMode = () => {
+  isCommentBotMode.value = false;
+  selectedForBot.value = [];
+  commentBotSettings.value = {
+    comment_group_id: null,
+    like_count: 0,
+    save_count: 0
+  };
+};
+
+const toggleBotSelection = (sparkId) => {
+  const index = selectedForBot.value.indexOf(sparkId);
+  if (index > -1) {
+    selectedForBot.value.splice(index, 1);
+  } else {
+    selectedForBot.value.push(sparkId);
+  }
+};
+
+const executeCommentBot = async () => {
+  if (selectedForBot.value.length === 0) {
+    showError('Please select at least one spark');
+    return;
+  }
+  
+  if (!commentBotSettings.value.comment_group_id && 
+      commentBotSettings.value.like_count === 0 && 
+      commentBotSettings.value.save_count === 0) {
+    showWarning('Please configure bot settings');
+    return;
+  }
+  
+  isProcessingBot.value = true;
+  
+  let successCount = 0;
+  let failCount = 0;
+  let skipCount = 0;
+  
+  try {
+    // Process each selected spark
+    for (const sparkId of selectedForBot.value) {
+      const spark = sparks.value.find(s => s.id === sparkId);
+      if (!spark || !spark.tiktok_link) {
+        skipCount++;
+        continue;
+      }
+      
+      const postId = extractPostIdFromTikTokLink(spark.tiktok_link);
+      if (!postId) {
+        console.warn(`No valid post ID for spark ${spark.name}, skipping`);
+        spark.bot_status = 'failed';
+        failCount++;
+        continue;
+      }
+      
+      // Update status to processing
+      spark.bot_status = 'processing';
+      
+      const orderData = {
+        post_id: postId,
+        comment_group_id: commentBotSettings.value.comment_group_id,
+        like_count: Math.min(commentBotSettings.value.like_count || 0, 3000),
+        save_count: Math.min(commentBotSettings.value.save_count || 0, 500)
+      };
+      
+      console.log(`Creating order for spark ${spark.name}:`, orderData);
+      
+      try {
+        // Use the regular createOrder endpoint
+        const response = await commentBotApi.createOrder(orderData);
+        console.log(`Order created for ${spark.name}:`, response);
+        
+        // Check if the order actually succeeded based on progress metrics
+        if (response && response.progress) {
+          const progress = response.progress;
+          const totalRequested = (orderData.like_count || 0) + (orderData.save_count || 0) + 
+                                 (orderData.comment_group_id ? 1 : 0);
+          
+          // Calculate actual success
+          const totalCompleted = (progress.like?.completed || 0) + 
+                                (progress.save?.completed || 0) + 
+                                (progress.comment?.completed || 0);
+          
+          const totalFailed = (progress.like?.failed || 0) + 
+                             (progress.save?.failed || 0) + 
+                             (progress.comment?.failed || 0);
+          
+          // Consider it failed if everything failed or nothing was completed
+          if (totalRequested > 0 && totalCompleted === 0) {
+            console.warn(`Order failed for ${spark.name}: All actions failed`, progress);
+            spark.bot_status = 'failed';
+            failCount++;
+          } else if (totalFailed > totalCompleted) {
+            console.warn(`Order partially failed for ${spark.name}: More failures than successes`, progress);
+            spark.bot_status = 'failed';
+            failCount++;
+          } else if (progress.overall === 0) {
+            console.warn(`Order failed for ${spark.name}: 0% overall progress`, progress);
+            spark.bot_status = 'failed';
+            failCount++;
+          } else {
+            // Order had at least some success
+            spark.bot_status = 'completed';
+            successCount++;
+          }
+        } else {
+          // No progress info, assume it's queued or will be processed
+          spark.bot_status = 'completed';
+          successCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to create order for spark ${spark.name}:`, error);
+        spark.bot_status = 'failed';
+        failCount++;
+      }
+    }
+    
+    // Provide detailed feedback based on results
+    if (failCount > 0 && successCount > 0) {
+      showWarning(`Processed ${selectedForBot.value.length} sparks: ${successCount} succeeded, ${failCount} failed${skipCount > 0 ? `, ${skipCount} skipped` : ''}`);
+    } else if (failCount > 0 && successCount === 0) {
+      showError(`All ${failCount} sparks failed to process${skipCount > 0 ? ` (${skipCount} skipped)` : ''}`);
+    } else if (skipCount > 0 && successCount === 0) {
+      showError(`No valid sparks to process (${skipCount} skipped)`);
+    } else {
+      showSuccess(`Successfully processed all ${successCount} sparks`);
+    }
+    
+    cancelCommentBotMode();
+    await fetchSparks();
+  } catch (error) {
+    console.error('Bot processing failed:', error);
+    showError('Failed to process sparks');
+  } finally {
+    isProcessingBot.value = false;
+  }
+};
+
+// Extract Post ID from TikTok Link
+const extractPostIdFromTikTokLink = (link) => {
+  if (!link) return null;
+  
+  const patterns = [
+    /\/video\/(\d{19})/,
+    /@[\w.]+\/video\/(\d{19})/,
+    /\/(\d{19})(?:\?|$)/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = link.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+};
+
+const handleCommentBotRefresh = async () => {
+  await fetchSparks();
+  showSuccess('Sparks updated with bot status');
+};
+
 // Lifecycle
 onMounted(async () => {
   // Fetch VAs and templates first, then sparks
@@ -2474,6 +2765,9 @@ onMounted(async () => {
   
   // Load invoices
   await fetchInvoices();
+  
+  // Check Comment Bot access and fetch comment groups
+  await checkCommentBotAccess();
 });
 </script>
 

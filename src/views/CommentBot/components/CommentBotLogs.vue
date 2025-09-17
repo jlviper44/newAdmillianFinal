@@ -72,6 +72,7 @@
               density="compact"
               variant="outlined"
               clearable
+              @update:modelValue="handleSearchChange"
               @keyup.enter="applyFilters"
             ></v-text-field>
           </v-col>
@@ -83,6 +84,7 @@
               label="Status"
               density="compact"
               variant="outlined"
+              @update:modelValue="applyFilters"
             ></v-select>
           </v-col>
 
@@ -93,6 +95,7 @@
               type="date"
               density="compact"
               variant="outlined"
+              @update:modelValue="applyFilters"
             ></v-text-field>
           </v-col>
 
@@ -103,6 +106,7 @@
               type="date"
               density="compact"
               variant="outlined"
+              @update:modelValue="applyFilters"
             ></v-text-field>
           </v-col>
 
@@ -152,9 +156,10 @@
         :items="logs"
         :loading="loading"
         :items-per-page="itemsPerPage"
+        :items-per-page-options="itemsPerPageOptions"
         :page="currentPage"
-        @update:page="currentPage = $event"
-        @update:items-per-page="itemsPerPage = $event"
+        @update:page="handlePageChange"
+        @update:items-per-page="handleItemsPerPageChange"
         class="elevation-1"
       >
         <template v-slot:item.created_at="{ item }">
@@ -163,10 +168,10 @@
 
         <template v-slot:item.status="{ item }">
           <v-chip 
-            :color="getStatusColor(item.status)" 
+            :color="getStatusColor(item)" 
             size="small"
           >
-            {{ item.status }}
+            {{ getStatusLabel(item) }}
           </v-chip>
         </template>
 
@@ -211,8 +216,8 @@
             </v-col>
             <v-col cols="6">
               <strong>Status:</strong> 
-              <v-chip :color="getStatusColor(selectedLog.status)" size="small">
-                {{ selectedLog.status }}
+              <v-chip :color="getStatusColor(selectedLog)" size="small">
+                {{ getStatusLabel(selectedLog) }}
               </v-chip>
             </v-col>
             <v-col cols="6">
@@ -247,7 +252,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { commentBotApi } from '@/services/api';
 import { formatDateTime } from '@/utils/dateFormatter';
 
@@ -271,8 +276,11 @@ const filters = ref({
 
 // Pagination
 const currentPage = ref(1);
-const itemsPerPage = ref(50);
+const itemsPerPage = ref(100);
 const totalLogs = ref(0);
+
+// Items per page options
+const itemsPerPageOptions = [25, 50, 100, 200];
 
 // Dialogs
 const showDetailDialog = ref(false);
@@ -290,13 +298,13 @@ const headers = [
   { title: 'Actions', key: 'actions', sortable: false }
 ];
 
-// Filter options
+// Filter options - matching database status values
 const statusOptions = [
   { value: 'all', title: 'All Status' },
+  { value: 'pending', title: 'Pending' },
+  { value: 'processing', title: 'Processing' },
   { value: 'completed', title: 'Completed' },
   { value: 'failed', title: 'Failed' },
-  { value: 'processing', title: 'Processing' },
-  { value: 'pending', title: 'Pending' },
   { value: 'canceled', title: 'Canceled' }
 ];
 
@@ -352,6 +360,26 @@ const applyFilters = () => {
   loadLogs();
 };
 
+const handlePageChange = (page) => {
+  currentPage.value = page;
+  loadLogs();
+};
+
+const handleItemsPerPageChange = (value) => {
+  itemsPerPage.value = value;
+  currentPage.value = 1;
+  loadLogs();
+};
+
+// Debounce timer for search
+let searchDebounceTimer = null;
+const handleSearchChange = (value) => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    applyFilters();
+  }, 500); // Debounce for 500ms
+};
+
 const resetFilters = () => {
   filters.value = {
     search: '',
@@ -387,15 +415,38 @@ const viewLogDetail = (log) => {
   showDetailDialog.value = true;
 };
 
-const getStatusColor = (status) => {
+const getStatusColor = (log) => {
+  const status = log.status?.toLowerCase();
+  
+  // Check for partial failures
+  if (status === 'completed' && log.partial_failure) {
+    if (log.success_rate < 50) {
+      return 'deep-orange';
+    } else {
+      return 'orange';
+    }
+  }
+  
   const colors = {
+    pending: 'warning',
+    processing: 'info',
     completed: 'success',
     failed: 'error',
-    processing: 'info',
-    pending: 'warning',
     canceled: 'grey'
   };
   return colors[status] || 'grey';
+};
+
+const getStatusLabel = (log) => {
+  const status = log.status?.toLowerCase();
+  
+  // Check for partial failures  
+  if (status === 'completed' && log.partial_failure && log.success_rate !== undefined) {
+    return `Completed (${log.success_rate}% success)`;
+  }
+  
+  // Capitalize first letter
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown';
 };
 
 // Lifecycle
