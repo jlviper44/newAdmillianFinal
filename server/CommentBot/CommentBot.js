@@ -1707,11 +1707,11 @@ async function getCommentBotLogs(request, env) {
     const countResult = await executeQuery(env.COMMENT_BOT_DB, countQuery, params);
     let total = countResult.success && countResult.data.length > 0 ? countResult.data[0].total : 0;
     
-    // Get logs - if filtering by status, we need to get all records first,
-    // then filter after computing actual status
+    // Get logs - if filtering by status or dates, we need to get all records first,
+    // then filter/paginate after computing actual status
     let logsQuery;
-    if (statusFilter && statusFilter !== 'all') {
-      // Get all records matching other filters (no pagination yet)
+    if ((statusFilter && statusFilter !== 'all') || startDate || endDate) {
+      // Get all records matching filters (no pagination yet for date/status filtering)
       logsQuery = `
         SELECT 
           o.*,
@@ -1724,7 +1724,7 @@ async function getCommentBotLogs(request, env) {
         ORDER BY o.created_at DESC
       `;
     } else {
-      // Normal paginated query when not filtering by status
+      // Normal paginated query when not filtering by status or dates
       logsQuery = `
         SELECT 
           o.*,
@@ -1808,13 +1808,17 @@ async function getCommentBotLogs(request, env) {
       
       // Filter by status if specified (after computing actual status)
       if (statusFilter && statusFilter !== 'all') {
-        const filteredLogs = logsResult.data.filter(log => log.status === statusFilter);
+        logsResult.data = logsResult.data.filter(log => log.status === statusFilter);
+      }
+      
+      // If we fetched all records (for status or date filtering), apply pagination now
+      if ((statusFilter && statusFilter !== 'all') || startDate || endDate) {
         // Update total for proper pagination
-        total = filteredLogs.length;
-        // Apply pagination to filtered results
+        total = logsResult.data.length;
+        // Apply pagination to results
         const start = offset;
         const end = offset + limit;
-        logsResult.data = filteredLogs.slice(start, end);
+        logsResult.data = logsResult.data.slice(start, end);
       }
     }
     
@@ -1927,7 +1931,7 @@ async function exportCommentBotLogs(request, env) {
   try {
     const url = new URL(request.url);
     const search = url.searchParams.get('search') || '';
-    const status = url.searchParams.get('status') || '';
+    const statusFilter = url.searchParams.get('status') || '';
     const startDate = url.searchParams.get('startDate') || '';
     const endDate = url.searchParams.get('endDate') || '';
     
@@ -1956,13 +1960,15 @@ async function exportCommentBotLogs(request, env) {
     
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
     
-    // Get all logs for export
+    // Get all logs for export, including progress data
     const logsQuery = `
       SELECT 
         o.*,
-        cg.name as comment_group_name
+        cg.name as comment_group_name,
+        op.progress_data
       FROM orders o
       LEFT JOIN comment_groups cg ON o.comment_group_id = cg.id
+      LEFT JOIN order_progress op ON o.order_id = op.order_id
       ${whereClause}
       ORDER BY o.created_at DESC
     `;
@@ -1990,10 +1996,65 @@ async function exportCommentBotLogs(request, env) {
       });
     }
     
-    // Add user emails to logs
+    // Process logs to add user emails and compute actual status
     logsResult.data.forEach(log => {
       log.user_identifier = userEmailMap[log.user_id] || log.user_id;
+      
+      // Compute actual status from progress data if available
+      if (log.status === 'completed' && log.progress_data) {
+        try {
+          const progress = JSON.parse(log.progress_data);
+          
+          // Calculate totals across all interaction types
+          let totalRequested = 0;
+          let totalCompleted = 0;
+          let totalFailed = 0;
+          
+          ['like', 'save', 'comment'].forEach(type => {
+            if (progress[type] && progress[type].total > 0) {
+              totalRequested += progress[type].total || 0;
+              totalCompleted += progress[type].completed || 0;
+              totalFailed += progress[type].failed || 0;
+            }
+          });
+          
+          // Determine actual status based on progress
+          if (totalRequested > 0) {
+            if (totalCompleted === 0 && totalFailed > 0) {
+              // Everything failed
+              log.status = 'failed';
+            } else if (totalFailed > 0 && totalCompleted > 0) {
+              // Mixed results - show with success rate
+              log.status = `completed (${Math.round((totalCompleted / totalRequested) * 100)}% success)`;
+            }
+            // else keep as completed (all successful)
+          }
+        } catch (e) {
+          // If we can't parse progress, keep original status
+        }
+      }
+      
+      // Remove progress_data from CSV export
+      delete log.progress_data;
     });
+    
+    // Filter by status if specified
+    if (statusFilter && statusFilter !== 'all') {
+      // For filtering, check if status matches (handling partial success statuses)
+      logsResult.data = logsResult.data.filter(log => {
+        if (statusFilter === 'failed') {
+          return log.status === 'failed';
+        } else if (statusFilter === 'completed') {
+          return log.status === 'completed' || log.status.includes('completed');
+        } else {
+          return log.status === statusFilter;
+        }
+      });
+      
+      if (logsResult.data.length === 0) {
+        return jsonResponse({ error: 'No logs found matching the filter criteria' }, 404);
+      }
+    }
     
     // Generate CSV
     const csvHeaders = [
