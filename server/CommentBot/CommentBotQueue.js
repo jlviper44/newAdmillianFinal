@@ -26,7 +26,7 @@ export const JOB_STATES = {
  */
 const QUEUE_CONFIG = {
   maxConcurrentJobs: 1, // Process one job at a time
-  jobTimeout: 300000, // 5 minutes
+  jobTimeout: 60000, // 1 minute
   retryAttempts: 3,
   retryDelay: 5000, // 5 seconds
   cleanupAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -491,12 +491,12 @@ export async function getJobLogs(env, jobId) {
  */
 export async function getNextJob(env) {
   try {
-    // First, check for stuck jobs (processing for more than 5 minutes)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // First, check for stuck jobs (processing for more than 1 minute)
+    const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000).toISOString();
     const stuckJobsQuery = `
       UPDATE job_queue 
       SET status = 'failed', 
-          error = 'Job timed out after 5 minutes',
+          error = 'Job timed out after 1 minute',
           completed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       WHERE status = 'processing' 
@@ -504,7 +504,7 @@ export async function getNextJob(env) {
     `;
     
     const stuckResult = await env.COMMENT_BOT_DB.prepare(stuckJobsQuery)
-      .bind(fiveMinutesAgo)
+      .bind(oneMinuteAgo)
       .run();
     
     

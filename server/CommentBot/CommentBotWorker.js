@@ -22,7 +22,7 @@ const API_CONFIG = {
 // Worker configuration
 const WORKER_CONFIG = {
   pollInterval: 5000, // 5 seconds between job checks
-  maxProcessingTime: 300000, // 5 minutes max per job
+  maxProcessingTime: 60000, // 1 minute max per job
   retryDelay: 5000 // 5 seconds between retries
 };
 
@@ -209,7 +209,7 @@ async function processJobByType(env, job) {
 async function processCreateOrderJob(env, job) {
   const payload = job.payload;
   const startTime = Date.now();
-  const maxPollingTime = 5 * 60 * 1000; // 5 minutes
+  const maxPollingTime = 1 * 60 * 1000; // 1 minute
   const pollInterval = 10000; // Poll every 10 seconds
   
   await addJobLog(env, job.job_id, 'info', 'Creating order with external API', {
