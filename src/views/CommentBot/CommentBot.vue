@@ -704,7 +704,7 @@ onUnmounted(() => {
                     <v-divider></v-divider>
                     
                     <v-card-text class="pa-4">
-                      <ActiveOrders 
+                      <ActiveOrders
                         :orders="activeOrders"
                         :order-progress="orderProgress"
                         :loading="loading.orders"

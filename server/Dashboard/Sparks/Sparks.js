@@ -127,6 +127,8 @@ async function initializeSparksTable(db) {
           offer_name TEXT,
           thumbnail TEXT,
           status TEXT DEFAULT 'active',
+          bot_status TEXT DEFAULT 'not_botted',
+          bot_post_id TEXT,
           traffic INTEGER DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -150,7 +152,16 @@ async function initializeSparksTable(db) {
     await db.prepare(`
       CREATE INDEX IF NOT EXISTS idx_sparks_user_id ON sparks(user_id)
     `).run();
-    
+
+    // Add indexes for bot-related columns
+    await db.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_sparks_bot_status ON sparks(bot_status)
+    `).run();
+
+    await db.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_sparks_bot_post_id ON sparks(bot_post_id)
+    `).run();
+
     // Add user_id, team_id, creator, and type columns if they don't exist (for existing tables)
     try {
       // Check if columns exist
@@ -187,9 +198,34 @@ async function initializeSparksTable(db) {
         await db.prepare(`ALTER TABLE sparks ADD COLUMN type TEXT DEFAULT 'auto'`).run();
         console.log('Added type column to sparks table');
       }
+
     } catch (error) {
       console.error('Error checking/adding columns:', error);
       // Continue execution as this might not be critical
+    }
+
+    // IMPORTANT: Always check for bot-related columns (outside the try-catch to ensure it runs)
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+      const columns = tableInfo.results || [];
+
+      const hasBotStatusColumn = columns.some(c => c.name === 'bot_status');
+      const hasBotPostIdColumn = columns.some(c => c.name === 'bot_post_id');
+
+      if (!hasBotStatusColumn) {
+        console.log('Adding bot_status column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_status TEXT DEFAULT 'not_botted'`).run();
+        console.log('Added bot_status column to sparks table');
+      }
+
+      if (!hasBotPostIdColumn) {
+        console.log('Adding bot_post_id column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_post_id TEXT`).run();
+        console.log('Added bot_post_id column to sparks table');
+      }
+    } catch (error) {
+      console.error('Error adding bot columns:', error);
+      // Log but continue - the app can still function without these columns
     }
 
     // Create trigger to automatically update the updated_at timestamp
@@ -1188,7 +1224,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
   try {
     // Get user_id and team_id from session
     const { userId, teamId } = await getUserInfoFromSession(request, env);
-    
+
     const sparkData = await request.json();
     
     // Check if user has access to the spark
@@ -1263,10 +1299,13 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     }
     
     // Update the spark - ensure no undefined values
+    const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : existingSpark.bot_status;
+    const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : existingSpark.bot_post_id;
+
     await db.prepare(`
-      UPDATE sparks 
-      SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?, 
-          offer_name = ?, thumbnail = ?, status = ?
+      UPDATE sparks
+      SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
+          offer_name = ?, thumbnail = ?, status = ?, bot_status = ?, bot_post_id = ?
       WHERE id = ?
     `).bind(
       sparkData.name || existingSpark.name,
@@ -1277,6 +1316,8 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       offerName || existingSpark.offer_name || '',
       thumbnail || existingSpark.thumbnail || '',
       sparkData.status || existingSpark.status || 'Pending',
+      botStatus,
+      botPostId,
       sparkId
     ).run();
     
@@ -1284,7 +1325,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
       .bind(sparkId)
       .first();
-    
+
     return new Response(
       JSON.stringify({
         success: true,

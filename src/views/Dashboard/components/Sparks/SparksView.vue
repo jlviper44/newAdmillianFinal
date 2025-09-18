@@ -67,6 +67,8 @@
           @show-batch-update-success="handleBatchUpdateSuccess"
           @show-batch-update-warning="showWarning"
           @apply-batch-updates="applyBatchUpdates"
+          @remove-duplicates="removeDuplicates"
+          @delete-selected="deleteSelected"
         />
       </v-window-item>
 
@@ -514,6 +516,43 @@
       </v-card>
     </v-dialog>
 
+    <!-- Delete Selected Confirmation Modal -->
+    <v-dialog v-model="showDeleteSelectedModal" max-width="500">
+      <v-card>
+        <v-card-title class="text-h6">
+          <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
+          Confirm Bulk Delete
+        </v-card-title>
+        <v-card-text>
+          <p class="text-body-1 mb-3">
+            Are you sure you want to delete <strong>{{ selectedForDelete.length }}</strong> selected spark{{ selectedForDelete.length !== 1 ? 's' : '' }}?
+          </p>
+          <v-alert type="warning" variant="tonal" density="compact">
+            <v-icon size="small" class="mr-1">mdi-alert</v-icon>
+            This action cannot be undone. All selected sparks will be permanently deleted.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="text"
+            @click="showDeleteSelectedModal = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            variant="elevated"
+            @click="confirmDeleteSelected"
+            :loading="isDeletingSelected"
+          >
+            <v-icon start>mdi-delete-sweep</v-icon>
+            Delete {{ selectedForDelete.length }} Spark{{ selectedForDelete.length !== 1 ? 's' : '' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Delete Confirmation Modal -->
     <v-dialog v-model="showDeleteModal" max-width="500">
       <v-card>
@@ -576,7 +615,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { sparksApi, templatesApi, usersApi, commentBotApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
 import jsPDF from 'jspdf';
@@ -669,6 +708,9 @@ const userCredits = ref(0);
 const showDeleteModal = ref(false);
 const sparkToDelete = ref(null);
 const deleteLoading = ref(false);
+const showDeleteSelectedModal = ref(false);
+const selectedForDelete = ref([]);
+const isDeletingSelected = ref(false);
 
 // Form state
 const sparkForm = ref({
@@ -1059,16 +1101,48 @@ const fetchSparks = async () => {
   try {
     const response = await sparksApi.listSparks({ page: 1, limit: 1000 });
     if (response.success) {
-      // Freeze the sparks array to prevent unnecessary reactivity on individual items
-      sparks.value = Object.freeze(response.sparks.map(spark => ({
+      // Process sparks but don't freeze yet - we need to update bot statuses
+      const processedSparks = response.sparks.map(spark => ({
         ...spark,
         type: spark.type || 'auto',
         creator: spark.creator || 'None'  // Show "None" instead of "Unknown"
-      })));
-      
+      }));
+
+      // Get active orders from comment bot to update statuses
+      try {
+        const ordersResponse = await commentBotApi.getOrders();
+
+        if (ordersResponse && ordersResponse.orders) {
+          // Create a map of post_id to order status for quick lookup
+          const orderStatusMap = {};
+          ordersResponse.orders.forEach(order => {
+            if (order.post_id) {
+              orderStatusMap[order.post_id] = order.status || 'processing';
+            }
+          });
+
+          // Update spark statuses based on matching post IDs
+          processedSparks.forEach(spark => {
+            if (spark.bot_post_id && orderStatusMap[spark.bot_post_id]) {
+              spark.bot_status = orderStatusMap[spark.bot_post_id];
+            } else if (spark.bot_post_id && !orderStatusMap[spark.bot_post_id]) {
+              // Has a post ID but no matching order - likely completed or expired
+              if (spark.bot_status === 'queued' || spark.bot_status === 'processing' || spark.bot_status === 'pending') {
+                spark.bot_status = 'completed';
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch comment bot orders:', error);
+      }
+
+      // Now freeze the sparks array
+      sparks.value = Object.freeze(processedSparks);
+
       // Update type options dynamically based on actual types in data
       const uniqueTypes = [...new Set(sparks.value.map(s => s.type).filter(t => t))];
-      
+
       // Update typeItems to include any new custom types
       const existingTypeItems = new Set(typeItems.value);
       uniqueTypes.forEach(type => {
@@ -1315,6 +1389,120 @@ const deleteSpark = (spark) => {
     sparkToDelete.value = spark;
   }
   showDeleteModal.value = true;
+};
+
+const removeDuplicates = async () => {
+  try {
+    isLoading.value = true;
+
+    // Create a map to track unique entries and keep the latest one
+    const uniqueMap = new Map();
+    const duplicateIds = [];
+
+    // Process sparks in reverse order (keeping the last added)
+    const reversedSparks = [...sparks.value].reverse();
+
+    for (const spark of reversedSparks) {
+      // Create unique keys for each type of duplicate
+      const tiktokKey = spark.tiktok_link ? `tiktok:${spark.tiktok_link}` : null;
+      const sparkCodeKey = spark.spark_code ? `code:${spark.spark_code}` : null;
+
+      // Check if TikTok link already exists
+      if (tiktokKey && uniqueMap.has(tiktokKey)) {
+        duplicateIds.push(spark.id);
+        continue;
+      }
+
+      // Check if spark code already exists
+      if (sparkCodeKey && uniqueMap.has(sparkCodeKey)) {
+        duplicateIds.push(spark.id);
+        continue;
+      }
+
+      // Mark as seen
+      if (tiktokKey) uniqueMap.set(tiktokKey, spark.id);
+      if (sparkCodeKey) uniqueMap.set(sparkCodeKey, spark.id);
+    }
+
+    // Delete duplicates from database
+    let deletedCount = 0;
+    for (const id of duplicateIds) {
+      try {
+        await sparksApi.deleteSpark(id);
+        deletedCount++;
+      } catch (error) {
+        console.error(`Failed to delete duplicate spark ${id}:`, error);
+      }
+    }
+
+    // Refresh sparks list
+    await fetchSparks();
+
+    if (deletedCount > 0) {
+      showSuccess(`Removed ${deletedCount} duplicate spark${deletedCount > 1 ? 's' : ''}`);
+    } else {
+      showInfo('No duplicates found to remove');
+    }
+
+  } catch (error) {
+    console.error('Error removing duplicates:', error);
+    showError('Failed to remove duplicates');
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const deleteSelected = async (selectedSparks) => {
+  if (!selectedSparks || selectedSparks.length === 0) {
+    showWarning('No sparks selected for deletion');
+    return;
+  }
+
+  // Store selected sparks and show modal
+  selectedForDelete.value = selectedSparks;
+  showDeleteSelectedModal.value = true;
+};
+
+const confirmDeleteSelected = async () => {
+  try {
+    isDeletingSelected.value = true;
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    // Delete each selected spark
+    for (const spark of selectedForDelete.value) {
+      try {
+        await sparksApi.deleteSpark(spark.id);
+        deletedCount++;
+      } catch (error) {
+        console.error(`Failed to delete spark ${spark.name || spark.id}:`, error);
+        failedCount++;
+      }
+    }
+
+    // Close modal
+    showDeleteSelectedModal.value = false;
+    selectedForDelete.value = [];
+
+    // Exit bulk edit mode
+    cancelBulkEdit();
+
+    // Refresh sparks list
+    await fetchSparks();
+
+    // Show results
+    if (failedCount > 0) {
+      showWarning(`Deleted ${deletedCount} spark${deletedCount !== 1 ? 's' : ''}, ${failedCount} failed`);
+    } else {
+      showSuccess(`Successfully deleted ${deletedCount} spark${deletedCount !== 1 ? 's' : ''}`);
+    }
+
+  } catch (error) {
+    console.error('Error deleting selected sparks:', error);
+    showError('Failed to delete selected sparks');
+  } finally {
+    isDeletingSelected.value = false;
+  }
 };
 
 // Inline editing methods
@@ -2608,21 +2796,54 @@ const executeCommentBot = async () => {
     showError('Please select at least one spark');
     return;
   }
-  
-  if (!commentBotSettings.value.comment_group_id && 
-      commentBotSettings.value.like_count === 0 && 
+
+  if (!commentBotSettings.value.comment_group_id &&
+      commentBotSettings.value.like_count === 0 &&
       commentBotSettings.value.save_count === 0) {
     showWarning('Please configure bot settings');
     return;
   }
-  
+
   isProcessingBot.value = true;
-  
+
   let successCount = 0;
   let failCount = 0;
   let skipCount = 0;
-  
+
   try {
+    // First, update all selected sparks to 'queued' status in the database
+    for (const sparkId of selectedForBot.value) {
+      const spark = sparks.value.find(s => s.id === sparkId);
+      if (!spark) continue;
+
+      // Only update sparks that have a TikTok link
+      if (!spark.tiktok_link) {
+        console.warn(`Skipping ${spark.name} - no TikTok link`);
+        continue;
+      }
+
+      try {
+        // Prepare update data with camelCase field names like the inline edit does
+        const updateData = {
+          name: spark.name,
+          creator: spark.creator || 'None',
+          tiktokLink: spark.tiktok_link,  // Use camelCase!
+          sparkCode: spark.spark_code || '',  // Use camelCase!
+          type: spark.type || 'auto',
+          status: spark.status || 'active',
+          offerName: spark.offer_name || '',  // Use camelCase!
+          bot_status: 'queued'
+        };
+
+        const response = await sparksApi.updateSpark(spark.id, updateData);
+      } catch (err) {
+        console.error(`Failed to set queued status for ${spark.name}:`, err);
+      }
+    }
+
+    // Refresh sparks to show queued status
+    await fetchSparks();
+
     // Process each selected spark
     for (const sparkId of selectedForBot.value) {
       const spark = sparks.value.find(s => s.id === sparkId);
@@ -2630,73 +2851,90 @@ const executeCommentBot = async () => {
         skipCount++;
         continue;
       }
-      
+
       const postId = extractPostIdFromTikTokLink(spark.tiktok_link);
       if (!postId) {
         console.warn(`No valid post ID for spark ${spark.name}, skipping`);
-        spark.bot_status = 'failed';
+
+        // Update to failed in database
+        try {
+          const updateData = {
+            name: spark.name,
+            creator: spark.creator || 'None',
+            tiktokLink: spark.tiktok_link,  // Use camelCase!
+            sparkCode: spark.spark_code || '',  // Use camelCase!
+            type: spark.type || 'auto',
+            status: spark.status || 'active',
+            offerName: spark.offer_name || '',  // Use camelCase!
+            bot_status: 'failed'
+          };
+
+          await sparksApi.updateSpark(spark.id, updateData);
+        } catch (updateError) {
+          console.error(`Failed to update spark status in database:`, updateError);
+        }
+
         failCount++;
         continue;
       }
-      
-      // Update status to processing
-      spark.bot_status = 'processing';
-      
+
       const orderData = {
         post_id: postId,
         comment_group_id: commentBotSettings.value.comment_group_id,
         like_count: Math.min(commentBotSettings.value.like_count || 0, 3000),
         save_count: Math.min(commentBotSettings.value.save_count || 0, 500)
       };
-      
+
       console.log(`Creating order for spark ${spark.name}:`, orderData);
-      
+
       try {
         // Use the regular createOrder endpoint
         const response = await commentBotApi.createOrder(orderData);
         console.log(`Order created for ${spark.name}:`, response);
-        
-        // Check if the order actually succeeded based on progress metrics
-        if (response && response.progress) {
-          const progress = response.progress;
-          const totalRequested = (orderData.like_count || 0) + (orderData.save_count || 0) + 
-                                 (orderData.comment_group_id ? 1 : 0);
-          
-          // Calculate actual success
-          const totalCompleted = (progress.like?.completed || 0) + 
-                                (progress.save?.completed || 0) + 
-                                (progress.comment?.completed || 0);
-          
-          const totalFailed = (progress.like?.failed || 0) + 
-                             (progress.save?.failed || 0) + 
-                             (progress.comment?.failed || 0);
-          
-          // Consider it failed if everything failed or nothing was completed
-          if (totalRequested > 0 && totalCompleted === 0) {
-            console.warn(`Order failed for ${spark.name}: All actions failed`, progress);
-            spark.bot_status = 'failed';
-            failCount++;
-          } else if (totalFailed > totalCompleted) {
-            console.warn(`Order partially failed for ${spark.name}: More failures than successes`, progress);
-            spark.bot_status = 'failed';
-            failCount++;
-          } else if (progress.overall === 0) {
-            console.warn(`Order failed for ${spark.name}: 0% overall progress`, progress);
-            spark.bot_status = 'failed';
-            failCount++;
-          } else {
-            // Order had at least some success
-            spark.bot_status = 'completed';
-            successCount++;
-          }
-        } else {
-          // No progress info, assume it's queued or will be processed
-          spark.bot_status = 'completed';
-          successCount++;
+
+        // Update the spark in the database with the post ID and processing status
+        try {
+          const updateData = {
+            name: spark.name,
+            creator: spark.creator || 'None',
+            tiktokLink: spark.tiktok_link,  // Use camelCase!
+            sparkCode: spark.spark_code || '',  // Use camelCase!
+            type: spark.type || 'auto',
+            status: spark.status || 'active',
+            offerName: spark.offer_name || '',  // Use camelCase!
+            bot_post_id: postId,
+            bot_status: 'processing'
+          };
+
+          await sparksApi.updateSpark(spark.id, updateData);
+        } catch (updateError) {
+          console.error(`Failed to update spark ${spark.name} in database:`, updateError);
+          console.error(`Update data:`, updateData);
+          // Don't fail the whole operation if DB update fails
         }
+
+        successCount++;
       } catch (error) {
         console.error(`Failed to create order for spark ${spark.name}:`, error);
-        spark.bot_status = 'failed';
+
+        // Try to update in database with failed status
+        try {
+          const updateData = {
+            name: spark.name,
+            creator: spark.creator || 'None',
+            tiktokLink: spark.tiktok_link,  // Use camelCase!
+            sparkCode: spark.spark_code || '',  // Use camelCase!
+            type: spark.type || 'auto',
+            status: spark.status || 'active',
+            offerName: spark.offer_name || '',  // Use camelCase!
+            bot_status: 'failed'
+          };
+
+          await sparksApi.updateSpark(spark.id, updateData);
+        } catch (updateError) {
+          console.error(`Failed to update spark status in database:`, updateError);
+        }
+
         failCount++;
       }
     }
@@ -2747,6 +2985,83 @@ const handleCommentBotRefresh = async () => {
   showSuccess('Sparks updated with bot status');
 };
 
+// Bot status refresh interval
+let botStatusInterval = null;
+
+// Function to refresh bot statuses for processing sparks
+const refreshBotStatuses = async () => {
+  const processingSparks = sparks.value.filter(s =>
+    s.bot_post_id &&
+    (s.bot_status === 'queued' || s.bot_status === 'processing' || s.bot_status === 'pending')
+  );
+
+  if (processingSparks.length === 0) {
+    return; // No sparks to check
+  }
+
+  try {
+    // Get all active orders from comment bot
+    const ordersResponse = await commentBotApi.getOrders();
+
+    if (!ordersResponse || !ordersResponse.orders) {
+      return;
+    }
+
+    // Create a map of post_id to order status
+    const orderStatusMap = {};
+    ordersResponse.orders.forEach(order => {
+      if (order.post_id) {
+        orderStatusMap[order.post_id] = order.status || 'processing';
+      }
+    });
+
+    // Check if any sparks need status updates
+    let hasUpdates = false;
+
+    for (const spark of processingSparks) {
+      let newStatus = spark.bot_status;
+
+      if (orderStatusMap[spark.bot_post_id]) {
+        // Found matching order - update to its status
+        newStatus = orderStatusMap[spark.bot_post_id];
+      } else {
+        // No matching order found - mark as completed
+        newStatus = 'completed';
+      }
+
+      // Only update if status changed
+      if (newStatus !== spark.bot_status) {
+        hasUpdates = true;
+
+        // Update in database with camelCase fields
+        try {
+          const updateData = {
+            name: spark.name,
+            creator: spark.creator || 'None',
+            tiktokLink: spark.tiktok_link || '',  // Use camelCase!
+            sparkCode: spark.spark_code || '',  // Use camelCase!
+            type: spark.type || 'auto',
+            status: spark.status || 'active',
+            offerName: spark.offer_name || '',  // Use camelCase!
+            bot_status: newStatus
+          };
+
+          await sparksApi.updateSpark(spark.id, updateData);
+        } catch (err) {
+          console.error(`Failed to update spark ${spark.id} status in DB:`, err);
+        }
+      }
+    }
+
+    // Refresh sparks if any updates were made
+    if (hasUpdates) {
+      await fetchSparks();
+    }
+  } catch (error) {
+    console.error('Failed to refresh bot statuses:', error);
+  }
+};
+
 // Lifecycle
 onMounted(async () => {
   // Fetch VAs and templates first, then sparks
@@ -2755,19 +3070,29 @@ onMounted(async () => {
     fetchOfferTemplates()
   ]);
   await fetchSparks();
-  
+
   // Load payment settings from backend
   await loadPaymentSettings();
-  
+
   // Load payment history and update creator options
   loadPaymentHistory();
   updateHistoryCreatorOptions();
-  
+
   // Load invoices
   await fetchInvoices();
-  
+
   // Check Comment Bot access and fetch comment groups
   await checkCommentBotAccess();
+
+  // Start periodic bot status refresh (every 10 seconds)
+  botStatusInterval = setInterval(refreshBotStatuses, 10000);
+});
+
+// Clean up interval on unmount
+onUnmounted(() => {
+  if (botStatusInterval) {
+    clearInterval(botStatusInterval);
+  }
 });
 </script>
 

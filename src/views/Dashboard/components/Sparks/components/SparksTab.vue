@@ -97,6 +97,16 @@
               </v-btn>
               <v-btn
                 color="error"
+                variant="elevated"
+                class="mr-2"
+                @click="$emit('deleteSelected', selectedItems)"
+                prepend-icon="mdi-delete-sweep"
+                :disabled="selectedItems.length === 0"
+              >
+                Delete Selected ({{ selectedItems.length }})
+              </v-btn>
+              <v-btn
+                color="grey"
                 variant="tonal"
                 class="mr-2"
                 @click="cancelBulkEdit"
@@ -135,8 +145,8 @@
             >
               Bulk Add
             </v-btn>
-            <!-- Comment Bot button hidden for now -->
-            <!-- <v-btn
+            <!-- Comment Bot button -->
+            <v-btn
               v-if="!isBulkEditMode && !isCommentBotMode && hasCommentBotAccess"
               color="primary"
               variant="elevated"
@@ -145,7 +155,7 @@
               prepend-icon="mdi-robot"
             >
               Comment Bot
-            </v-btn> -->
+            </v-btn>
             <v-btn
               v-if="isCommentBotMode"
               color="error"
@@ -193,41 +203,22 @@
           </div>
         </div>
       </v-alert>
+
+      <!-- No Selection Warning -->
+      <v-alert
+        v-if="selectedForBot.length === 0"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mt-2"
+      >
+        <v-icon size="small" class="mr-1">mdi-alert</v-icon>
+        Please select at least one spark from the table below to create an order
+      </v-alert>
       
       <v-card-title class="text-h6 pb-2">
         <v-icon class="mr-2">mdi-robot</v-icon>
         Comment Bot - Configure Settings for Selected Items
-        <v-spacer />
-        <v-chip class="mr-2" color="primary" variant="flat">
-          {{ selectedForBot.length }} selected
-        </v-chip>
-        <v-btn
-          size="small"
-          variant="tonal"
-          class="mr-2"
-          @click="selectAllForBot"
-        >
-          Select All Valid
-        </v-btn>
-        <v-btn
-          size="small"
-          variant="tonal"
-          class="mr-2"
-          @click="selectedItems = []"
-        >
-          Clear Selection
-        </v-btn>
-        <v-btn
-          color="success"
-          variant="elevated"
-          size="small"
-          @click="$emit('executeCommentBot')"
-          :loading="isProcessingBot"
-          :disabled="selectedForBot.length === 0"
-        >
-          <v-icon start>mdi-cart-plus</v-icon>
-          Create Order
-        </v-btn>
       </v-card-title>
       <v-card-text>
         <v-row align="center" dense>
@@ -238,11 +229,13 @@
               :items="commentGroups"
               item-title="name"
               item-value="id"
-              label="Comment Group"
+              label="Comment Group *"
               density="compact"
               variant="outlined"
+              :error="!commentBotSettings.comment_group_id"
               hide-details
               clearable
+              placeholder="Select a comment group"
             />
           </v-col>
           
@@ -276,9 +269,50 @@
           
           <v-col cols="12" md="2">
             <v-chip color="info" variant="tonal" class="w-100 justify-center">
-              Total: {{ selectedForBot.length * (commentBotSettings.like_count || 0) }} likes, 
+              Total: {{ selectedForBot.length * (commentBotSettings.like_count || 0) }} likes,
               {{ selectedForBot.length * (commentBotSettings.save_count || 0) }} saves
             </v-chip>
+          </v-col>
+        </v-row>
+        <v-row align="center" dense class="mt-3">
+          <v-col cols="12" class="d-flex justify-space-between align-center">
+            <v-chip color="primary" variant="flat">
+              {{ selectedForBot.length }} selected
+            </v-chip>
+            <div class="d-flex">
+              <v-btn
+                variant="tonal"
+                class="mr-2"
+                @click="selectAllForBot"
+              >
+                Select All Valid
+              </v-btn>
+              <v-btn
+                variant="tonal"
+                class="mr-2"
+                @click="selectedItems = []"
+              >
+                Clear Selection
+              </v-btn>
+              <v-tooltip
+                :text="getCreateOrderTooltip()"
+                :disabled="!!(selectedForBot.length > 0 && commentBotSettings.comment_group_id)"
+              >
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    color="success"
+                    variant="elevated"
+                    @click="$emit('executeCommentBot')"
+                    :loading="isProcessingBot"
+                    :disabled="selectedForBot.length === 0 || !commentBotSettings.comment_group_id"
+                  >
+                    <v-icon start>mdi-cart-plus</v-icon>
+                    Create Order
+                  </v-btn>
+                </template>
+              </v-tooltip>
+            </div>
           </v-col>
         </v-row>
       </v-card-text>
@@ -395,16 +429,30 @@
           density="compact"
           class="mb-2"
         >
-          <div class="font-weight-bold mb-2">
-            <v-icon size="small" class="mr-1">mdi-alert-circle</v-icon>
-            Duplicate entries detected:
+          <div class="d-flex justify-space-between align-center">
+            <div class="flex-grow-1">
+              <div class="font-weight-bold mb-2">
+                <v-icon size="small" class="mr-1">mdi-alert-circle</v-icon>
+                Duplicate entries detected:
+              </div>
+              <ul class="pl-4">
+                <li v-for="(error, index) in duplicateInfo.duplicateErrors" :key="index" class="text-caption">
+                  {{ error }}
+                </li>
+              </ul>
+              <div class="text-caption mt-2">Duplicate rows are highlighted in red.</div>
+            </div>
+            <v-btn
+              color="white"
+              variant="elevated"
+              size="small"
+              @click="$emit('removeDuplicates')"
+              class="ml-3"
+            >
+              <v-icon start>mdi-delete-sweep</v-icon>
+              Remove Duplicates
+            </v-btn>
           </div>
-          <ul class="pl-4">
-            <li v-for="(error, index) in duplicateInfo.duplicateErrors" :key="index" class="text-caption">
-              {{ error }}
-            </li>
-          </ul>
-          <div class="text-caption mt-2">Duplicate rows are highlighted in red.</div>
         </v-alert>
         <v-alert
           type="info"
@@ -796,7 +844,9 @@ const emit = defineEmits([
   'deleteSpark',
   'showBatchUpdateSuccess',
   'showBatchUpdateWarning',
-  'applyBatchUpdates'
+  'applyBatchUpdates',
+  'removeDuplicates',
+  'deleteSelected'
 ]);
 
 // Local state for pagination to handle v-model properly
@@ -912,6 +962,18 @@ watch(localItemsPerPage, (newVal) => {
 watch(localCurrentPage, (newVal) => {
   emit('update:currentPage', newVal);
 });
+
+// Helper function for Create Order button tooltip
+const getCreateOrderTooltip = () => {
+  if (props.selectedForBot.length === 0 && !props.commentBotSettings.comment_group_id) {
+    return 'Please select at least one spark and a comment group';
+  } else if (props.selectedForBot.length === 0) {
+    return 'Please select at least one spark';
+  } else if (!props.commentBotSettings.comment_group_id) {
+    return 'Please select a comment group';
+  }
+  return '';
+};
 
 // Pass through methods
 const clearFilters = () => emit('clearFilters');

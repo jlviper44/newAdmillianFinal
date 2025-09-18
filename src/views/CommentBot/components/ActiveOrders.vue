@@ -13,10 +13,14 @@ const props = defineProps({
   orderProgress: {
     type: Object,
     default: () => ({})
+  },
+  loading: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['poll-status']);
+const emit = defineEmits(['poll-status', 'refresh']);
 
 // Pagination state
 const page = ref(1);
@@ -181,6 +185,17 @@ watch(() => props.orders.length, () => {
 
 <template>
   <div>
+    <!-- Refresh Button (Mobile) -->
+    <div v-if="hasActiveOrders && $vuetify.display.smAndDown" class="d-flex justify-end mb-3">
+      <v-btn
+        icon="mdi-refresh"
+        variant="text"
+        size="small"
+        @click="emit('refresh')"
+        :loading="props.loading"
+      ></v-btn>
+    </div>
+
     <!-- Empty State -->
     <div v-if="!hasActiveOrders" class="text-center py-8">
       <v-icon size="x-large" color="grey-lighten-1" class="mb-2">mdi-emoticon-neutral-outline</v-icon>
@@ -294,9 +309,19 @@ watch(() => props.orders.length, () => {
     
     <!-- Desktop Table Layout -->
     <v-card v-else>
-      <v-card-title>
-        <v-icon class="me-2">mdi-format-list-checks</v-icon>
-        Active Orders
+      <v-card-title class="d-flex align-center justify-space-between">
+        <div class="d-flex align-center">
+          <v-icon icon="mdi-format-list-checks" color="primary" class="mr-2"></v-icon>
+          <span class="text-h6">Active Orders</span>
+        </div>
+
+        <v-btn
+          icon="mdi-refresh"
+          variant="text"
+          size="small"
+          @click="emit('refresh')"
+          :loading="props.loading"
+        ></v-btn>
       </v-card-title>
       
       <v-card-text>
