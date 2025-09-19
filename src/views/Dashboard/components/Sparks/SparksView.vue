@@ -372,7 +372,7 @@
                 />
               </v-col>
             </v-row>
-            
+
             <v-row>
               <!-- TikTok Links Textarea (LEFT) -->
               <v-col cols="12" md="6">
@@ -387,7 +387,7 @@
                   @input="autoPreviewBulkAdd"
                 />
               </v-col>
-              
+
               <!-- Spark Codes Textarea (RIGHT) -->
               <v-col cols="12" md="6">
                 <v-textarea
@@ -402,7 +402,120 @@
                 />
               </v-col>
             </v-row>
-            
+
+            <!-- Comment Bot Section -->
+            <v-expansion-panels v-if="hasCommentBotAccess" class="mb-4">
+              <v-expansion-panel>
+                <v-expansion-panel-title>
+                  <v-row align="center" no-gutters>
+                    <v-col cols="auto" class="mr-3">
+                      <v-checkbox
+                        v-model="bulkAddForm.enableCommentBot"
+                        @click.stop
+                        hide-details
+                        density="compact"
+                      />
+                    </v-col>
+                    <v-col>
+                      <div class="d-flex align-center">
+                        <v-icon class="mr-2">mdi-robot</v-icon>
+                        <span>Enable Comment Bot for these sparks</span>
+                        <v-chip v-if="bulkAddForm.enableCommentBot" class="ml-3" size="small" color="primary">
+                          Cost: {{ bulkAddPreview.length || 0 }} credits
+                        </v-chip>
+                      </div>
+                    </v-col>
+                  </v-row>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-alert
+                    type="info"
+                    variant="tonal"
+                    density="compact"
+                    class="mb-3"
+                  >
+                    <div class="d-flex align-center justify-space-between">
+                      <div>
+                        <v-icon size="small" class="mr-1">mdi-coin</v-icon>
+                        <strong>Available Credits:</strong> {{ userCredits || 0 }}
+                      </div>
+                      <div>
+                        <v-icon size="small" class="mr-1">mdi-calculator</v-icon>
+                        <strong>Cost per Spark:</strong> 1 credit
+                      </div>
+                      <div>
+                        <v-icon size="small" class="mr-1">mdi-cash</v-icon>
+                        <strong>Total Cost:</strong> {{ bulkAddPreview.length || 0 }} credits
+                      </div>
+                    </div>
+                  </v-alert>
+
+                  <v-row>
+                    <v-col cols="12">
+                      <v-select
+                        v-model="bulkAddForm.commentGroupId"
+                        :items="commentGroups"
+                        item-title="name"
+                        item-value="id"
+                        label="Comment Group *"
+                        variant="outlined"
+                        density="compact"
+                        :rules="bulkAddForm.enableCommentBot ? [v => !!v || 'Comment group is required'] : []"
+                        clearable
+                      />
+                    </v-col>
+                  </v-row>
+
+                  <v-row>
+                    <v-col cols="12" md="6">
+                      <v-text-field
+                        v-model.number="bulkAddForm.likeCount"
+                        type="number"
+                        label="Likes per Spark"
+                        variant="outlined"
+                        density="compact"
+                        :rules="[v => v >= 0 && v <= 3000 || 'Max 3,000']"
+                        placeholder="0-3000"
+                      />
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-text-field
+                        v-model.number="bulkAddForm.saveCount"
+                        type="number"
+                        label="Saves per Spark"
+                        variant="outlined"
+                        density="compact"
+                        :rules="[v => v >= 0 && v <= 500 || 'Max 500']"
+                        placeholder="0-500"
+                      />
+                    </v-col>
+                  </v-row>
+
+                  <v-alert
+                    v-if="bulkAddPreview.length > 0"
+                    type="success"
+                    variant="tonal"
+                    density="compact"
+                  >
+                    <strong>Total engagement:</strong>
+                    {{ bulkAddPreview.length * (bulkAddForm.likeCount || 0) }} likes,
+                    {{ bulkAddPreview.length * (bulkAddForm.saveCount || 0) }} saves
+                  </v-alert>
+
+                  <v-alert
+                    v-if="bulkAddForm.enableCommentBot && bulkAddPreview.length > userCredits"
+                    type="warning"
+                    variant="tonal"
+                    density="compact"
+                    class="mt-2"
+                  >
+                    <v-icon size="small" class="mr-1">mdi-alert</v-icon>
+                    Insufficient credits! You need {{ bulkAddPreview.length }} credits but only have {{ userCredits }}.
+                  </v-alert>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+
             <!-- Preview Section -->
             <v-card
               v-if="bulkAddPreview.length > 0 || bulkAddValidationMessage"
@@ -413,12 +526,38 @@
               <v-card-title class="text-h6">
                 <template v-if="bulkAddPreview.length > 0">
                   Preview: {{ bulkAddPreview.length }} spark(s) ready to create
+                  <v-chip v-if="bulkAddForm.enableCommentBot" class="ml-2" size="small" color="primary" variant="flat">
+                    <v-icon start size="small">mdi-robot</v-icon>
+                    With Comment Bot
+                  </v-chip>
                 </template>
                 <template v-else>
                   Validation Required
                 </template>
               </v-card-title>
               <v-card-text>
+                <!-- Comment Bot Preview Alert -->
+                <v-alert
+                  v-if="bulkAddForm.enableCommentBot && bulkAddPreview.length > 0"
+                  type="info"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-3"
+                >
+                  <div class="font-weight-medium mb-2">
+                    <v-icon size="small" class="mr-1">mdi-robot</v-icon>
+                    Comment Bot Settings:
+                  </div>
+                  <div class="text-caption">
+                    <div>• Comment Group: {{ commentGroups.find(g => g.id === bulkAddForm.commentGroupId)?.name || 'Not selected' }}</div>
+                    <div>• Likes per spark: {{ bulkAddForm.likeCount || 0 }}</div>
+                    <div>• Saves per spark: {{ bulkAddForm.saveCount || 0 }}</div>
+                    <div>• Total cost: {{ bulkAddPreview.length }} credits</div>
+                    <div class="mt-1 font-weight-medium">
+                      Total engagement: {{ bulkAddPreview.length * (bulkAddForm.likeCount || 0) }} likes, {{ bulkAddPreview.length * (bulkAddForm.saveCount || 0) }} saves
+                    </div>
+                  </div>
+                </v-alert>
                 <!-- Validation message -->
                 <v-alert
                   v-if="bulkAddValidationMessage && bulkAddPreview.length === 0"
@@ -748,7 +887,12 @@ const bulkAddForm = ref({
   creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
   status: 'untested',
   sparkCodes: '',
-  tiktokLinks: ''
+  tiktokLinks: '',
+  // Comment Bot fields
+  enableCommentBot: false,
+  commentGroupId: null,
+  likeCount: 0,
+  saveCount: 0
 });
 
 const bulkAddPreview = ref([]);
@@ -1648,7 +1792,12 @@ const bulkAdd = () => {
     creator: creator,  // Auto-select VA's own email if logged in as VA
     status: 'untested',
     sparkCodes: '',
-    tiktokLinks: ''
+    tiktokLinks: '',
+    // Reset Comment Bot fields
+    enableCommentBot: false,
+    commentGroupId: null,
+    likeCount: 0,
+    saveCount: 0
   };
   bulkAddPreview.value = [];
   bulkAddValidationMessage.value = '';
@@ -1722,7 +1871,7 @@ const saveBulkAdd = async () => {
     showError('Please fill in all required fields');
     return;
   }
-  
+
   const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
   const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
 
@@ -1736,68 +1885,179 @@ const saveBulkAdd = async () => {
     showError(`Number of spark codes (${sparkCodes.length}) must match number of TikTok links (${tiktokLinks.length})`);
     return;
   }
-  
+
+  // Validate comment bot settings if enabled
+  if (bulkAddForm.value.enableCommentBot) {
+    if (!bulkAddForm.value.commentGroupId) {
+      showError('Please select a comment group for Comment Bot');
+      return;
+    }
+
+    // Check if user has enough credits
+    if (tiktokLinks.length > userCredits.value) {
+      showError(`Insufficient credits! You need ${tiktokLinks.length} credits but only have ${userCredits.value}`);
+      return;
+    }
+  }
+
   bulkAddLoading.value = true;
-  
+
   // Parse the base name to extract prefix and number
   const baseNameMatch = bulkAddForm.value.baseName.match(/^(.*?)(\d+)$/);
   let namePrefix = bulkAddForm.value.baseName;
   let startNumber = 1;
-  
+
   if (baseNameMatch) {
     namePrefix = baseNameMatch[1];
     startNumber = parseInt(baseNameMatch[2]);
   }
-  
+
   try {
     let successCount = 0;
     let failedCount = 0;
+    let botOrderSuccessCount = 0;
+    let botOrderFailedCount = 0;
     const errors = [];
-    
+    const createdSparks = [];
+
     // Process each TikTok link
     for (let i = 0; i < tiktokLinks.length; i++) {
       const currentNumber = startNumber + i;
-      const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1 
+      const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1
         ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
         : currentNumber.toString();
-      
+
       const name = `${namePrefix}${paddedNumber}`;
-      
+
       // Use the corresponding spark code (already validated to exist)
       const sparkCode = sparkCodes[i].trim();
+      const tiktokLink = tiktokLinks[i].trim();
 
       const sparkData = {
         name: name,
         creator: bulkAddForm.value.creator || '',
-        tiktokLink: tiktokLinks[i].trim(),
+        tiktokLink: tiktokLink,
         sparkCode: sparkCode,
         type: bulkAddForm.value.type,
         offer: '',  // Default empty offer
-        status: bulkAddForm.value.status
+        status: bulkAddForm.value.status,
+        bot_status: bulkAddForm.value.enableCommentBot ? 'queued' : 'not_botted'
       };
-      
+
       try {
-        await sparksApi.createSpark(sparkData);
+        const createdSpark = await sparksApi.createSpark(sparkData);
         successCount++;
+
+        // The API response should contain the created spark with its ID
+        const sparkId = createdSpark.id || createdSpark.spark?.id || createdSpark.data?.id;
+
+        if (!sparkId) {
+          console.warn(`Created spark ${name} but no ID returned in response:`, createdSpark);
+        }
+
+        createdSparks.push({ ...createdSpark, tiktok_link: tiktokLink });
+
+        // If Comment Bot is enabled, create an order for this spark
+        if (bulkAddForm.value.enableCommentBot && sparkId) {
+          const postId = extractPostIdFromTikTokLink(tiktokLink);
+          if (postId) {
+            try {
+              const orderData = {
+                post_id: postId,
+                comment_group_id: bulkAddForm.value.commentGroupId,
+                like_count: Math.min(bulkAddForm.value.likeCount || 0, 3000),
+                save_count: Math.min(bulkAddForm.value.saveCount || 0, 500)
+              };
+
+              console.log(`Creating Comment Bot order for ${name}:`, orderData);
+              await commentBotApi.createOrder(orderData);
+              botOrderSuccessCount++;
+
+              // Update spark to processing status with bot_post_id
+              try {
+                const updateData = {
+                  name: name,
+                  creator: bulkAddForm.value.creator || '',
+                  tiktokLink: tiktokLink,
+                  sparkCode: sparkCode,
+                  type: bulkAddForm.value.type,
+                  status: bulkAddForm.value.status,
+                  offerName: '',
+                  bot_post_id: postId,
+                  bot_status: 'processing'
+                };
+                await sparksApi.updateSpark(sparkId, updateData);
+              } catch (updateError) {
+                console.error(`Failed to update bot status for ${name}:`, updateError);
+              }
+            } catch (botError) {
+              console.error(`Failed to create Comment Bot order for ${name}:`, botError);
+              botOrderFailedCount++;
+
+              // Update spark to failed status
+              if (sparkId) {
+                try {
+                  const updateData = {
+                    name: name,
+                    creator: bulkAddForm.value.creator || '',
+                    tiktokLink: tiktokLink,
+                    sparkCode: sparkCode,
+                    type: bulkAddForm.value.type,
+                    status: bulkAddForm.value.status,
+                    offerName: '',
+                    bot_status: 'failed'
+                  };
+                  await sparksApi.updateSpark(sparkId, updateData);
+                } catch (updateError) {
+                  console.error(`Failed to update bot status for ${name}:`, updateError);
+                }
+              }
+            }
+          } else {
+            console.warn(`Could not extract post ID from TikTok link for ${name}`);
+            botOrderFailedCount++;
+          }
+        }
       } catch (error) {
         console.error(`Failed to create spark ${name}:`, error);
         errors.push(`${name}: ${error.message || 'Unknown error'}`);
         failedCount++;
       }
     }
-    
+
     showBulkAddModal.value = false;
-    
+
     // Show detailed results
+    let resultMessage = '';
     if (failedCount === 0) {
-      showSuccess(`Successfully created ${successCount} sparks`);
+      resultMessage = `Successfully created ${successCount} sparks`;
     } else if (successCount === 0) {
       showError(`Failed to create all sparks. Errors: ${errors.join(', ')}`);
+      fetchSparks();
+      return;
     } else {
-      showWarning(`Created ${successCount} sparks, ${failedCount} failed. Check console for details.`);
-      console.error('Failed sparks:', errors);
+      resultMessage = `Created ${successCount} sparks, ${failedCount} failed`;
     }
-    
+
+    // Add Comment Bot results if enabled
+    if (bulkAddForm.value.enableCommentBot && successCount > 0) {
+      if (botOrderSuccessCount > 0) {
+        resultMessage += `. Comment Bot: ${botOrderSuccessCount} orders created`;
+      }
+      if (botOrderFailedCount > 0) {
+        resultMessage += `, ${botOrderFailedCount} failed`;
+      }
+    }
+
+    if (failedCount > 0 || botOrderFailedCount > 0) {
+      showWarning(resultMessage + '. Check console for details.');
+      if (errors.length > 0) {
+        console.error('Failed sparks:', errors);
+      }
+    } else {
+      showSuccess(resultMessage);
+    }
+
     // Refresh the sparks list
     fetchSparks();
   } catch (error) {
