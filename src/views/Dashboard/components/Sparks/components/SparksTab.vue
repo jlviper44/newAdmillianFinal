@@ -55,22 +55,23 @@
 
           <v-col cols="auto">
             <v-checkbox
-              :model-value="activeOnly"
-              @update:model-value="$emit('update:activeOnly', $event)"
-              label="Active Only"
-              hide-details
-              density="compact"
-            />
-          </v-col>
-
-          <v-col cols="auto">
-            <v-checkbox
               :model-value="showThumbnails"
               @update:model-value="$emit('update:showThumbnails', $event)"
               label="Show Thumbnails"
               hide-details
               density="compact"
             />
+          </v-col>
+
+          <v-col cols="auto">
+            <v-btn
+              v-if="!isBulkEditMode && !isCommentBotMode"
+              variant="text"
+              @click="clearFilters"
+              prepend-icon="mdi-filter-remove"
+            >
+              Clear Filters
+            </v-btn>
           </v-col>
 
           <v-col cols="auto" class="ml-auto">
@@ -165,14 +166,6 @@
               prepend-icon="mdi-close"
             >
               Cancel Comment Bot
-            </v-btn>
-            <v-btn
-              v-if="!isBulkEditMode && !isCommentBotMode"
-              variant="text"
-              @click="clearFilters"
-              prepend-icon="mdi-filter-remove"
-            >
-              Clear Filters
             </v-btn>
           </v-col>
         </v-row>
@@ -345,74 +338,123 @@
       </v-card-title>
       <v-card-text>
         <v-row align="center" dense>
-          <v-col cols="12" md="2">
-            <v-select
-              v-model="batchUpdate.status"
-              :items="['active', 'testing', 'blocked']"
-              label="Status"
-              density="compact"
-              variant="outlined"
-              hide-details
-              clearable
-            />
+          <!-- Status field -->
+          <v-col cols="12" md="6">
+            <v-row align="center" no-gutters>
+              <v-col cols="8">
+                <v-select
+                  v-model="batchUpdate.status"
+                  :items="['active', 'testing', 'untested', 'blocked']"
+                  label="Status"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                />
+              </v-col>
+              <v-col cols="4" class="pl-2">
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  block
+                  @click="applyBatchUpdate('status')"
+                  :disabled="!batchUpdate.status"
+                >
+                  Apply
+                </v-btn>
+              </v-col>
+            </v-row>
           </v-col>
-          <v-col cols="auto">
-            <v-btn
-              size="small"
-              variant="tonal"
-              color="primary"
-              @click="applyBatchUpdate('status')"
-              :disabled="!batchUpdate.status"
-            >
-              Apply Status
-            </v-btn>
+
+          <!-- Type field -->
+          <v-col cols="12" md="6">
+            <v-row align="center" no-gutters>
+              <v-col cols="8">
+                <v-text-field
+                  v-model="batchUpdate.type"
+                  label="Type"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  placeholder="Enter type..."
+                />
+              </v-col>
+              <v-col cols="4" class="pl-2">
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  block
+                  @click="applyBatchUpdate('type')"
+                  :disabled="!batchUpdate.type"
+                >
+                  Apply
+                </v-btn>
+              </v-col>
+            </v-row>
           </v-col>
-          
-          <v-col cols="12" md="2">
-            <v-combobox
-              v-model="batchUpdate.type"
-              :items="typeItems"
-              label="Type"
-              density="compact"
-              variant="outlined"
-              hide-details
-              clearable
-              placeholder="Select or enter type..."
-            />
+        </v-row>
+
+        <v-row align="center" dense class="mt-2">
+          <!-- Name field -->
+          <v-col cols="12" md="6">
+            <v-row align="center" no-gutters>
+              <v-col cols="8">
+                <v-text-field
+                  v-model="batchUpdate.name"
+                  label="Name"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  placeholder="Enter name..."
+                />
+              </v-col>
+              <v-col cols="4" class="pl-2">
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  block
+                  @click="applyBatchUpdate('name')"
+                  :disabled="!batchUpdate.name"
+                >
+                  Apply
+                </v-btn>
+              </v-col>
+            </v-row>
           </v-col>
-          <v-col cols="auto">
-            <v-btn
-              size="small"
-              variant="tonal"
-              color="primary"
-              @click="applyBatchUpdate('type')"
-              :disabled="!batchUpdate.type"
-            >
-              Apply Type
-            </v-btn>
-          </v-col>
-          
-          <v-col cols="12" md="3">
-            <v-text-field
-              v-model="batchUpdate.name"
-              label="Name"
-              density="compact"
-              variant="outlined"
-              hide-details
-              clearable
-              placeholder="Enter name..."
-            />
-          </v-col>
-          <v-col cols="auto">
-            <v-btn
-              size="small"
-              variant="tonal"
-              color="primary"
-              @click="applyBatchUpdate('name')"
-              :disabled="!batchUpdate.name"
-            >
-              Apply Name
-            </v-btn>
+
+          <!-- Creator field -->
+          <v-col cols="12" md="6">
+            <v-row align="center" no-gutters>
+              <v-col cols="8">
+                <v-select
+                  v-model="batchUpdate.creator"
+                  :items="virtualAssistants"
+                  label="Creator"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  clearable
+                  placeholder="Select creator..."
+                />
+              </v-col>
+              <v-col cols="4" class="pl-2">
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  block
+                  @click="applyBatchUpdate('creator')"
+                  :disabled="!batchUpdate.creator"
+                >
+                  Apply
+                </v-btn>
+              </v-col>
+            </v-row>
           </v-col>
         </v-row>
       </v-card-text>
@@ -472,8 +514,8 @@
         v-model:page="localCurrentPage"
         :class="['sparks-table', { 'bulk-edit-table': isBulkEditMode, 'comment-bot-table': isCommentBotMode }]"
         hover
-        fixed-header
-        height="600"
+        :fixed-header="!isBulkEditMode"
+        :height="isBulkEditMode ? undefined : 600"
         :show-select="isBulkEditMode || isCommentBotMode"
         v-model="selectedItems"
         :item-value="item => item"
@@ -538,17 +580,16 @@
             class="editable-cell"
             :title="'Double-click to edit'"
           >
-            <v-combobox
+            <v-text-field
               v-if="isEditing(item.id, 'type')"
               v-model="editingValues[`${item.id}-type`]"
-              :items="typeItems"
               density="compact"
               variant="outlined"
               hide-details
               clearable
               autofocus
-              @change="saveInlineEdit(item, 'type')"
-              @keyup.enter.stop="saveInlineEdit(item, 'type')"
+              @blur="saveInlineEdit(item, 'type')"
+              @keyup.enter="saveInlineEdit(item, 'type')"
               @keyup.esc="cancelInlineEdit(item.id, 'type')"
             />
             <v-chip
@@ -560,11 +601,10 @@
               {{ item.type || 'auto' }}
             </v-chip>
           </div>
-          <v-combobox
+          <v-text-field
             v-else
             :model-value="bulkEditValues[`${item.id}-type`]"
             @update:model-value="updateBulkEditValue(`${item.id}-type`, $event)"
-            :items="typeItems"
             density="compact"
             variant="outlined"
             hide-details
@@ -605,7 +645,7 @@
             <v-select
               v-if="isEditing(item.id, 'status')"
               v-model="editingValues[`${item.id}-status`]"
-              :items="['active', 'testing', 'blocked']"
+              :items="['active', 'testing', 'untested', 'blocked']"
               :menu="menuStates[`${item.id}-status`]"
               @update:menu="val => menuStates[`${item.id}-status`] = val"
               density="compact"
@@ -627,7 +667,7 @@
             v-else
             :model-value="bulkEditValues[`${item.id}-status`]"
             @update:model-value="updateBulkEditValue(`${item.id}-status`, $event)"
-            :items="['active', 'testing', 'blocked']"
+            :items="['active', 'testing', 'untested', 'blocked']"
             density="compact"
             variant="outlined"
             hide-details
@@ -783,7 +823,6 @@ const props = defineProps({
   typeFilter: String,
   statusFilter: String,
   creatorFilter: String,
-  activeOnly: Boolean,
   showThumbnails: Boolean,
   isBulkEditMode: Boolean,
   isSavingBulk: Boolean,
@@ -816,7 +855,6 @@ const emit = defineEmits([
   'update:typeFilter',
   'update:statusFilter',
   'update:creatorFilter',
-  'update:activeOnly',
   'update:showThumbnails',
   'update:currentPage',
   'update:itemsPerPage',
@@ -884,7 +922,8 @@ const formatBotStatus = (status) => {
 const batchUpdate = ref({
   name: '',
   type: null,
-  status: null
+  status: null,
+  creator: null
 });
 
 // Selected items for bulk operations
@@ -1059,6 +1098,7 @@ const getStatusColor = (status) => {
   switch (status) {
     case 'active': return 'success';
     case 'testing': return 'warning';
+    case 'untested': return 'info';
     case 'blocked': return 'error';
     default: return 'grey';
   }
@@ -1067,6 +1107,7 @@ const getStatusLabel = (status) => {
   switch (status) {
     case 'active': return 'Active';
     case 'testing': return 'Testing';
+    case 'untested': return 'Untested';
     case 'blocked': return 'Blocked';
     default: return status || 'Unknown';
   }
@@ -1097,42 +1138,58 @@ const getStatusLabel = (status) => {
 
 /* Smaller inputs for bulk edit mode */
 .bulk-edit-input :deep(.v-field) {
-  min-height: 28px !important;
-  font-size: 12px !important;
+  min-height: 20px !important;
+  font-size: 10px !important;
 }
 
 .bulk-edit-input :deep(.v-field__input) {
-  padding: 2px 8px !important;
-  min-height: 24px !important;
-  font-size: 12px !important;
+  padding: 1px 4px !important;
+  min-height: 18px !important;
+  font-size: 10px !important;
 }
 
 .bulk-edit-input :deep(.v-input__control) {
-  min-height: 28px !important;
+  min-height: 20px !important;
 }
 
 .bulk-edit-input :deep(.v-field__append-inner) {
-  padding-top: 2px !important;
+  padding-top: 1px !important;
 }
 
 .bulk-edit-input :deep(.v-select__selection) {
-  font-size: 12px !important;
+  font-size: 10px !important;
 }
 
 /* Compact table rows in bulk edit mode */
 .bulk-edit-table :deep(tbody tr td) {
-  padding: 4px 8px !important;
-  height: 36px !important;
-  max-height: 36px !important;
+  padding: 2px 4px !important;
+  height: 26px !important;
+  max-height: 26px !important;
 }
 
 .bulk-edit-table :deep(tbody tr) {
-  height: 36px !important;
+  height: 26px !important;
 }
 
-/* Increase items per page in bulk edit mode for better visibility */
+/* Smaller font and denser display in bulk edit mode */
 .bulk-edit-table {
-  font-size: 13px;
+  font-size: 11px;
+}
+
+/* Make table headers smaller too */
+.bulk-edit-table :deep(thead tr th) {
+  padding: 4px 4px !important;
+  font-size: 11px !important;
+  height: 32px !important;
+}
+
+/* Make checkboxes smaller */
+.bulk-edit-table :deep(.v-checkbox .v-selection-control) {
+  min-height: 20px !important;
+}
+
+.bulk-edit-table :deep(.v-selection-control__wrapper) {
+  height: 20px !important;
 }
 
 /* Batch update card styling */

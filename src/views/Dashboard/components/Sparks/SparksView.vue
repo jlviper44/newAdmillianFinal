@@ -18,7 +18,6 @@
           v-model:type-filter="typeFilter"
           v-model:status-filter="statusFilter"
           v-model:creator-filter="creatorFilter"
-          v-model:active-only="activeOnly"
           v-model:show-thumbnails="showThumbnails"
           :is-bulk-edit-mode="isBulkEditMode"
           :is-saving-bulk="isSavingBulk"
@@ -206,6 +205,7 @@
                   variant="outlined"
                   density="compact"
                   hint="Select the virtual assistant who created this spark"
+                  @update:model-value="sparkForm.name = generateDefaultName($event, sparkForm.type)"
                   :rules="[v => v !== undefined || 'Please select a creator']"
                   required
                 />
@@ -238,15 +238,15 @@
                 />
               </v-col>
               <v-col cols="12" md="6">
-                <v-combobox
+                <v-text-field
                   v-model="sparkForm.type"
                   label="Type"
-                  :items="typeItems"
                   variant="outlined"
                   density="compact"
                   clearable
-                  hint="Select from list or type a custom value"
+                  hint="Enter a type for this spark"
                   persistent-hint
+                  @update:model-value="sparkForm.name = generateDefaultName(sparkForm.creator, $event)"
                 />
               </v-col>
             </v-row>
@@ -259,6 +259,7 @@
                   :items="[
                     { title: 'Active', value: 'active' },
                     { title: 'Testing', value: 'testing' },
+                    { title: 'Untested', value: 'untested' },
                     { title: 'Blocked', value: 'blocked' }
                   ]"
                   variant="outlined"
@@ -321,21 +322,22 @@
               density="compact"
               hint="This will be used as the name prefix for all sparks"
               class="mb-4"
+              @input="autoPreviewBulkAdd"
             />
             
             <v-row>
               <!-- Type and Creator Selection -->
               <v-col cols="12" md="6">
-                <v-combobox
+                <v-text-field
                   v-model="bulkAddForm.type"
                   label="Type"
-                  :items="typeItems"
                   variant="outlined"
                   density="compact"
                   clearable
-                  hint="Select from list or type a custom value"
+                  hint="Enter a type for these sparks"
                   persistent-hint
                   class="mb-4"
+                  @update:model-value="bulkAddForm.baseName = generateDefaultName(bulkAddForm.creator, $event)"
                 />
               </v-col>
               
@@ -347,6 +349,7 @@
                   variant="outlined"
                   density="compact"
                   class="mb-4"
+                  @update:model-value="bulkAddForm.baseName = generateDefaultName($event, bulkAddForm.type)"
                 />
               </v-col>
             </v-row>
@@ -360,6 +363,7 @@
                   :items="[
                     { title: 'Active', value: 'active' },
                     { title: 'Testing', value: 'testing' },
+                    { title: 'Untested', value: 'untested' },
                     { title: 'Blocked', value: 'blocked' }
                   ]"
                   variant="outlined"
@@ -380,7 +384,7 @@
                   rows="8"
                   hint="Enter one TikTok link per line"
                   placeholder="https://www.tiktok.com/@user/video/123&#10;https://www.tiktok.com/@user/video/456"
-                  @input="onTikTokLinksChange"
+                  @input="autoPreviewBulkAdd"
                 />
               </v-col>
               
@@ -388,28 +392,44 @@
               <v-col cols="12" md="6">
                 <v-textarea
                   v-model="bulkAddForm.sparkCodes"
-                  label="Spark Codes (one per line - Optional)"
+                  label="Spark Codes (one per line - Required)"
                   variant="outlined"
                   density="compact"
                   rows="8"
-                  hint="Optional: Codes will be auto-generated if not provided"
-                  placeholder="SC001&#10;SC002&#10;SC003&#10;(Leave empty to auto-generate)"
+                  hint="Required: Must have one spark code for each TikTok link"
+                  placeholder="SC001&#10;SC002&#10;SC003"
+                  @input="autoPreviewBulkAdd"
                 />
               </v-col>
             </v-row>
             
             <!-- Preview Section -->
-            <v-card 
-              v-if="bulkAddPreview.length > 0"
+            <v-card
+              v-if="bulkAddPreview.length > 0 || bulkAddValidationMessage"
               class="mt-4"
               variant="tonal"
-              color="info"
+              :color="bulkAddPreview.length > 0 ? 'info' : 'warning'"
             >
               <v-card-title class="text-h6">
-                Preview: {{ bulkAddPreview.length }} spark(s) will be created
+                <template v-if="bulkAddPreview.length > 0">
+                  Preview: {{ bulkAddPreview.length }} spark(s) ready to create
+                </template>
+                <template v-else>
+                  Validation Required
+                </template>
               </v-card-title>
               <v-card-text>
-                <v-list density="compact" class="preview-list">
+                <!-- Validation message -->
+                <v-alert
+                  v-if="bulkAddValidationMessage && bulkAddPreview.length === 0"
+                  type="warning"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-0"
+                >
+                  {{ bulkAddValidationMessage }}
+                </v-alert>
+                <v-list v-if="bulkAddPreview.length > 0" density="compact" class="preview-list">
                   <v-list-item
                     v-for="(item, index) in bulkAddPreview.slice(0, 10)"
                     :key="index"
@@ -438,16 +458,16 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="outlined" @click="previewBulkAdd">Preview</v-btn>
-          <v-btn 
-            color="primary" 
-            variant="elevated" 
+          <v-btn
+            color="primary"
+            variant="elevated"
             @click="saveBulkAdd"
             :disabled="bulkAddPreview.length === 0 || bulkAddLoading"
             :loading="bulkAddLoading"
           >
-            Save All
+            Create {{ bulkAddPreview.length }} Spark{{ bulkAddPreview.length === 1 ? '' : 's' }}
           </v-btn>
+          <v-btn variant="text" @click="showBulkAddModal = false">Cancel</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -685,12 +705,11 @@ watch(searchInput, (newValue) => {
   }, 300); // 300ms debounce
 });
 const typeFilter = ref('all');
-const statusFilter = ref('active');  // Default to active
+const statusFilter = ref('all');  // Default to all statuses
 const creatorFilter = ref('all');
-const activeOnly = ref(false);
 
 // Table configuration
-const itemsPerPage = ref(25); // Increased for better performance with pagination
+const itemsPerPage = ref(200); // Default to 200 items per page for bulk editing
 const currentPage = ref(1);
 const showThumbnails = ref(true); // Toggle for showing thumbnail column
 
@@ -719,7 +738,7 @@ const sparkForm = ref({
   tiktokLink: '',
   sparkCode: '',
   type: 'auto',
-  status: 'active'
+  status: 'untested'
 });
 
 // Bulk Add Form state
@@ -727,12 +746,13 @@ const bulkAddForm = ref({
   baseName: '',
   type: 'auto',
   creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
-  status: 'active',
+  status: 'untested',
   sparkCodes: '',
   tiktokLinks: ''
 });
 
 const bulkAddPreview = ref([]);
+const bulkAddValidationMessage = ref('');
 const bulkAddLoading = ref(false);
 
 // Payment state
@@ -857,6 +877,7 @@ const statusOptions = ref([
   { title: 'All Status', value: 'all' },
   { title: 'Active', value: 'active' },
   { title: 'Testing', value: 'testing' },
+  { title: 'Untested', value: 'untested' },
   { title: 'Blocked', value: 'blocked' }
 ]);
 
@@ -927,8 +948,8 @@ const filteredSparks = computed(() => {
   let filtered = sparks.value;
 
   // Apply filters only if needed to avoid unnecessary iterations
-  if (typeFilter.value !== 'all' || statusFilter.value !== 'all' || 
-      creatorFilter.value !== 'all' || activeOnly.value || searchQuery.value) {
+  if (typeFilter.value !== 'all' || statusFilter.value !== 'all' ||
+      creatorFilter.value !== 'all' || searchQuery.value) {
     
     filtered = sparks.value.filter(spark => {
       // Type filter
@@ -943,11 +964,6 @@ const filteredSparks = computed(() => {
 
       // Creator filter
       if (creatorFilter.value !== 'all' && spark.creator !== creatorFilter.value) {
-        return false;
-      }
-
-      // Active only filter
-      if (activeOnly.value && spark.status !== 'active') {
         return false;
       }
 
@@ -1249,7 +1265,6 @@ const clearFilters = () => {
   typeFilter.value = 'all';
   statusFilter.value = 'all';
   creatorFilter.value = 'all';
-  activeOnly.value = false;
   showThumbnails.value = true;
   currentPage.value = 1;
 };
@@ -1319,15 +1334,34 @@ const showLargePreview = (spark) => {
   showPreview.value = true;
 };
 
+// Helper function to generate default name
+const generateDefaultName = (creator, type) => {
+  // Remove @domain.com from creator email
+  const creatorName = creator ? creator.replace(/@.*\.com$/i, '') : 'unknown';
+
+  // Get current date in YYMMDD format
+  const date = new Date();
+  const year = String(date.getFullYear()).slice(-2);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${year}${month}${day}`;
+
+  // Generate name: creator-date-type-
+  return `${creatorName}-${dateStr}-${type}-`;
+};
+
 const openCreateModal = () => {
   editingSparkData.value = null;
+  const creator = isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined;
+  const type = 'auto';
+
   sparkForm.value = {
-    name: '',
-    creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
+    name: generateDefaultName(creator, type),
+    creator: creator,  // Auto-select VA's own email if logged in as VA
     tiktokLink: '',
     sparkCode: '',
-    type: 'auto',
-    status: 'active'
+    type: type,
+    status: 'untested'
   };
   showCreateModal.value = true;
 };
@@ -1340,7 +1374,7 @@ const editSpark = (spark) => {
     tiktokLink: spark.tiktok_link || '',
     sparkCode: spark.spark_code || '',
     type: spark.type || 'auto',
-    status: spark.status || 'active'
+    status: spark.status || 'untested'
   };
   showCreateModal.value = true;
 };
@@ -1361,7 +1395,7 @@ const saveSpark = async () => {
       sparkCode: sparkForm.value.sparkCode,
       type: sparkForm.value.type || 'auto',
       offer: '',  // Default empty offer
-      status: sparkForm.value.status || 'active'
+      status: sparkForm.value.status || 'untested'
     };
     
     // Note: thumbnail will be auto-generated from TikTok link on the server side
@@ -1605,77 +1639,80 @@ const cancelDelete = () => {
 
 const bulkAdd = () => {
   // Reset bulk add form
+  const creator = isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined;
+  const type = 'auto';
+
   bulkAddForm.value = {
-    baseName: '',
-    type: 'auto',
-    creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
-    status: 'active',
+    baseName: generateDefaultName(creator, type),
+    type: type,
+    creator: creator,  // Auto-select VA's own email if logged in as VA
+    status: 'untested',
     sparkCodes: '',
     tiktokLinks: ''
   };
   bulkAddPreview.value = [];
+  bulkAddValidationMessage.value = '';
   showBulkAddModal.value = true;
 };
 
-const onTikTokLinksChange = () => {
-  // Optional: Could auto-update spark codes if prefix is set
-  // But let's keep it manual for now to avoid unexpected changes
+// Auto preview function for bulk add
+const autoPreviewBulkAdd = () => {
+  const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
+  const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
+
+  // Clear preview and validation if no TikTok links
+  if (tiktokLinks.length === 0) {
+    bulkAddPreview.value = [];
+    bulkAddValidationMessage.value = '';
+    return;
+  }
+
+  // Check if spark codes match TikTok links count
+  if (sparkCodes.length !== tiktokLinks.length) {
+    bulkAddPreview.value = [];
+    bulkAddValidationMessage.value = `Spark codes (${sparkCodes.length}) must match TikTok links (${tiktokLinks.length})`;
+    return;
+  }
+
+  // Clear validation message and proceed with preview
+  bulkAddValidationMessage.value = '';
+  previewBulkAdd();
 };
 
 const previewBulkAdd = () => {
   const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
   const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
-  
-  if (tiktokLinks.length === 0) {
-    showError('Please enter at least one TikTok link');
+
+  if (tiktokLinks.length === 0 || sparkCodes.length !== tiktokLinks.length) {
+    bulkAddPreview.value = [];
     return;
   }
-  
+
   // Parse the base name to extract prefix and number
   const baseNameMatch = bulkAddForm.value.baseName.match(/^(.*?)(\d+)$/);
   let namePrefix = bulkAddForm.value.baseName;
   let startNumber = 1;
-  
+
   if (baseNameMatch) {
     namePrefix = baseNameMatch[1];
     startNumber = parseInt(baseNameMatch[2]);
   }
-  
-  // Auto-generate spark codes if not enough provided
-  const maxCount = Math.max(tiktokLinks.length, sparkCodes.length);
-  
+
+  // Create preview with matching spark codes
   bulkAddPreview.value = [];
-  for (let i = 0; i < maxCount; i++) {
+  for (let i = 0; i < tiktokLinks.length; i++) {
     const currentNumber = startNumber + i;
-    const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1 
+    const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1
       ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
       : currentNumber.toString();
-    
+
     const name = `${namePrefix}${paddedNumber}`;
-    
-    // Use provided spark code or auto-generate one
-    let sparkCode = sparkCodes[i]?.trim();
-    if (!sparkCode) {
-      // Auto-generate spark code using name pattern
-      sparkCode = `SPARK-${namePrefix.toUpperCase()}${paddedNumber}`;
-    }
-    
-    // Only add if we have a TikTok link for this index
-    if (tiktokLinks[i]) {
-      bulkAddPreview.value.push({
-        name: name,
-        tiktokLink: tiktokLinks[i].trim(),
-        sparkCode: sparkCode
-      });
-    }
-  }
-  
-  // Show info about auto-generated codes
-  const autoGeneratedCount = bulkAddPreview.value.length - sparkCodes.length;
-  if (autoGeneratedCount > 0) {
-    showInfo(`Ready to create ${bulkAddPreview.value.length} sparks (${autoGeneratedCount} spark codes auto-generated)`);
-  } else {
-    showInfo(`Ready to create ${bulkAddPreview.value.length} sparks`);
+
+    bulkAddPreview.value.push({
+      name: name,
+      tiktokLink: tiktokLinks[i].trim(),
+      sparkCode: sparkCodes[i].trim()
+    });
   }
 };
 
@@ -1688,9 +1725,15 @@ const saveBulkAdd = async () => {
   
   const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
   const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
-  
+
   if (tiktokLinks.length === 0) {
     showError('Please enter at least one TikTok link');
+    return;
+  }
+
+  // Validate that spark codes match TikTok links
+  if (sparkCodes.length !== tiktokLinks.length) {
+    showError(`Number of spark codes (${sparkCodes.length}) must match number of TikTok links (${tiktokLinks.length})`);
     return;
   }
   
@@ -1720,13 +1763,9 @@ const saveBulkAdd = async () => {
       
       const name = `${namePrefix}${paddedNumber}`;
       
-      // Use provided spark code or auto-generate one
-      let sparkCode = sparkCodes[i]?.trim();
-      if (!sparkCode) {
-        // Auto-generate spark code using name pattern
-        sparkCode = `SPARK-${namePrefix.toUpperCase()}${paddedNumber}`;
-      }
-      
+      // Use the corresponding spark code (already validated to exist)
+      const sparkCode = sparkCodes[i].trim();
+
       const sparkData = {
         name: name,
         creator: bulkAddForm.value.creator || '',
@@ -2583,11 +2622,18 @@ const applyBatchUpdates = (updates) => {
   };
 };
 
+// Store the original showThumbnails state
+let originalShowThumbnails = null;
+
 // Bulk Edit Functions
 const startBulkEdit = () => {
   isBulkEditMode.value = true;
   bulkEditValues.value = {};
-  
+
+  // Store current thumbnail state and disable thumbnails
+  originalShowThumbnails = showThumbnails.value;
+  showThumbnails.value = false;
+
   // Initialize bulk edit values with current values
   filteredSparks.value.forEach(spark => {
     bulkEditValues.value[`${spark.id}-name`] = spark.name;
@@ -2602,6 +2648,12 @@ const startBulkEdit = () => {
 const cancelBulkEdit = () => {
   isBulkEditMode.value = false;
   bulkEditValues.value = {};
+
+  // Restore original thumbnail state
+  if (originalShowThumbnails !== null) {
+    showThumbnails.value = originalShowThumbnails;
+    originalShowThumbnails = null;
+  }
 };
 
 const saveBulkEdit = async () => {
