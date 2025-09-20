@@ -1726,15 +1726,17 @@ const saveInlineEdit = async (item, field) => {
     };
     
     // Prepare the update data - use camelCase for API
-    const updateData = {
-      name: item.name,
-      creator: item.creator,
-      tiktokLink: item.tiktok_link,  // Map to camelCase
-      sparkCode: item.spark_code,     // Map to camelCase
-      type: item.type,
-      status: item.status,
-      offerName: item.offer_name || ''  // Map to camelCase
-    };
+    // Only include defined values to avoid sending undefined
+    const updateData = {};
+
+    // Always include these fields if they exist
+    if (item.name !== undefined) updateData.name = item.name;
+    if (item.creator !== undefined) updateData.creator = item.creator;
+    if (item.tiktok_link !== undefined) updateData.tiktokLink = item.tiktok_link;
+    if (item.spark_code !== undefined) updateData.sparkCode = item.spark_code;
+    if (item.type !== undefined) updateData.type = item.type;
+    if (item.status !== undefined) updateData.status = item.status;
+    if (item.offer_name !== undefined) updateData.offerName = item.offer_name;
     
     // Update the specific field being edited (use camelCase if needed)
     const apiField = fieldMapping[field] || field;

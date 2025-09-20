@@ -1244,9 +1244,9 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     }
 
     // Validate required fields - only validate if provided, otherwise use existing values
-    const finalName = sparkData.name || existingSpark.name;
-    const finalTiktokLink = sparkData.tiktokLink || existingSpark.tiktok_link;
-    const finalSparkCode = sparkData.sparkCode || existingSpark.spark_code;
+    const finalName = sparkData.name !== undefined ? sparkData.name : existingSpark.name;
+    const finalTiktokLink = sparkData.tiktokLink !== undefined ? sparkData.tiktokLink : existingSpark.tiktok_link;
+    const finalSparkCode = sparkData.sparkCode !== undefined ? sparkData.sparkCode : existingSpark.spark_code;
 
     if (!finalName) {
       return new Response(
