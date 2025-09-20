@@ -1741,7 +1741,11 @@ const saveInlineEdit = async (item, field) => {
     // Update the specific field being edited (use camelCase if needed)
     const apiField = fieldMapping[field] || field;
     updateData[apiField] = newValue;
-    
+
+    // Debug log to see what we're sending
+    console.log('Updating spark with data:', updateData);
+    console.log('Item data:', item);
+
     // Update the spark
     const response = await sparksApi.updateSpark(item.id, updateData);
     
