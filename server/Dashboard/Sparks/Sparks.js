@@ -1242,62 +1242,66 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
         }
       );
     }
-    
-    // Validate required fields
-    if (!sparkData.name) {
+
+    // Validate required fields - only validate if provided, otherwise use existing values
+    const finalName = sparkData.name || existingSpark.name;
+    const finalTiktokLink = sparkData.tiktokLink || existingSpark.tiktok_link;
+    const finalSparkCode = sparkData.sparkCode || existingSpark.spark_code;
+
+    if (!finalName) {
       return new Response(
         JSON.stringify({ error: 'Spark name is required' }),
-        { 
-          status: 400, 
-          headers: { 
+        {
+          status: 400,
+          headers: {
             'Content-Type': 'application/json',
-            ...corsHeaders 
-          } 
+            ...corsHeaders
+          }
         }
       );
     }
-    
-    if (!sparkData.tiktokLink) {
+
+    if (!finalTiktokLink) {
       return new Response(
         JSON.stringify({ error: 'TikTok video link is required' }),
-        { 
-          status: 400, 
-          headers: { 
+        {
+          status: 400,
+          headers: {
             'Content-Type': 'application/json',
-            ...corsHeaders 
-          } 
+            ...corsHeaders
+          }
         }
       );
     }
-    
-    if (!sparkData.sparkCode) {
+
+    if (!finalSparkCode) {
       return new Response(
         JSON.stringify({ error: 'Spark code is required' }),
-        { 
-          status: 400, 
-          headers: { 
+        {
+          status: 400,
+          headers: {
             'Content-Type': 'application/json',
-            ...corsHeaders 
-          } 
+            ...corsHeaders
+          }
         }
       );
     }
-    
-    
+
+
     // Handle offer name update - use provided offerName or keep existing
     let offerName = sparkData.offerName || existingSpark.offer_name || '';
     
     // Handle thumbnail update
     let thumbnail = sparkData.thumbnail || existingSpark.thumbnail;
-    if (sparkData.tiktokLink !== existingSpark.tiktok_link) {
-      const videoId = extractTikTokVideoId(sparkData.tiktokLink);
+    if (finalTiktokLink !== existingSpark.tiktok_link) {
+      const videoId = extractTikTokVideoId(finalTiktokLink);
       if (videoId) {
         thumbnail = `/api/sparks/proxy/tiktok-thumbnail/${videoId}`;
       } else {
         thumbnail = getFallbackThumbnail();
       }
     }
-    
+
     // Update the spark - ensure no undefined values
     const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : existingSpark.bot_status;
     const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : existingSpark.bot_post_id;
@@ -1308,11 +1312,11 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
           offer_name = ?, thumbnail = ?, status = ?, bot_status = ?, bot_post_id = ?
       WHERE id = ?
     `).bind(
-      sparkData.name || existingSpark.name,
+      finalName,
       sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),  // Preserve existing or use empty string
       sparkData.type || existingSpark.type || 'auto',
-      sparkData.tiktokLink || existingSpark.tiktok_link,
-      sparkData.sparkCode || existingSpark.spark_code,
+      finalTiktokLink,
+      finalSparkCode,
       offerName || existingSpark.offer_name || '',
       thumbnail || existingSpark.thumbnail || '',
       sparkData.status || existingSpark.status || 'Pending',
