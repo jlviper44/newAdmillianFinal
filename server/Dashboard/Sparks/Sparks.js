@@ -404,6 +404,56 @@ export async function handleSparkData(request, env) {
   }
   
   try {
+    // Debug endpoint to check database schema (TEMPORARY - REMOVE IN PRODUCTION)
+    if (path === '/debug/schema' && method === 'GET') {
+      console.log('Checking database schema...');
+      const schemaInfo = {};
+
+      try {
+        // Check sparks table structure
+        const sparksTableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+        schemaInfo.sparks_columns = sparksTableInfo.results?.map(col => ({
+          name: col.name,
+          type: col.type,
+          notNull: col.notnull,
+          defaultValue: col.dflt_value,
+          primaryKey: col.pk
+        })) || [];
+
+        // Get a sample spark to see actual data structure
+        const sampleSpark = await db.prepare('SELECT * FROM sparks LIMIT 1').first();
+        if (sampleSpark) {
+          schemaInfo.sample_spark_keys = Object.keys(sampleSpark);
+        }
+
+        // Check for specific required columns
+        const requiredColumns = [
+          'id', 'name', 'creator', 'type', 'tiktok_link',
+          'spark_code', 'offer_name', 'thumbnail', 'status',
+          'bot_status', 'bot_post_id', 'user_id', 'team_id'
+        ];
+
+        const existingColumns = schemaInfo.sparks_columns.map(col => col.name);
+        schemaInfo.missing_columns = requiredColumns.filter(col => !existingColumns.includes(col));
+        schemaInfo.existing_columns = existingColumns;
+
+      } catch (error) {
+        schemaInfo.error = error.message;
+        schemaInfo.stack = error.stack;
+      }
+
+      return new Response(
+        JSON.stringify(schemaInfo, null, 2),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        }
+      );
+    }
+
     // Payment Settings endpoints (check these first before generic patterns)
     if (path.startsWith('/payment-settings') || path.startsWith('/payment-history') || path.startsWith('/record-payment')) {
       console.log('Handling payment settings endpoint');
@@ -1222,13 +1272,18 @@ async function createSpark(request, db, corsHeaders, env) {
  */
 async function updateSpark(sparkId, request, db, corsHeaders, env) {
   try {
+    console.log('Update request received for spark:', sparkId);
+
     // Get user_id and team_id from session
     const { userId, teamId } = await getUserInfoFromSession(request, env);
+    console.log('User ID:', userId, 'Team ID:', teamId);
 
     const sparkData = await request.json();
-    
+    console.log('Request data:', JSON.stringify(sparkData));
+
     // Check if user has access to the spark
     const existingSpark = await checkSparkAccess(db, env, sparkId, userId, teamId);
+    console.log('Existing spark found:', existingSpark ? 'yes' : 'no');
     
     if (!existingSpark) {
       return new Response(
@@ -1247,6 +1302,11 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     const finalName = sparkData.name !== undefined ? sparkData.name : existingSpark.name;
     const finalTiktokLink = sparkData.tiktokLink !== undefined ? sparkData.tiktokLink : existingSpark.tiktok_link;
     const finalSparkCode = sparkData.sparkCode !== undefined ? sparkData.sparkCode : existingSpark.spark_code;
+
+    console.log('Final values after validation:');
+    console.log('  finalName:', finalName);
+    console.log('  finalTiktokLink:', finalTiktokLink);
+    console.log('  finalSparkCode:', finalSparkCode);
 
     if (!finalName) {
       return new Response(
@@ -1345,11 +1405,14 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     );
   } catch (error) {
     console.error('Error updating spark:', error);
-    
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', error);
+
     return new Response(
       JSON.stringify({
         error: 'Failed to update spark',
-        message: error.message
+        message: error.message,
+        details: error.toString()
       }),
       { 
         status: 500, 
