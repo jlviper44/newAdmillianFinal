@@ -404,56 +404,6 @@ export async function handleSparkData(request, env) {
   }
   
   try {
-    // Debug endpoint to check database schema (TEMPORARY - REMOVE IN PRODUCTION)
-    if (path === '/debug/schema' && method === 'GET') {
-      console.log('Checking database schema...');
-      const schemaInfo = {};
-
-      try {
-        // Check sparks table structure
-        const sparksTableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
-        schemaInfo.sparks_columns = sparksTableInfo.results?.map(col => ({
-          name: col.name,
-          type: col.type,
-          notNull: col.notnull,
-          defaultValue: col.dflt_value,
-          primaryKey: col.pk
-        })) || [];
-
-        // Get a sample spark to see actual data structure
-        const sampleSpark = await db.prepare('SELECT * FROM sparks LIMIT 1').first();
-        if (sampleSpark) {
-          schemaInfo.sample_spark_keys = Object.keys(sampleSpark);
-        }
-
-        // Check for specific required columns
-        const requiredColumns = [
-          'id', 'name', 'creator', 'type', 'tiktok_link',
-          'spark_code', 'offer_name', 'thumbnail', 'status',
-          'bot_status', 'bot_post_id', 'user_id', 'team_id'
-        ];
-
-        const existingColumns = schemaInfo.sparks_columns.map(col => col.name);
-        schemaInfo.missing_columns = requiredColumns.filter(col => !existingColumns.includes(col));
-        schemaInfo.existing_columns = existingColumns;
-
-      } catch (error) {
-        schemaInfo.error = error.message;
-        schemaInfo.stack = error.stack;
-      }
-
-      return new Response(
-        JSON.stringify(schemaInfo, null, 2),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          }
-        }
-      );
-    }
-
     // Payment Settings endpoints (check these first before generic patterns)
     if (path.startsWith('/payment-settings') || path.startsWith('/payment-history') || path.startsWith('/record-payment')) {
       console.log('Handling payment settings endpoint');
@@ -1363,27 +1313,61 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     }
 
     // Update the spark - ensure no undefined values
-    const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : existingSpark.bot_status;
-    const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : existingSpark.bot_post_id;
+    // Check if bot columns exist in the existing spark data
+    const hasBotColumns = existingSpark.bot_status !== undefined || existingSpark.bot_post_id !== undefined;
 
-    await db.prepare(`
-      UPDATE sparks
-      SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
-          offer_name = ?, thumbnail = ?, status = ?, bot_status = ?, bot_post_id = ?
-      WHERE id = ?
-    `).bind(
-      finalName,
-      sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),  // Preserve existing or use empty string
-      sparkData.type || existingSpark.type || 'auto',
-      finalTiktokLink,
-      finalSparkCode,
-      offerName || existingSpark.offer_name || '',
-      thumbnail || existingSpark.thumbnail || '',
-      sparkData.status || existingSpark.status || 'Pending',
-      botStatus,
-      botPostId,
-      sparkId
-    ).run();
+    let updateQuery;
+    let updateParams;
+
+    if (hasBotColumns) {
+      // Include bot columns in the update
+      const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : (existingSpark.bot_status || 'not_botted');
+      const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : (existingSpark.bot_post_id || null);
+
+      updateQuery = `
+        UPDATE sparks
+        SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
+            offer_name = ?, thumbnail = ?, status = ?, bot_status = ?, bot_post_id = ?
+        WHERE id = ?
+      `;
+      updateParams = [
+        finalName,
+        sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),
+        sparkData.type || existingSpark.type || 'auto',
+        finalTiktokLink,
+        finalSparkCode,
+        offerName || existingSpark.offer_name || '',
+        thumbnail || existingSpark.thumbnail || '',
+        sparkData.status || existingSpark.status || 'Pending',
+        botStatus,
+        botPostId,
+        sparkId
+      ];
+    } else {
+      // Skip bot columns if they don't exist
+      updateQuery = `
+        UPDATE sparks
+        SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
+            offer_name = ?, thumbnail = ?, status = ?
+        WHERE id = ?
+      `;
+      updateParams = [
+        finalName,
+        sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),
+        sparkData.type || existingSpark.type || 'auto',
+        finalTiktokLink,
+        finalSparkCode,
+        offerName || existingSpark.offer_name || '',
+        thumbnail || existingSpark.thumbnail || '',
+        sparkData.status || existingSpark.status || 'Pending',
+        sparkId
+      ];
+    }
+
+    console.log('Executing update query:', updateQuery);
+    console.log('With params:', updateParams);
+
+    await db.prepare(updateQuery).bind(...updateParams).run();
     
     // Fetch the updated spark
     const updatedSpark = await db.prepare('SELECT * FROM sparks WHERE id = ?')
