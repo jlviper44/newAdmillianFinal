@@ -491,20 +491,21 @@ export async function getJobLogs(env, jobId) {
  */
 export async function getNextJob(env) {
   try {
-    // First, check for stuck jobs (processing for more than 1 minute)
-    const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000).toISOString();
+    // First, check for stuck jobs (processing for more than 5 minutes)
+    // Increased from 1 minute to 5 minutes to allow jobs to complete properly
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const stuckJobsQuery = `
-      UPDATE job_queue 
-      SET status = 'failed', 
-          error = 'Job timed out after 1 minute',
+      UPDATE job_queue
+      SET status = 'failed',
+          error = 'Job timed out after 5 minutes',
           completed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
-      WHERE status = 'processing' 
+      WHERE status = 'processing'
       AND started_at < ?
     `;
-    
+
     const stuckResult = await env.COMMENT_BOT_DB.prepare(stuckJobsQuery)
-      .bind(oneMinuteAgo)
+      .bind(fiveMinutesAgo)
       .run();
     
     

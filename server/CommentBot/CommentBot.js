@@ -364,10 +364,10 @@ export async function handleCommentBotData(request, env, session) {
               console.log('[MANUAL] Processing queue...');
               const { processCronJobs } = await import('./CommentBotWorker.js');
               const processedCount = await processCronJobs(env, 1);
-              
+
               return jsonResponse({
                 success: true,
-                message: `Processed ${processedCount} job(s)`,
+                message: `Started processing ${processedCount} job(s) asynchronously`,
                 processedCount: processedCount
               });
             } catch (error) {

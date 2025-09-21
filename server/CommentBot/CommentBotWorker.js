@@ -22,7 +22,7 @@ const API_CONFIG = {
 // Worker configuration
 const WORKER_CONFIG = {
   pollInterval: 5000, // 5 seconds between job checks
-  maxProcessingTime: 60000, // 1 minute max per job
+  maxProcessingTime: 240000, // 4 minutes max per job (less than stuck detection timeout)
   retryDelay: 5000 // 5 seconds between retries
 };
 
@@ -332,7 +332,7 @@ async function processJobByType(env, job) {
 async function processCreateOrderJob(env, job) {
   const payload = job.payload;
   const startTime = Date.now();
-  let maxPollingTime = 2 * 60 * 1000; // Start with 2 minutes, will extend if needed
+  let maxPollingTime = 3 * 60 * 1000; // Start with 3 minutes, will extend if needed
   const pollInterval = 10000; // Poll every 10 seconds
   let hasExtendedTimeout = false; // Track if we've extended the timeout
   
@@ -677,26 +677,97 @@ export function getWorkerStatus() {
 }
 
 /**
- * Process jobs triggered by cron
+ * Process jobs triggered by cron - fires jobs without waiting for completion
  * @param {Object} env - Environment bindings
  * @param {number} maxJobs - Maximum number of jobs to process
- * @returns {Promise<number>} - Number of jobs processed
+ * @returns {Promise<number>} - Number of jobs started (not necessarily completed)
  */
-export async function processCronJobs(env, maxJobs = 10) {
-  let processedCount = 0;
-  
-  for (let i = 0; i < maxJobs; i++) {
-    const processed = await processNextJob(env);
-    
-    if (!processed) {
-      break; // No more jobs to process
+export async function processCronJobs(env, maxJobs = 1) {
+  try {
+    // Get next job from queue
+    const job = await getNextJob(env);
+
+    if (!job) {
+      console.log('No jobs in queue to process');
+      return 0;
     }
-    
-    processedCount++;
-    
-    // Update queue positions after each job
+
+    console.log(`Starting job ${job.job_id} asynchronously`);
+
+    // Update job status to processing
+    await updateJobStatus(env, job.job_id, JOB_STATES.PROCESSING, {
+      attempts: job.attempts + 1
+    });
+
+    await addJobLog(env, job.job_id, 'info', 'Job processing started (async)', {
+      attempt: job.attempts + 1,
+      maxAttempts: job.max_attempts
+    });
+
+    // Fire the job processing without waiting for it to complete
+    // This allows the cron to exit immediately while the job continues processing
+    processJobAsync(env, job).catch(error => {
+      console.error(`Async job ${job.job_id} failed:`, error);
+    });
+
+    // Update queue positions
     await updateQueuePositions(env);
+
+    return 1; // Started 1 job
+  } catch (error) {
+    console.error('Error in processCronJobs:', error);
+    return 0;
   }
-  
-  return processedCount;
+}
+
+/**
+ * Process a job asynchronously without blocking
+ * @param {Object} env - Environment bindings
+ * @param {Object} job - Job to process
+ */
+async function processJobAsync(env, job) {
+  try {
+    console.log(`Processing job ${job.job_id} of type ${job.type} asynchronously`);
+
+    // Process based on job type
+    const result = await processJobByType(env, job);
+
+    // Update job as completed
+    await updateJobStatus(env, job.job_id, JOB_STATES.COMPLETED, {
+      result: result
+    });
+
+    await addJobLog(env, job.job_id, 'info', 'Job completed successfully', {
+      result: result
+    });
+
+    console.log(`Job ${job.job_id} completed successfully`);
+
+  } catch (error) {
+    console.error(`Job ${job.job_id} failed:`, error);
+
+    // Check if we should retry
+    if (job.attempts + 1 < job.max_attempts) {
+      // Retry the job
+      await updateJobStatus(env, job.job_id, JOB_STATES.PENDING, {
+        error: error.message
+      });
+
+      await addJobLog(env, job.job_id, 'warning', 'Job failed, will retry', {
+        error: error.message,
+        attempt: job.attempts + 1,
+        maxAttempts: job.max_attempts
+      });
+    } else {
+      // Mark as failed - no more retries
+      await updateJobStatus(env, job.job_id, JOB_STATES.FAILED, {
+        error: error.message
+      });
+
+      await addJobLog(env, job.job_id, 'error', 'Job failed after all retries', {
+        error: error.message,
+        attempts: job.attempts + 1
+      });
+    }
+  }
 }
