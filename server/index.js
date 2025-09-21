@@ -13,6 +13,7 @@ import { handleLinkSplitter } from './Dashboard/LinkSplitter/LinkSplitterHandler
 import { handleAdLaunches } from './Dashboard/AdLaunches/AdLaunches';
 import { handleErrorLogs } from './ErrorLogs/errorStorage.js';
 import { isAdminUser } from './Auth/Auth';
+import { setupErrorCapture } from './utils/errorCapture.js';
 
 // Global state for background worker
 let workerRunning = false;
@@ -51,8 +52,12 @@ async function processBackgroundJobs(env) {
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    // Set up error capture for this Worker
+    const errorCapture = setupErrorCapture(env);
+
+    try {
+      const url = new URL(request.url);
+      const path = url.pathname;
     
     // Initialize database on first request (migrations will run once)
     if (!env.DB_INITIALIZED) {
@@ -397,6 +402,27 @@ export default {
           message: error.message,
           path: path
         }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    } catch (error) {
+      // Log the error to our error logging system
+      await errorCapture.logError(error, {
+        source: 'worker-main',
+        path: request.url,
+        method: request.method,
+        metadata: {
+          headers: Object.fromEntries(request.headers),
+          cf: request.cf
+        }
+      });
+
+      // Return error response
+      return new Response(
+        JSON.stringify({ error: 'Internal server error', message: error.message }),
         {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
