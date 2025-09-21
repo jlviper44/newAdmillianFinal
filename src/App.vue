@@ -666,6 +666,20 @@ onUnmounted(() => {
             ></v-list-item>
             <v-list-item
               v-if="isAdmin"
+              @click="navigateToAndClose('/settings?tab=errorlogs')"
+              prepend-icon="mdi-alert-circle"
+              class="mobile-popup-item"
+            >
+              <v-list-item-title class="d-flex align-center">
+                Error Logs
+                <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                  <v-icon start size="x-small">mdi-crown</v-icon>
+                  Admin
+                </v-chip>
+              </v-list-item-title>
+            </v-list-item>
+            <v-list-item
+              v-if="isAdmin"
               @click="navigateToAndClose('/settings?tab=teams')"
               prepend-icon="mdi-account-group"
               class="mobile-popup-item"
@@ -1072,21 +1086,21 @@ onUnmounted(() => {
           rounded="lg"
         ></v-list-item>
 
-        <!-- Settings -->
-        <v-list-group 
+        <!-- Settings Menu Group -->
+        <v-list-group
           v-if="isAdmin"
-          value="settings" 
-          :value="opened.includes('settings')">
+          value="settings-menu"
+          :key="'unique-settings-group-key'"
+          :value="opened.includes('settings-menu')">
           <template v-slot:activator="{ props }">
             <v-list-item
               v-bind="props"
               prepend-icon="mdi-cog"
               :active="activeRoute.includes('/settings')"
               rounded="lg"
+              :key="'unique-settings-item-key'"
             >
-              <v-list-item-title>
-                Settings
-              </v-list-item-title>
+              <v-list-item-title>Settings</v-list-item-title>
             </v-list-item>
           </template>
           
@@ -1106,7 +1120,24 @@ onUnmounted(() => {
               </v-chip>
             </v-list-item-title>
           </v-list-item>
-          
+
+          <v-list-item
+            v-if="isAdmin"
+            to="/settings?tab=errorlogs"
+            prepend-icon="mdi-alert-circle"
+            :active="isTabActive('/settings', 'errorlogs')"
+            class="ml-2"
+            rounded="lg"
+          >
+            <v-list-item-title class="d-flex align-center">
+              Error Logs
+              <v-chip size="x-small" variant="flat" class="ml-2 admin-chip">
+                <v-icon start size="x-small">mdi-crown</v-icon>
+                Admin
+              </v-chip>
+            </v-list-item-title>
+          </v-list-item>
+
         </v-list-group>
       </v-list>
     </v-navigation-drawer>

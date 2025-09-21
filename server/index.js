@@ -11,6 +11,8 @@ import { handleLogsData } from './Dashboard/Logs/Logs';
 import { handleTeams } from './Teams/Teams';
 import { handleLinkSplitter } from './Dashboard/LinkSplitter/LinkSplitterHandler';
 import { handleAdLaunches } from './Dashboard/AdLaunches/AdLaunches';
+import { handleErrorLogs } from './ErrorLogs/errorStorage.js';
+import { isAdminUser } from './Auth/Auth';
 
 // Global state for background worker
 let workerRunning = false;
@@ -261,7 +263,28 @@ export default {
           return handleLinkSplitter(req, env, path, session);
         });
       }
-      
+
+      // Route Error Logs API requests (protected - admin only)
+      if (path.startsWith('/api/error-logs')) {
+        return requireAuth(request, env, async (req, env, session) => {
+          // Check if user is admin using the same method as other admin features
+          const isAdmin = session.user?.isAdmin === true || (session.user?.email && isAdminUser(session.user.email));
+          if (!isAdmin) {
+            console.log('Error logs access denied:', {
+              userEmail: session.user?.email,
+              userIsAdmin: session.user?.isAdmin,
+              userId: session.user?.id
+            });
+            return new Response(JSON.stringify({ error: 'Admin access required' }), {
+              status: 403,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          req.ctx = { ...req.ctx, session };
+          return handleErrorLogs(req, env);
+        });
+      }
+
       // Route Ad Launches and Payroll API requests (protected)
       const isPayrollRoute = path.startsWith('/api/tracker') || 
           path.startsWith('/api/timeclock') || 

@@ -82,7 +82,12 @@
           <div v-if="selectedTab === 'linksplitter' && canViewLinkSplitter">
             <LinkSplitterView />
           </div>
-          
+
+          <!-- Error Logs Tab (Admin Only) -->
+          <div v-if="selectedTab === 'errorlogs' && isAdmin">
+            <ErrorLogsView />
+          </div>
+
           <!-- Permission Denied Message -->
           <v-alert
             v-if="!hasTabPermission(selectedTab)"
@@ -112,6 +117,7 @@ import CampaignsView from './components/Campaigns/CampaignsView.vue';
 import AdLaunchesView from './components/AdLaunches/AdLaunchesView.vue';
 import LogsView from './components/Logs/LogsView.vue';
 import LinkSplitterView from './components/LinkSplitter/LinkSplitter.vue';
+import ErrorLogsView from './components/ErrorLogs/ErrorLogsView.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -127,7 +133,8 @@ const tabTitles = {
   templates: 'Templates',
   shopify: 'Shopify Stores',
   logs: 'Logs',
-  linksplitter: 'Link Splitter'
+  linksplitter: 'Link Splitter',
+  errorlogs: 'Error Logs'
 };
 
 // Computed property for current tab title
@@ -176,6 +183,12 @@ const canViewLinkSplitter = computed(() => {
   return user.value?.vaPermissions?.dashboardLinkSplitter === true;
 });
 
+// Admin check for Error Logs
+const isAdmin = computed(() => {
+  // Check both role and isAdmin properties
+  return user.value?.role === 'admin' || user.value?.isAdmin === true;
+});
+
 // Helper function to check if user has permission for a tab
 const hasTabPermission = (tab) => {
   if (!user.value?.isVirtualAssistant) return true;
@@ -189,6 +202,7 @@ const hasTabPermission = (tab) => {
     case 'shopify': return canViewShopify.value;
     case 'logs': return canViewLogs.value;
     case 'linksplitter': return canViewLinkSplitter.value;
+    case 'errorlogs': return isAdmin.value;
     default: return false;
   }
 };
@@ -197,19 +211,20 @@ const hasTabPermission = (tab) => {
 const hasAnyTabPermission = computed(() => {
   if (!user.value?.isVirtualAssistant) return true;
   
-  return canViewMetrics.value || 
-         canViewCampaigns.value || 
+  return canViewMetrics.value ||
+         canViewCampaigns.value ||
          canViewLaunches.value ||
-         canViewSparks.value || 
-         canViewTemplates.value || 
-         canViewShopify.value || 
+         canViewSparks.value ||
+         canViewTemplates.value ||
+         canViewShopify.value ||
          canViewLogs.value ||
-         canViewLinkSplitter.value;
+         canViewLinkSplitter.value ||
+         isAdmin.value;
 });
 
 // Find the first tab that the user has permission to view
 const getDefaultTab = () => {
-  const tabs = ['campaigns', 'launches', 'sparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter'];
+  const tabs = ['campaigns', 'launches', 'sparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
   for (const tab of tabs) {
     if (hasTabPermission(tab)) {
       return tab;

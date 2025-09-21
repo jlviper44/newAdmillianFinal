@@ -79,6 +79,11 @@
     
     "WHOP_VIRTUAL_ASSISTANT_PRODUCT_ID": "prod_ERumbP46S29DH",
 
-    "SHEETDB_API_URL": "https://sheetdb.io/api/v1/zb48wyyweh0rp"
+    "SHEETDB_API_URL": "https://sheetdb.io/api/v1/zb48wyyweh0rp",
+
+    // Cloudflare API credentials for error log syncing
+    "CLOUDFLARE_API_TOKEN": "xqVv6Y705P-KDICSV0yVXP4NXshlALkoX_IOEFPG",
+    "CLOUDFLARE_ACCOUNT_ID": "8868b34a10c0236d2dea39a05ff01a01",
+    "CLOUDFLARE_ZONE_ID": "5b39f3f3e868da3a0afafe42ae97a93f"
   }
 }

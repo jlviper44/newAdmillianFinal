@@ -3,6 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
 import Teams from './components/Teams.vue';
+import ErrorLogsView from '../Dashboard/components/ErrorLogs/ErrorLogsView.vue';
 
 const { user, hasCommentBotAccess, hasBcGenAccess, hasDashboardAccess } = useAuth();
 
@@ -21,7 +22,8 @@ const selectedTab = ref(getDefaultTab());
 
 // Tab titles mapping
 const tabTitles = {
-  teams: 'Team Management'
+  teams: 'Team Management',
+  errorlogs: 'Error Logs Management'
 };
 
 // Computed property for current tab title
@@ -97,6 +99,11 @@ onMounted(() => {
         <!-- Teams Tab -->
         <div v-if="selectedTab === 'teams' && user?.isAdmin">
           <Teams />
+        </div>
+
+        <!-- Error Logs Tab -->
+        <div v-if="selectedTab === 'errorlogs' && user?.isAdmin">
+          <ErrorLogsView />
         </div>
         
       </v-col>
