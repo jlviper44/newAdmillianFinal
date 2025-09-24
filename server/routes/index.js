@@ -12,8 +12,14 @@ import { registerErrorLogsRoutes } from './error-logs.routes.js';
 import { registerTeamsRoutes } from './teams.routes.js';
 import { registerBCGenRoutes } from './bcgen.routes.js';
 import { registerSQLRoutes } from './sql.routes.js';
+import { registerTestErrorRoutes } from './test-error.routes.js';
 
 export async function handleApiRoutes(request, env, path) {
+  if (path === '/api/test-error') {
+    const testErrorRoutes = registerTestErrorRoutes();
+    return await testErrorRoutes(request, env, path);
+  }
+
   if (path.startsWith('/api/auth') || path.startsWith('/auth/')) {
     const authRoutes = registerAuthRoutes();
     return await authRoutes(request, env, path);

@@ -1,5 +1,6 @@
 import { handleAdLaunches } from '../features/ad-launches/ad-launches.controller.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
+import { logRouteError } from '../shared/utils/logRouteError.js';
 
 export function registerAdLaunchesRoutes() {
   return async function(request, env, path) {
@@ -13,10 +14,15 @@ export function registerAdLaunchesRoutes() {
         path === '/api/generate-weekly-payroll';
 
     if (isPayrollRoute) {
-      return requireAuth(request, env, async (req, env, session) => {
-        req.ctx = { ...req.ctx, session };
-        return handleAdLaunches(req, env);
-      });
+      try {
+        return requireAuth(request, env, async (req, env, session) => {
+          req.ctx = { ...req.ctx, session };
+          return handleAdLaunches(req, env);
+        });
+      } catch (error) {
+        await logRouteError(error, 'ad-launches', request, env);
+        throw error;
+      }
     }
     return null;
   };
