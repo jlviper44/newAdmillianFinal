@@ -128,23 +128,13 @@
             </v-btn>
             <v-btn
               v-if="!isBulkEditMode && !isCommentBotMode"
-              color="primary"
-              variant="elevated"
-              class="mr-2"
-              @click="openCreateModal"
-              prepend-icon="mdi-plus"
-            >
-              Add Spark
-            </v-btn>
-            <v-btn
-              v-if="!isBulkEditMode && !isCommentBotMode"
               color="secondary"
               variant="elevated"
               class="mr-2"
               @click="bulkAdd"
-              prepend-icon="mdi-plus-box-multiple"
+              prepend-icon="mdi-plus"
             >
-              Bulk Add
+              Add Spark
             </v-btn>
             <!-- Comment Bot button -->
             <v-btn
@@ -373,13 +363,43 @@
               <v-col cols="8">
                 <v-text-field
                   v-model="batchUpdate.type"
-                  label="Type"
+                  label="Offer"
                   density="compact"
                   variant="outlined"
                   hide-details
                   clearable
-                  placeholder="Enter type..."
+                  placeholder="Enter offer..."
                 />
+                <div class="d-flex gap-2 mt-2">
+                  <v-chip
+                    size="x-small"
+                    variant="outlined"
+                    @click="batchUpdate.type = 'CPI'"
+                  >
+                    CPI
+                  </v-chip>
+                  <v-chip
+                    size="x-small"
+                    variant="outlined"
+                    @click="batchUpdate.type = 'Auto'"
+                  >
+                    Auto
+                  </v-chip>
+                  <v-chip
+                    size="x-small"
+                    variant="outlined"
+                    @click="batchUpdate.type = 'Shein'"
+                  >
+                    Shein
+                  </v-chip>
+                  <v-chip
+                    size="x-small"
+                    variant="outlined"
+                    @click="batchUpdate.type = 'Cash'"
+                  >
+                    Cash
+                  </v-chip>
+                </div>
               </v-col>
               <v-col cols="4" class="pl-2">
                 <v-btn

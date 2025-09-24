@@ -1,29 +1,21 @@
-// Utility function to log errors to the Error Logs system
+import { ErrorStorage } from '../../features/error-logs/error-logs.controller.js';
+
 export async function logError(env, error, source = 'api', context = {}) {
   try {
-    // Only log in production or if explicitly enabled
-    if (env.ENVIRONMENT !== 'production' && !env.ENABLE_ERROR_LOGGING) {
-      console.error(`[${source}] Error:`, error, context);
-      return;
-    }
+    console.error(`[${source}] Error:`, error, context);
 
-    // Import error storage
-    const { ErrorStorage } = await import('../ErrorLogs/errorStorage.js');
     const errorStorage = new ErrorStorage(env.DASHBOARD_DB);
 
-    // Ensure table exists
     await errorStorage.initTable();
 
-    // Log the error
     await errorStorage.logError(error, source, {
       ...context,
       timestamp: new Date().toISOString(),
-      environment: env.ENVIRONMENT || 'production'
+      environment: env.ENVIRONMENT || 'development'
     });
 
     console.log(`Error logged to database: ${error.message}`);
   } catch (logError) {
-    // If error logging fails, just console log it
     console.error('Failed to log error to database:', logError);
     console.error('Original error:', error);
   }

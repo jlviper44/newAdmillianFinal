@@ -127,6 +127,7 @@ async function initializeSparksTable(db) {
           offer_name TEXT,
           thumbnail TEXT,
           status TEXT DEFAULT 'active',
+          payment_status TEXT DEFAULT 'unpaid',
           bot_status TEXT DEFAULT 'not_botted',
           bot_post_id TEXT,
           traffic INTEGER DEFAULT 0,
@@ -204,13 +205,14 @@ async function initializeSparksTable(db) {
       // Continue execution as this might not be critical
     }
 
-    // IMPORTANT: Always check for bot-related columns (outside the try-catch to ensure it runs)
+    // IMPORTANT: Always check for bot-related and payment columns (outside the try-catch to ensure it runs)
     try {
       const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
       const columns = tableInfo.results || [];
 
       const hasBotStatusColumn = columns.some(c => c.name === 'bot_status');
       const hasBotPostIdColumn = columns.some(c => c.name === 'bot_post_id');
+      const hasPaymentStatusColumn = columns.some(c => c.name === 'payment_status');
 
       if (!hasBotStatusColumn) {
         console.log('Adding bot_status column to existing sparks table...');
@@ -223,8 +225,18 @@ async function initializeSparksTable(db) {
         await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_post_id TEXT`).run();
         console.log('Added bot_post_id column to sparks table');
       }
+
+      if (!hasPaymentStatusColumn) {
+        console.log('Adding payment_status column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN payment_status TEXT DEFAULT 'unpaid'`).run();
+        console.log('Added payment_status column to sparks table');
+
+        // Update existing rows to have unpaid status
+        await db.prepare(`UPDATE sparks SET payment_status = 'unpaid' WHERE payment_status IS NULL`).run();
+        console.log('Updated existing sparks with default payment_status');
+      }
     } catch (error) {
-      console.error('Error adding bot columns:', error);
+      console.error('Error adding bot/payment columns:', error);
       // Log but continue - the app can still function without these columns
     }
 
@@ -1163,9 +1175,9 @@ async function createSpark(request, db, corsHeaders, env) {
     
     // Insert into database
     await db.prepare(`
-      INSERT INTO sparks 
-      (id, user_id, team_id, name, creator, type, tiktok_link, spark_code, offer, offer_name, thumbnail, status, traffic)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sparks
+      (id, user_id, team_id, name, creator, type, tiktok_link, spark_code, offer, offer_name, thumbnail, status, payment_status, traffic)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
       userId,
@@ -1179,6 +1191,7 @@ async function createSpark(request, db, corsHeaders, env) {
       offerName,
       thumbnail,
       status,
+      sparkData.payment_status || 'unpaid',
       0
     ).run();
     
@@ -1323,11 +1336,12 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       // Include bot columns in the update
       const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : (existingSpark.bot_status || 'not_botted');
       const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : (existingSpark.bot_post_id || null);
+      const paymentStatus = sparkData.payment_status !== undefined ? sparkData.payment_status : (existingSpark.payment_status || 'unpaid');
 
       updateQuery = `
         UPDATE sparks
         SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
-            offer_name = ?, thumbnail = ?, status = ?, bot_status = ?, bot_post_id = ?
+            offer_name = ?, thumbnail = ?, status = ?, payment_status = ?, bot_status = ?, bot_post_id = ?
         WHERE id = ?
       `;
       updateParams = [
@@ -1339,16 +1353,19 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
         offerName || existingSpark.offer_name || '',
         thumbnail || existingSpark.thumbnail || '',
         sparkData.status || existingSpark.status || 'Pending',
+        paymentStatus,
         botStatus,
         botPostId,
         sparkId
       ];
     } else {
       // Skip bot columns if they don't exist
+      const paymentStatus = sparkData.payment_status !== undefined ? sparkData.payment_status : (existingSpark.payment_status || 'unpaid');
+
       updateQuery = `
         UPDATE sparks
         SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
-            offer_name = ?, thumbnail = ?, status = ?
+            offer_name = ?, thumbnail = ?, status = ?, payment_status = ?
         WHERE id = ?
       `;
       updateParams = [
@@ -1360,6 +1377,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
         offerName || existingSpark.offer_name || '',
         thumbnail || existingSpark.thumbnail || '',
         sparkData.status || existingSpark.status || 'Pending',
+        paymentStatus,
         sparkId
       ];
     }

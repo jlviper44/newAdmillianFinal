@@ -15,10 +15,10 @@
           :sparks="sparks"
           :is-loading="isLoading"
           v-model:search-input="searchInput"
-          v-model:type-filter="typeFilter"
-          v-model:status-filter="statusFilter"
-          v-model:creator-filter="creatorFilter"
-          v-model:show-thumbnails="showThumbnails"
+          v-model:type-filter="sparksTypeFilter"
+          v-model:status-filter="sparksStatusFilter"
+          v-model:creator-filter="sparksCreatorFilter"
+          v-model:show-thumbnails="sparksShowThumbnails"
           :is-bulk-edit-mode="isBulkEditMode"
           :is-saving-bulk="isSavingBulk"
           :is-comment-bot-mode="isCommentBotMode"
@@ -62,7 +62,7 @@
           @cancel-inline-edit="cancelInlineEdit"
           @copy-code="copyCode"
           @edit-spark="editSpark"
-          @delete-spark="deleteSpark"
+          @delete-spark="deleteSparkLocal"
           @show-batch-update-success="handleBatchUpdateSuccess"
           @show-batch-update-warning="showWarning"
           @apply-batch-updates="applyBatchUpdates"
@@ -86,7 +86,7 @@
           :is-saving-settings="isSavingSettings"
           :creators="creators"
           :payments-by-creator="paymentsByCreator"
-          @undo-last-payment="undoLastPayment"
+          @undo-last-payment="undoLastPaymentLocal"
           @save-payment-settings="savePaymentSettings"
           @mark-creator-paid="markCreatorPaid"
         />
@@ -107,7 +107,7 @@
           :items-per-page="itemsPerPage"
           :is-loading-history="isLoadingHistory"
           @filter-payment-history="filterPaymentHistory"
-          @clear-history-filters="clearHistoryFilters"
+          @clear-history-filters="clearHistoryFiltersLocal"
           @export-payment-history="exportPaymentHistory"
           @show-payment-details="showPaymentDetails"
         />
@@ -133,10 +133,10 @@
           @open-invoice-settings="openInvoiceSettings"
           @refresh-invoices="refreshInvoices"
           @view-invoice="viewInvoice"
-          @download-invoice="downloadInvoice"
-          @mark-invoice-paid="markInvoicePaid"
+          @download-invoice="downloadInvoiceLocal"
+          @mark-invoice-paid="markInvoicePaidLocal"
           @edit-invoice="editInvoice"
-          @void-invoice="voidInvoice"
+          @void-invoice="voidInvoiceLocal"
         />
       </v-window-item>
     </v-window>
@@ -240,11 +240,11 @@
               <v-col cols="12" md="6">
                 <v-text-field
                   v-model="sparkForm.type"
-                  label="Type"
+                  label="Offer"
                   variant="outlined"
                   density="compact"
                   clearable
-                  hint="Enter a type for this spark"
+                  hint="Enter an offer for this spark"
                   persistent-hint
                   @update:model-value="sparkForm.name = generateDefaultName(sparkForm.creator, $event)"
                 />
@@ -326,21 +326,52 @@
             />
             
             <v-row>
-              <!-- Type and Creator Selection -->
-              <v-col cols="12" md="6">
+              <v-col cols="12">
                 <v-text-field
                   v-model="bulkAddForm.type"
-                  label="Type"
+                  label="Offer"
                   variant="outlined"
                   density="compact"
                   clearable
-                  hint="Enter a type for these sparks"
+                  hint="Enter an offer for these sparks"
                   persistent-hint
-                  class="mb-4"
+                  class="mb-2"
                   @update:model-value="bulkAddForm.baseName = generateDefaultName(bulkAddForm.creator, $event)"
                 />
+                <div class="d-flex gap-2 mb-4">
+                  <v-chip
+                    size="small"
+                    variant="outlined"
+                    @click="bulkAddForm.type = 'CPI'; bulkAddForm.baseName = generateDefaultName(bulkAddForm.creator, 'CPI')"
+                  >
+                    CPI
+                  </v-chip>
+                  <v-chip
+                    size="small"
+                    variant="outlined"
+                    @click="bulkAddForm.type = 'Auto'; bulkAddForm.baseName = generateDefaultName(bulkAddForm.creator, 'Auto')"
+                  >
+                    Auto
+                  </v-chip>
+                  <v-chip
+                    size="small"
+                    variant="outlined"
+                    @click="bulkAddForm.type = 'Shein'; bulkAddForm.baseName = generateDefaultName(bulkAddForm.creator, 'Shein')"
+                  >
+                    Shein
+                  </v-chip>
+                  <v-chip
+                    size="small"
+                    variant="outlined"
+                    @click="bulkAddForm.type = 'Cash'; bulkAddForm.baseName = generateDefaultName(bulkAddForm.creator, 'Cash')"
+                  >
+                    Cash
+                  </v-chip>
+                </div>
               </v-col>
-              
+            </v-row>
+
+            <v-row>
               <v-col cols="12" md="6">
                 <v-select
                   v-model="bulkAddForm.creator"
@@ -352,10 +383,7 @@
                   @update:model-value="bulkAddForm.baseName = generateDefaultName($event, bulkAddForm.type)"
                 />
               </v-col>
-            </v-row>
-            
-            <v-row>
-              <!-- Status Selection -->
+
               <v-col cols="12" md="6">
                 <v-select
                   v-model="bulkAddForm.status"
@@ -777,6 +805,12 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { sparksApi, templatesApi, usersApi, commentBotApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
+import { useSparks } from './composables/useSparks';
+import { usePayments } from './composables/usePayments';
+import { useInvoices } from './composables/useInvoices';
+import { useSparkUtils } from './composables/useSparkUtils';
+import { useSparkForms } from './composables/useSparkForms';
+import { useBulkOperations } from './composables/useBulkOperations';
 import jsPDF from 'jspdf';
 
 // Import tab components
@@ -787,6 +821,223 @@ import InvoicesTab from './components/InvoicesTab.vue';
 
 // Get auth state
 const { user, isAssistingUser } = useAuth();
+
+// Use composables
+const {
+  sparks,
+  isLoading,
+  searchQuery: sparksSearchQuery,
+  typeFilter: sparksTypeFilter,
+  statusFilter: sparksStatusFilter,
+  creatorFilter: sparksCreatorFilter,
+  showThumbnails: sparksShowThumbnails,
+  filteredSparks,
+  typeOptions,
+  statusOptions,
+  creatorOptions,
+  typeItems,
+  fetchSparks,
+  createSpark,
+  updateSpark,
+  deleteSpark,
+  bulkUpdateSparks,
+  clearFilters: clearSparksFilters,
+  detectDuplicates
+} = useSparks();
+
+const {
+  defaultRate,
+  defaultCommissionRate,
+  defaultCommissionType,
+  paymentSettingsLoaded,
+  isSavingSettings,
+  paymentHistory,
+  isLoadingHistory,
+  historyDateFrom,
+  historyDateTo,
+  historyCreatorFilter,
+  historyCreatorOptions,
+  filteredPaymentHistory,
+  totalPaidInPeriod,
+  totalPayments,
+  totalVideosPaid,
+  lastPaymentAction,
+  showUndoButton,
+  getPaymentsByCreator,
+  getTotalOwed,
+  getTotalPaid,
+  getUnpaidSparks,
+  getActiveCreators,
+  loadPaymentSettings,
+  savePaymentSettings,
+  loadPaymentHistory,
+  recordPayment,
+  undoLastPayment,
+  clearHistoryFilters
+} = usePayments();
+
+const {
+  invoices,
+  isLoadingInvoices,
+  invoiceStatusFilter,
+  invoiceCreatorFilter,
+  invoiceDateFrom,
+  invoiceDateTo,
+  invoiceStatusOptions,
+  invoiceCreatorOptions,
+  filteredInvoices,
+  totalInvoices,
+  totalInvoiced,
+  pendingInvoices,
+  paidInvoices,
+  loadInvoices,
+  generateInvoice,
+  updateInvoice,
+  markInvoicePaid,
+  voidInvoice,
+  downloadInvoice,
+  clearFilters: clearInvoiceFilters
+} = useInvoices();
+
+// Use utility composable (excluding color functions that have different logic)
+const {
+  snackbarText,
+  snackbarColor,
+  showSnackbar,
+  copyCode: copyCodeUtil,
+  formatDate,
+  handleImageError: handleImageErrorUtil,
+  getInvoiceStatusColor,
+  exportToCSV: exportToCSVUtil,
+  showSuccess,
+  showError,
+  showInfo,
+  showWarning
+} = useSparkUtils();
+
+// Keep local color functions with different logic/mappings
+const getTypeColor = (type) => {
+  const lowerType = (type || 'Auto').toLowerCase();
+  switch (lowerType) {
+    case 'cpi':
+      return 'blue';
+    case 'sweeps':
+      return 'purple';
+    case 'cash':
+      return 'green';
+    case 'paypal':
+      return 'orange';
+    case 'auto':
+      return 'indigo';
+    case 'home':
+      return 'teal';
+    default:
+      return 'grey';
+  }
+};
+
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'testing':
+      return 'warning';
+    case 'blocked':
+      return 'error';
+    default:
+      return 'grey';
+  }
+};
+
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 'active':
+      return 'Active';
+    case 'testing':
+      return 'Testing';
+    case 'blocked':
+      return 'Blocked';
+    default:
+      return status;
+  }
+};
+
+const copyCode = (code) => {
+  navigator.clipboard.writeText(code);
+  showSuccess('Spark code copied to clipboard');
+};
+
+const handleImageError = (event) => {
+  event.target.src = defaultThumbnail;
+};
+
+// Use form composable
+const {
+  showCreateModal,
+  showBulkAddModal,
+  editingSparkData,
+  sparkForm,
+  bulkAddForm,
+  bulkAddPreview,
+  bulkAddValidationMessage,
+  bulkAddLoading,
+  generateDefaultName,
+  openCreateModal,
+  editSpark,
+  bulkAdd,
+  autoPreviewBulkAdd,
+  previewBulkAdd
+} = useSparkForms(user, isAssistingUser);
+
+// Use bulk operations composable (only for inline editing and selection)
+const {
+  selectedForDelete,
+  showDeleteSelectedModal,
+  isDeletingSelected,
+  editingCells,
+  editingValues,
+  menuStates,
+  isEditing,
+  startInlineEdit: startInlineEditBase,
+  cancelInlineEdit,
+  saveInlineEdit: saveInlineEditBase,
+  deleteSelected,
+  confirmDeleteSelected: confirmDeleteSelectedBase,
+  removeDuplicates: removeDuplicatesBase
+} = useBulkOperations();
+
+// Wrapper functions to pass required parameters
+const startInlineEdit = (item, field) => startInlineEditBase(item, field, sparks.value);
+const saveInlineEdit = async (item, field) => {
+  try {
+    await saveInlineEditBase(item, field, updateSpark);
+    showSuccess(`${field.replace('_', ' ')} updated successfully`);
+    await fetchSparks();
+  } catch (error) {
+    showError('Failed to update field: ' + (error.message || 'Unknown error'));
+  }
+};
+const confirmDeleteSelected = async () => {
+  await confirmDeleteSelectedBase(
+    deleteSpark,
+    fetchSparks,
+    cancelBulkEdit,
+    showSuccess,
+    showWarning,
+    showError
+  );
+};
+const removeDuplicates = async () => {
+  await removeDuplicatesBase(
+    sparks.value,
+    deleteSpark,
+    fetchSparks,
+    showSuccess,
+    showInfo,
+    showError,
+    isLoading
+  );
+};
 
 // Tab state
 const activeTab = ref('sparks');
@@ -801,20 +1052,12 @@ watch(activeTab, (newTab) => {
   }
 });
 
-// Data state
-const sparks = ref([]);
-const isLoading = ref(false);
+// Data state (non-composable)
 const offerTemplates = ref([]);
 const creators = ref([]);
-const payments = ref([]);
 const virtualAssistants = ref([]);
 
-// Inline editing state
-const editingCells = ref({});
-const editingValues = ref({});
-const menuStates = ref({});
-
-// Bulk edit mode state
+// Bulk edit mode state (kept local for special thumbnail handling)
 const isBulkEditMode = ref(false);
 const bulkEditValues = ref({});
 const isSavingBulk = ref(false);
@@ -829,35 +1072,29 @@ const commentBotSettings = ref({
 });
 const selectedForBot = ref([]);
 
-// Filter state
+// Filter state - use sparksSearchQuery from composable with debounce mapping
 const searchInput = ref('');
-const searchQuery = ref('');
 
 // Debounce timer
 let searchDebounceTimer = null;
 
-// Watch search input with debounce
+// Watch search input with debounce and map to sparksSearchQuery from composable
 watch(searchInput, (newValue) => {
   clearTimeout(searchDebounceTimer);
   searchDebounceTimer = setTimeout(() => {
-    searchQuery.value = newValue;
+    sparksSearchQuery.value = newValue;
   }, 300); // 300ms debounce
 });
-const typeFilter = ref('all');
-const statusFilter = ref('all');  // Default to all statuses
-const creatorFilter = ref('all');
+// Note: typeFilter, statusFilter, creatorFilter are provided by useSparks composable
 
 // Table configuration
 const itemsPerPage = ref(200); // Default to 200 items per page for bulk editing
 const currentPage = ref(1);
-const showThumbnails = ref(true); // Toggle for showing thumbnail column
+// Note: showThumbnails is provided by useSparks composable as sparksShowThumbnails
 
 // Modal state
 const showPreview = ref(false);
 const previewSpark = ref(null);
-const showCreateModal = ref(false);
-const editingSparkData = ref(null);
-const showBulkAddModal = ref(false);
 
 // Comment Bot state
 const commentGroups = ref([]);
@@ -866,76 +1103,20 @@ const userCredits = ref(0);
 const showDeleteModal = ref(false);
 const sparkToDelete = ref(null);
 const deleteLoading = ref(false);
-const showDeleteSelectedModal = ref(false);
-const selectedForDelete = ref([]);
-const isDeletingSelected = ref(false);
 
-// Form state
-const sparkForm = ref({
-  name: '',
-  creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
-  tiktokLink: '',
-  sparkCode: '',
-  type: 'auto',
-  status: 'untested'
-});
 
-// Bulk Add Form state
-const bulkAddForm = ref({
-  baseName: '',
-  type: 'auto',
-  creator: isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined,  // Auto-select VA's own email if logged in as VA
-  status: 'untested',
-  sparkCodes: '',
-  tiktokLinks: '',
-  // Comment Bot fields
-  enableCommentBot: false,
-  commentGroupId: null,
-  likeCount: 0,
-  saveCount: 0
-});
-
-const bulkAddPreview = ref([]);
-const bulkAddValidationMessage = ref('');
-const bulkAddLoading = ref(false);
-
-// Payment state
-const defaultRate = ref(1);
-const defaultCommissionRate = ref(0);
-const defaultCommissionType = ref('percentage');
-const paymentSettingsLoaded = ref(false);
-const isSavingSettings = ref(false);
+// Note: Payment state (defaultRate, defaultCommissionRate, defaultCommissionType, paymentSettingsLoaded, isSavingSettings) provided by usePayments composable
 
 // Payment History state
-const paymentHistory = ref([]);
-const isLoadingHistory = ref(false);
-const historyDateFrom = ref('');
-const historyDateTo = ref('');
-const historyCreatorFilter = ref('all');
-const historyCreatorOptions = ref([{ title: 'All Creators', value: 'all' }]);
+// Note: paymentHistory, isLoadingHistory, historyDateFrom, historyDateTo, historyCreatorFilter, historyCreatorOptions provided by usePayments composable
 const showPaymentDetailsModal = ref(false);
 const selectedPayment = ref(null);
 
 // Undo state
-const lastPaymentAction = ref(null);
-const showUndoButton = ref(false);
+// Note: lastPaymentAction, showUndoButton provided by usePayments composable
 const undoTimeoutId = ref(null);
 
-// Invoice state
-const invoices = ref([]);
-const isLoadingInvoices = ref(false);
-const invoiceStatusFilter = ref('all');
-const invoiceCreatorFilter = ref('all');
-const invoiceDateFrom = ref('');
-const invoiceDateTo = ref('');
-const invoiceStatusOptions = ref([
-  { title: 'All Status', value: 'all' },
-  { title: 'Pending', value: 'pending' },
-  { title: 'Paid', value: 'paid' },
-  { title: 'Voided', value: 'voided' },
-  { title: 'Overdue', value: 'overdue' }
-]);
-const invoiceCreatorOptions = ref([{ title: 'All Creators', value: 'all' }]);
+// Note: Invoice state (invoices, isLoadingInvoices, invoiceStatusFilter, invoiceCreatorFilter, invoiceDateFrom, invoiceDateTo, invoiceStatusOptions, invoiceCreatorOptions) provided by useInvoices composable
 const invoiceHeaders = ref([
   { title: 'Invoice #', key: 'invoice_number', sortable: true },
   { title: 'Creator', key: 'creator_name', sortable: true },
@@ -957,31 +1138,28 @@ const paymentHistoryHeaders = ref([
   { title: 'Details', key: 'details', sortable: false }
 ]);
 
-// Snackbar
-const showSnackbar = ref(false);
-const snackbarText = ref('');
-const snackbarColor = ref('success');
 
 // Base table headers
 const baseHeaders = [
   { title: 'Date', key: 'created_at' },
   { title: 'Preview', key: 'thumbnail', sortable: false, width: '120px' },
   { title: 'TikTok Link', key: 'tiktok_link', sortable: false },
+  { title: 'Content Type', key: 'content_type', sortable: true, width: '130px' },
   { title: 'Spark Code', key: 'spark_code' },
   { title: 'Status', key: 'status' },
   { title: 'Bot Status', key: 'bot_status', sortable: true, width: '120px', align: 'center' },
-  { title: 'Type', key: 'type' },
+  { title: 'Offer', key: 'type' },
   { title: 'Creator', key: 'creator' },
   { title: 'Name', key: 'name' },
   { title: 'Actions', key: 'actions', sortable: false }
 ];
 
-// Computed headers based on showThumbnails toggle and bulk edit mode
+// Computed headers based on sparksShowThumbnails toggle and bulk edit mode
 const headers = computed(() => {
   let headers = baseHeaders;
-  
+
   // Hide thumbnail if toggle is off
-  if (!showThumbnails.value) {
+  if (!sparksShowThumbnails.value) {
     headers = headers.filter(h => h.key !== 'thumbnail');
   }
   
@@ -1003,31 +1181,7 @@ const headers = computed(() => {
   return headers;
 });
 
-// Common type items for combobox (without 'All Types' option)
-const typeItems = ref(['CPI', 'Sweeps', 'Cash', 'PayPal', 'Auto', 'Home']);
-
-// Options for filters (includes 'All Types')
-const typeOptions = ref([
-  { title: 'All Types', value: 'all' },
-  { title: 'CPI', value: 'CPI' },
-  { title: 'Sweeps', value: 'Sweeps' },
-  { title: 'Cash', value: 'Cash' },
-  { title: 'PayPal', value: 'PayPal' },
-  { title: 'Auto', value: 'Auto' },
-  { title: 'Home', value: 'Home' }
-]);
-
-const statusOptions = ref([
-  { title: 'All Status', value: 'all' },
-  { title: 'Active', value: 'active' },
-  { title: 'Testing', value: 'testing' },
-  { title: 'Untested', value: 'untested' },
-  { title: 'Blocked', value: 'blocked' }
-]);
-
-const creatorOptions = ref([
-  { title: 'All Creators', value: 'all' }
-]);
+// Note: typeItems, typeOptions, statusOptions, creatorOptions are provided by useSparks composable
 
 // Default thumbnail
 const defaultThumbnail = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjRTBFMEUwIi8+CjxwYXRoIGQ9Ik0yNSAxOEwyOSAyNUwyNSAzMkwyMSAyNVoiIGZpbGw9IiM5RTlFOUUiLz4KPC9zdmc+';
@@ -1087,57 +1241,16 @@ const duplicateInfo = computed(() => {
   };
 });
 
-// Computed properties
-const filteredSparks = computed(() => {
-  let filtered = sparks.value;
-
-  // Apply filters only if needed to avoid unnecessary iterations
-  if (typeFilter.value !== 'all' || statusFilter.value !== 'all' ||
-      creatorFilter.value !== 'all' || searchQuery.value) {
-    
-    filtered = sparks.value.filter(spark => {
-      // Type filter
-      if (typeFilter.value !== 'all' && spark.type !== typeFilter.value) {
-        return false;
-      }
-
-      // Status filter
-      if (statusFilter.value !== 'all' && spark.status !== statusFilter.value) {
-        return false;
-      }
-
-      // Creator filter
-      if (creatorFilter.value !== 'all' && spark.creator !== creatorFilter.value) {
-        return false;
-      }
-
-      // Search query filter
-      if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase();
-        const searchableText = `${spark.name || ''} ${spark.creator || ''} ${spark.spark_code || ''} ${spark.type || ''}`.toLowerCase();
-        if (!searchableText.includes(query)) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }
-
-  // Add duplicate flag to each spark
-  return filtered.map(spark => ({
-    ...spark,
-    isDuplicate: duplicateInfo.value.duplicateIds.has(spark.id)
-  }));
-});
+// Note: filteredSparks is provided by useSparks composable
 
 // Computed property for payments grouped by creator
 const paymentsByCreator = computed(() => {
   const creatorMap = new Map();
-  
-  // Group sparks by creator (only unpaid/active ones)
+
+  // Group sparks by creator (only unpaid ones, regardless of status)
+  // payment_status can be undefined, null, 'unpaid', or anything other than 'paid'
   sparks.value
-    .filter(spark => spark.creator && spark.status === 'active')
+    .filter(spark => spark.creator && (!spark.payment_status || spark.payment_status !== 'paid'))
     .forEach(spark => {
       if (!creatorMap.has(spark.creator)) {
         creatorMap.set(spark.creator, {
@@ -1188,179 +1301,37 @@ const paymentsByCreator = computed(() => {
   return paymentsList.sort((a, b) => a.creator.localeCompare(b.creator));
 });
 
-// Computed properties for payment summary stats
-const totalOwed = computed(() => {
-  return paymentsByCreator.value
-    .reduce((sum, payment) => sum + parseFloat(payment.total), 0)
-    .toFixed(2);
-});
+// Note: totalOwed, totalPaid, unpaidSparks, activeCreators are provided by usePayments composable
 
-const totalPaid = computed(() => {
-  // Calculate based on completed sparks
-  const completedSparks = sparks.value.filter(spark => spark.status === 'completed' && spark.creator);
-  let total = 0;
-  
-  completedSparks.forEach(spark => {
-    const customCreator = creators.value.find(c => c.name === spark.creator);
-    const rate = customCreator?.rate || defaultRate.value;
-    total += rate;
-  });
-  
-  return total.toFixed(2);
-});
+// Note: totalPaidInPeriod, totalPayments, totalVideosPaid are provided by usePayments composable
 
-const unpaidSparks = computed(() => {
-  return sparks.value.filter(spark => spark.status === 'active' && spark.creator).length;
-});
+// Note: totalInvoices, totalInvoiced, pendingInvoices, paidInvoices are provided by useInvoices composable
 
-const activeCreators = computed(() => {
-  return paymentsByCreator.value.length;
-});
+// Note: fetchSparks is provided by useSparks composable
+// Local function to sync creators from virtualAssistants after fetch
+const syncCreatorsFromVAs = () => {
+  const uniqueCreators = [...new Set(sparks.value.map(s => s.creator).filter(c => c))];
 
-// Computed properties for payment history
-const totalPaidInPeriod = computed(() => {
-  return paymentHistory.value
-    .filter(p => p.status === 'paid')
-    .reduce((sum, p) => sum + parseFloat(p.amount), 0)
-    .toFixed(2);
-});
-
-const totalPayments = computed(() => {
-  return paymentHistory.value.length;
-});
-
-const totalVideosPaid = computed(() => {
-  return paymentHistory.value.reduce((sum, p) => sum + (p.videoCount || 0), 0);
-});
-
-// Computed properties for invoices
-const totalInvoices = computed(() => {
-  return invoices.value.length;
-});
-
-const totalInvoiced = computed(() => {
-  return invoices.value
-    .reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-    .toFixed(2);
-});
-
-const pendingInvoices = computed(() => {
-  return invoices.value.filter(inv => inv.status === 'pending').length;
-});
-
-const paidInvoices = computed(() => {
-  return invoices.value
-    .filter(inv => inv.status === 'paid')
-    .reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-    .toFixed(2);
-});
-
-// Methods
-const fetchSparks = async () => {
-  isLoading.value = true;
-  try {
-    const response = await sparksApi.listSparks({ page: 1, limit: 1000 });
-    if (response.success) {
-      // Process sparks but don't freeze yet - we need to update bot statuses
-      const processedSparks = response.sparks.map(spark => ({
-        ...spark,
-        type: spark.type || 'auto',
-        creator: spark.creator || 'None'  // Show "None" instead of "Unknown"
+  if (virtualAssistants.value.length > 1) {  // More than just "None"
+    // Use VAs for payments
+    creators.value = virtualAssistants.value
+      .filter(va => va.value !== '')
+      .map(va => ({
+        id: va.value,
+        name: va.title,
+        rate: defaultRate.value,
+        commissionRate: defaultCommissionRate.value,
+        commissionType: defaultCommissionType.value
       }));
-
-      // Get active orders from comment bot to update statuses
-      try {
-        const ordersResponse = await commentBotApi.getOrders();
-
-        if (ordersResponse && ordersResponse.orders) {
-          // Create a map of post_id to order status for quick lookup
-          const orderStatusMap = {};
-          ordersResponse.orders.forEach(order => {
-            if (order.post_id) {
-              orderStatusMap[order.post_id] = order.status || 'processing';
-            }
-          });
-
-          // Update spark statuses based on matching post IDs
-          processedSparks.forEach(spark => {
-            if (spark.bot_post_id && orderStatusMap[spark.bot_post_id]) {
-              spark.bot_status = orderStatusMap[spark.bot_post_id];
-            } else if (spark.bot_post_id && !orderStatusMap[spark.bot_post_id]) {
-              // Has a post ID but no matching order - likely completed or expired
-              if (spark.bot_status === 'queued' || spark.bot_status === 'processing' || spark.bot_status === 'pending') {
-                spark.bot_status = 'completed';
-              }
-            }
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch comment bot orders:', error);
-      }
-
-      // Now freeze the sparks array
-      sparks.value = Object.freeze(processedSparks);
-
-      // Update type options dynamically based on actual types in data
-      const uniqueTypes = [...new Set(sparks.value.map(s => s.type).filter(t => t))];
-
-      // Update typeItems to include any new custom types
-      const existingTypeItems = new Set(typeItems.value);
-      uniqueTypes.forEach(type => {
-        if (!existingTypeItems.has(type)) {
-          typeItems.value.push(type);
-        }
-      });
-      
-      // Update typeOptions for the filter dropdown
-      typeOptions.value = [
-        { title: 'All Types', value: 'all' },
-        ...uniqueTypes.sort().map(t => ({ 
-          title: t.charAt(0).toUpperCase() + t.slice(1), 
-          value: t 
-        }))
-      ];
-      
-      // Use virtual assistants for creator options if available
-      const uniqueCreators = [...new Set(sparks.value.map(s => s.creator).filter(c => c))];
-      
-      if (virtualAssistants.value.length > 1) {  // More than just "None"
-        creatorOptions.value = [
-          { title: 'All Creators', value: 'all' },
-          ...virtualAssistants.value.filter(va => va.value !== '')  // Exclude "None"
-        ];
-        
-        // Use VAs for payments
-        creators.value = virtualAssistants.value
-          .filter(va => va.value !== '')
-          .map(va => ({
-            id: va.value,
-            name: va.title,
-            rate: defaultRate.value,
-            commissionRate: defaultCommissionRate.value,
-            commissionType: defaultCommissionType.value
-          }));
-      } else {
-        // Fallback to extracting from existing data
-        creatorOptions.value = [
-          { title: 'All Creators', value: 'all' },
-          ...uniqueCreators.map(c => ({ title: c || 'Unknown', value: c }))
-        ];
-        
-        creators.value = uniqueCreators.map(name => ({
-          id: name,
-          name: name,
-          rate: defaultRate.value,
-          commissionRate: defaultCommissionRate.value,
-          commissionType: defaultCommissionType.value
-        }));
-      }
-      
-      // Stats are updated automatically via computed properties
-    }
-  } catch (error) {
-    showError('Failed to load sparks');
-  } finally {
-    isLoading.value = false;
+  } else {
+    // Fallback to extracting from existing data
+    creators.value = uniqueCreators.map(name => ({
+      id: name,
+      name: name,
+      rate: defaultRate.value,
+      commissionRate: defaultCommissionRate.value,
+      commissionType: defaultCommissionType.value
+    }));
   }
 };
 
@@ -1377,7 +1348,7 @@ const fetchVirtualAssistants = async () => {
   try {
     const response = await usersApi.getVirtualAssistants();
     console.log('Virtual assistants response:', response); // Debug log
-    
+
     // The API returns { assistants: [...] }
     if (response && response.assistants && Array.isArray(response.assistants)) {
       virtualAssistants.value = response.assistants
@@ -1386,16 +1357,24 @@ const fetchVirtualAssistants = async () => {
           title: va.email || 'Unknown VA',
           value: va.email || 'Unknown'
         }));
-      
+
       console.log('Processed VAs:', virtualAssistants.value); // Debug log
-      
+
+      // Add main user's email if they're logged in (not a VA)
+      if (!isAssistingUser.value && user.value?.email) {
+        virtualAssistants.value.push({
+          title: user.value.email,
+          value: user.value.email
+        });
+      }
+
       // Add a "None" option at the beginning
       virtualAssistants.value.unshift({ title: 'None', value: '' });
     } else {
       console.log('No virtual assistants found in response, response structure:', response);
       virtualAssistants.value = [{ title: 'None', value: '' }];
     }
-    
+
     console.log('Final virtualAssistants.value:', virtualAssistants.value); // Debug log
   } catch (error) {
     console.error('Failed to fetch virtual assistants:', error);
@@ -1403,125 +1382,20 @@ const fetchVirtualAssistants = async () => {
   }
 };
 
+// Wrapper for clearFilters to handle local state
 const clearFilters = () => {
   searchInput.value = '';
-  searchQuery.value = '';
-  typeFilter.value = 'all';
-  statusFilter.value = 'all';
-  creatorFilter.value = 'all';
-  showThumbnails.value = true;
+  sparksSearchQuery.value = '';
+  clearSparksFilters();
   currentPage.value = 1;
 };
 
-const getTypeColor = (type) => {
-  const lowerType = (type || 'Auto').toLowerCase();
-  switch (lowerType) {
-    case 'cpi':
-      return 'blue';
-    case 'sweeps':
-      return 'purple';
-    case 'cash':
-      return 'green';
-    case 'paypal':
-      return 'orange';
-    case 'auto':
-      return 'indigo';
-    case 'home':
-      return 'teal';
-    default:
-      return 'grey';
-  }
-};
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'active':
-      return 'success';
-    case 'testing':
-      return 'warning';
-    case 'blocked':
-      return 'error';
-    default:
-      return 'grey';
-  }
-};
-
-const getStatusLabel = (status) => {
-  switch (status) {
-    case 'active':
-      return 'Active';
-    case 'testing':
-      return 'Testing';
-    case 'blocked':
-      return 'Blocked';
-    default:
-      return status;
-  }
-};
-
-const copyCode = (code) => {
-  navigator.clipboard.writeText(code);
-  showSuccess('Spark code copied to clipboard');
-};
-
-const formatDate = (date) => {
-  if (!date) return '-';
-  return new Date(date).toLocaleDateString();
-};
-
-const handleImageError = (event) => {
-  event.target.src = defaultThumbnail;
-};
 
 const showLargePreview = (spark) => {
   previewSpark.value = spark;
   showPreview.value = true;
 };
 
-// Helper function to generate default name
-const generateDefaultName = (creator, type) => {
-  // Remove @domain.com from creator email
-  const creatorName = creator ? creator.replace(/@.*\.com$/i, '') : 'unknown';
-
-  // Get current date in YYMMDD format
-  const date = new Date();
-  const year = String(date.getFullYear()).slice(-2);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const dateStr = `${year}${month}${day}`;
-
-  // Generate name: creator-date-type-
-  return `${creatorName}-${dateStr}-${type}-`;
-};
-
-const openCreateModal = () => {
-  editingSparkData.value = null;
-  const creator = isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined;
-  const type = 'auto';
-
-  sparkForm.value = {
-    name: generateDefaultName(creator, type),
-    creator: creator,  // Auto-select VA's own email if logged in as VA
-    tiktokLink: '',
-    sparkCode: '',
-    type: type,
-    status: 'untested'
-  };
-  showCreateModal.value = true;
-};
-
-const editSpark = (spark) => {
-  editingSparkData.value = spark;
-  sparkForm.value = {
-    name: spark.name || '',
-    creator: spark.creator || '',
-    tiktokLink: spark.tiktok_link || '',
-    sparkCode: spark.spark_code || '',
-    type: spark.type || 'auto',
-    status: spark.status || 'untested'
-  };
-  showCreateModal.value = true;
-};
 
 const saveSpark = async () => {
   try {
@@ -1539,26 +1413,28 @@ const saveSpark = async () => {
       sparkCode: sparkForm.value.sparkCode,
       type: sparkForm.value.type || 'auto',
       offer: '',  // Default empty offer
-      status: sparkForm.value.status || 'untested'
+      status: sparkForm.value.status || 'untested',
+      payment_status: 'unpaid'  // Default payment status
     };
     
     // Note: thumbnail will be auto-generated from TikTok link on the server side
     
     if (editingSparkData.value) {
-      await sparksApi.updateSpark(editingSparkData.value.id, sparkData);
+      await updateSpark(editingSparkData.value.id, sparkData);
       showSuccess('Spark updated successfully');
     } else {
-      await sparksApi.createSpark(sparkData);
+      await createSpark(sparkData);
       showSuccess('Spark created successfully');
     }
     showCreateModal.value = false;
-    fetchSparks();
+    await fetchSparks();
   } catch (error) {
     showError('Failed to save spark: ' + (error.message || 'Unknown error'));
   }
 };
 
-const deleteSpark = (spark) => {
+// Local wrapper to open delete modal before calling composable deleteSpark
+const deleteSparkLocal = (spark) => {
   // Handle both spark object and spark id
   if (typeof spark === 'string') {
     // If only ID is passed, find the spark object
@@ -1569,211 +1445,16 @@ const deleteSpark = (spark) => {
   showDeleteModal.value = true;
 };
 
-const removeDuplicates = async () => {
-  try {
-    isLoading.value = true;
-
-    // Create a map to track unique entries and keep the latest one
-    const uniqueMap = new Map();
-    const duplicateIds = [];
-
-    // Process sparks in reverse order (keeping the last added)
-    const reversedSparks = [...sparks.value].reverse();
-
-    for (const spark of reversedSparks) {
-      // Create unique keys for each type of duplicate
-      const tiktokKey = spark.tiktok_link ? `tiktok:${spark.tiktok_link}` : null;
-      const sparkCodeKey = spark.spark_code ? `code:${spark.spark_code}` : null;
-
-      // Check if TikTok link already exists
-      if (tiktokKey && uniqueMap.has(tiktokKey)) {
-        duplicateIds.push(spark.id);
-        continue;
-      }
-
-      // Check if spark code already exists
-      if (sparkCodeKey && uniqueMap.has(sparkCodeKey)) {
-        duplicateIds.push(spark.id);
-        continue;
-      }
-
-      // Mark as seen
-      if (tiktokKey) uniqueMap.set(tiktokKey, spark.id);
-      if (sparkCodeKey) uniqueMap.set(sparkCodeKey, spark.id);
-    }
-
-    // Delete duplicates from database
-    let deletedCount = 0;
-    for (const id of duplicateIds) {
-      try {
-        await sparksApi.deleteSpark(id);
-        deletedCount++;
-      } catch (error) {
-        console.error(`Failed to delete duplicate spark ${id}:`, error);
-      }
-    }
-
-    // Refresh sparks list
-    await fetchSparks();
-
-    if (deletedCount > 0) {
-      showSuccess(`Removed ${deletedCount} duplicate spark${deletedCount > 1 ? 's' : ''}`);
-    } else {
-      showInfo('No duplicates found to remove');
-    }
-
-  } catch (error) {
-    console.error('Error removing duplicates:', error);
-    showError('Failed to remove duplicates');
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const deleteSelected = async (selectedSparks) => {
-  if (!selectedSparks || selectedSparks.length === 0) {
-    showWarning('No sparks selected for deletion');
-    return;
-  }
-
-  // Store selected sparks and show modal
-  selectedForDelete.value = selectedSparks;
-  showDeleteSelectedModal.value = true;
-};
-
-const confirmDeleteSelected = async () => {
-  try {
-    isDeletingSelected.value = true;
-    let deletedCount = 0;
-    let failedCount = 0;
-
-    // Delete each selected spark
-    for (const spark of selectedForDelete.value) {
-      try {
-        await sparksApi.deleteSpark(spark.id);
-        deletedCount++;
-      } catch (error) {
-        console.error(`Failed to delete spark ${spark.name || spark.id}:`, error);
-        failedCount++;
-      }
-    }
-
-    // Close modal
-    showDeleteSelectedModal.value = false;
-    selectedForDelete.value = [];
-
-    // Exit bulk edit mode
-    cancelBulkEdit();
-
-    // Refresh sparks list
-    await fetchSparks();
-
-    // Show results
-    if (failedCount > 0) {
-      showWarning(`Deleted ${deletedCount} spark${deletedCount !== 1 ? 's' : ''}, ${failedCount} failed`);
-    } else {
-      showSuccess(`Successfully deleted ${deletedCount} spark${deletedCount !== 1 ? 's' : ''}`);
-    }
-
-  } catch (error) {
-    console.error('Error deleting selected sparks:', error);
-    showError('Failed to delete selected sparks');
-  } finally {
-    isDeletingSelected.value = false;
-  }
-};
-
-// Inline editing methods
-const isEditing = (itemId, field) => {
-  return editingCells.value[`${itemId}-${field}`] === true;
-};
-
-const startInlineEdit = (item, field) => {
-  // Get the current item from the sparks array to ensure we have the latest data
-  const currentItem = sparks.value.find(s => s.id === item.id) || item;
-  
-  // Set the editing state
-  const key = `${currentItem.id}-${field}`;
-  editingCells.value[key] = true;
-  editingValues.value[key] = currentItem[field];
-  // Open menu for select fields
-  menuStates.value[key] = true;
-};
-
-const cancelInlineEdit = (itemId, field) => {
-  const key = `${itemId}-${field}`;
-  delete editingCells.value[key];
-  delete editingValues.value[key];
-  delete menuStates.value[key];
-};
-
-const saveInlineEdit = async (item, field) => {
-  const key = `${item.id}-${field}`;
-  const newValue = editingValues.value[key];
-  
-  // Don't save if value hasn't changed
-  if (newValue === item[field]) {
-    cancelInlineEdit(item.id, field);
-    return;
-  }
-  
-  try {
-    // Map snake_case field names to camelCase for API
-    const fieldMapping = {
-      'spark_code': 'sparkCode',
-      'tiktok_link': 'tiktokLink',
-      'offer_name': 'offerName'
-    };
-    
-    // Prepare the update data - use camelCase for API
-    // Only include defined values to avoid sending undefined
-    const updateData = {};
-
-    // Always include these fields if they exist
-    if (item.name !== undefined) updateData.name = item.name;
-    if (item.creator !== undefined) updateData.creator = item.creator;
-    if (item.tiktok_link !== undefined) updateData.tiktokLink = item.tiktok_link;
-    if (item.spark_code !== undefined) updateData.sparkCode = item.spark_code;
-    if (item.type !== undefined) updateData.type = item.type;
-    if (item.status !== undefined) updateData.status = item.status;
-    if (item.offer_name !== undefined) updateData.offerName = item.offer_name;
-    
-    // Update the specific field being edited (use camelCase if needed)
-    const apiField = fieldMapping[field] || field;
-    updateData[apiField] = newValue;
-
-    // Debug log to see what we're sending
-    console.log('Updating spark with data:', updateData);
-    console.log('Item data:', item);
-
-    // Update the spark
-    const response = await sparksApi.updateSpark(item.id, updateData);
-    
-    if (response.success) {
-      // Clear editing state
-      cancelInlineEdit(item.id, field);
-      
-      showSuccess(`${field.replace('_', ' ')} updated successfully`);
-      
-      // Refresh the sparks data to ensure we have the latest data
-      await fetchSparks();
-    }
-  } catch (error) {
-    console.error('Failed to update inline:', error);
-    showError('Failed to update field: ' + (error.message || 'Unknown error'));
-    cancelInlineEdit(item.id, field);
-  }
-};
 
 const confirmDelete = async () => {
   if (!sparkToDelete.value) return;
-  
+
   deleteLoading.value = true;
   try {
-    await sparksApi.deleteSpark(sparkToDelete.value.id);
+    await deleteSpark(sparkToDelete.value.id);
     showDeleteModal.value = false;
     showSuccess('Spark deleted successfully');
-    fetchSparks();
+    await fetchSparks();
   } catch (error) {
     showError('Failed to delete spark: ' + (error.message || 'Unknown error'));
   } finally {
@@ -1787,89 +1468,6 @@ const cancelDelete = () => {
   sparkToDelete.value = null;
 };
 
-const bulkAdd = () => {
-  // Reset bulk add form
-  const creator = isAssistingUser.value && user.value?.originalEmail ? user.value.originalEmail : undefined;
-  const type = 'auto';
-
-  bulkAddForm.value = {
-    baseName: generateDefaultName(creator, type),
-    type: type,
-    creator: creator,  // Auto-select VA's own email if logged in as VA
-    status: 'untested',
-    sparkCodes: '',
-    tiktokLinks: '',
-    // Reset Comment Bot fields
-    enableCommentBot: false,
-    commentGroupId: null,
-    likeCount: 0,
-    saveCount: 0
-  };
-  bulkAddPreview.value = [];
-  bulkAddValidationMessage.value = '';
-  showBulkAddModal.value = true;
-};
-
-// Auto preview function for bulk add
-const autoPreviewBulkAdd = () => {
-  const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
-  const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
-
-  // Clear preview and validation if no TikTok links
-  if (tiktokLinks.length === 0) {
-    bulkAddPreview.value = [];
-    bulkAddValidationMessage.value = '';
-    return;
-  }
-
-  // Check if spark codes match TikTok links count
-  if (sparkCodes.length !== tiktokLinks.length) {
-    bulkAddPreview.value = [];
-    bulkAddValidationMessage.value = `Spark codes (${sparkCodes.length}) must match TikTok links (${tiktokLinks.length})`;
-    return;
-  }
-
-  // Clear validation message and proceed with preview
-  bulkAddValidationMessage.value = '';
-  previewBulkAdd();
-};
-
-const previewBulkAdd = () => {
-  const tiktokLinks = bulkAddForm.value.tiktokLinks.split('\n').filter(link => link.trim());
-  const sparkCodes = bulkAddForm.value.sparkCodes.split('\n').filter(code => code.trim());
-
-  if (tiktokLinks.length === 0 || sparkCodes.length !== tiktokLinks.length) {
-    bulkAddPreview.value = [];
-    return;
-  }
-
-  // Parse the base name to extract prefix and number
-  const baseNameMatch = bulkAddForm.value.baseName.match(/^(.*?)(\d+)$/);
-  let namePrefix = bulkAddForm.value.baseName;
-  let startNumber = 1;
-
-  if (baseNameMatch) {
-    namePrefix = baseNameMatch[1];
-    startNumber = parseInt(baseNameMatch[2]);
-  }
-
-  // Create preview with matching spark codes
-  bulkAddPreview.value = [];
-  for (let i = 0; i < tiktokLinks.length; i++) {
-    const currentNumber = startNumber + i;
-    const paddedNumber = baseNameMatch && baseNameMatch[2].length > 1
-      ? currentNumber.toString().padStart(baseNameMatch[2].length, '0')
-      : currentNumber.toString();
-
-    const name = `${namePrefix}${paddedNumber}`;
-
-    bulkAddPreview.value.push({
-      name: name,
-      tiktokLink: tiktokLinks[i].trim(),
-      sparkCode: sparkCodes[i].trim()
-    });
-  }
-};
 
 const saveBulkAdd = async () => {
   // Validate required fields
@@ -1947,6 +1545,7 @@ const saveBulkAdd = async () => {
         type: bulkAddForm.value.type,
         offer: '',  // Default empty offer
         status: bulkAddForm.value.status,
+        payment_status: 'unpaid',  // Default payment status
         bot_status: bulkAddForm.value.enableCommentBot ? 'queued' : 'not_botted'
       };
 
@@ -2073,31 +1672,20 @@ const saveBulkAdd = async () => {
   }
 };
 
+// Local wrapper for exportToCSV with custom logic
 const exportToCSV = () => {
   const headers = ['Name', 'Creator', 'Type', 'Status', 'Spark Code', 'Offer', 'Created'];
-  const rows = filteredSparks.value.map(spark => [
-    spark.name,
-    spark.creator || '-',
-    spark.type || 'Auto',
-    spark.status,
-    spark.spark_code,
-    spark.offer_name || '-',
-    formatDate(spark.created_at)
-  ]);
-  
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-  ].join('\n');
-  
-  const blob = new Blob([csvContent], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `sparks_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click();
-  
-  showSuccess('CSV exported successfully');
+  const rows = filteredSparks.value.map(spark => ({
+    name: spark.name,
+    creator: spark.creator || '-',
+    type: spark.type || 'Auto',
+    status: spark.status,
+    spark_code: spark.spark_code,
+    offer: spark.offer_name || '-',
+    created: formatDate(spark.created_at)
+  }));
+
+  exportToCSVUtil(rows, `sparks_${new Date().toISOString().split('T')[0]}.csv`);
 };
 
 const markPaid = (paymentId) => {
@@ -2106,9 +1694,9 @@ const markPaid = (paymentId) => {
 
 const markCreatorPaid = async (creatorName) => {
   try {
-    // Find all active sparks for this creator
+    // Find all unpaid sparks for this creator (regardless of status)
     const creatorSparks = sparks.value.filter(
-      spark => spark.creator === creatorName && spark.status === 'active'
+      spark => spark.creator === creatorName && (!spark.payment_status || spark.payment_status !== 'paid')
     );
     
     // Calculate payment amount with commission
@@ -2198,7 +1786,7 @@ const markCreatorPaid = async (creatorName) => {
     // Add to payment history locally
     paymentHistory.value.unshift(paymentRecord);
     
-    // Update each spark to completed status
+    // Update each spark's payment status to paid
     for (const spark of creatorSparks) {
       // Only send the required fields for update
       const updateData = {
@@ -2208,9 +1796,10 @@ const markCreatorPaid = async (creatorName) => {
         sparkCode: spark.spark_code || spark.sparkCode,
         type: spark.type || 'auto',
         offer: spark.offer || '',
-        status: 'completed'  // Change status to completed
+        status: spark.status,  // Keep the same status
+        payment_status: 'paid'  // Mark as paid
       };
-      
+
       await sparksApi.updateSpark(spark.id, updateData);
     }
     
@@ -2226,51 +1815,13 @@ const markCreatorPaid = async (creatorName) => {
   }
 };
 
-// Undo function
-const undoLastPayment = async () => {
-  if (!lastPaymentAction.value) {
-    showError('No action to undo');
-    return;
-  }
-  
-  try {
-    // Revert each spark back to active status
-    for (const spark of lastPaymentAction.value.sparks) {
-      const updateData = {
-        name: spark.name,
-        creator: spark.creator,
-        tiktokLink: spark.tiktok_link || spark.tiktokLink,
-        sparkCode: spark.spark_code || spark.sparkCode,
-        type: spark.type || 'auto',
-        offer: spark.offer || '',
-        status: 'active'  // Change back to active
-      };
-      
-      await sparksApi.updateSpark(spark.id, updateData);
-    }
-    
-    // Remove the payment record from history
-    const recordIndex = paymentHistory.value.findIndex(
-      p => p.id === lastPaymentAction.value.paymentRecord.id
-    );
-    if (recordIndex > -1) {
-      paymentHistory.value.splice(recordIndex, 1);
-    }
-    
-    showSuccess(`Undone payment for ${lastPaymentAction.value.creator} - ${lastPaymentAction.value.sparkIds.length} videos reverted to active`);
-    
-    // Clear undo state
-    showUndoButton.value = false;
-    lastPaymentAction.value = null;
-    if (undoTimeoutId.value) {
-      clearTimeout(undoTimeoutId.value);
-      undoTimeoutId.value = null;
-    }
-    
-    // Refresh the sparks list
-    fetchSparks();
-  } catch (error) {
-    showError('Failed to undo payment: ' + (error.message || 'Unknown error'));
+// Note: undoLastPayment is provided by usePayments composable
+// Local wrapper to handle undo timeout state
+const undoLastPaymentLocal = async () => {
+  await undoLastPayment();
+  if (undoTimeoutId.value) {
+    clearTimeout(undoTimeoutId.value);
+    undoTimeoutId.value = null;
   }
 };
 
@@ -2296,10 +1847,9 @@ const filterPaymentHistory = () => {
   showInfo(`Showing ${filtered.length} payment records`);
 };
 
-const clearHistoryFilters = () => {
-  historyDateFrom.value = '';
-  historyDateTo.value = '';
-  historyCreatorFilter.value = 'all';
+// Wrapper for clearHistoryFilters from composable
+const clearHistoryFiltersLocal = () => {
+  clearHistoryFilters();
   showInfo('Filters cleared');
 };
 
@@ -2308,88 +1858,9 @@ const showPaymentDetails = (payment) => {
   showPaymentDetailsModal.value = true;
 };
 
-// Load payment settings from backend
-const loadPaymentSettings = async () => {
-  try {
-    const response = await fetch('/api/sparks/payment-settings', {
-      credentials: 'include'
-    });
-    const data = await response.json();
-    
-    if (data.success && data.settings) {
-      // Load global settings
-      const globalSettings = data.settings.find(s => s.setting_type === 'global');
-      if (globalSettings) {
-        defaultRate.value = globalSettings.base_rate;
-        defaultCommissionRate.value = globalSettings.commission_rate;
-        defaultCommissionType.value = globalSettings.commission_type;
-      }
-      
-      // Load creator-specific settings
-      data.settings
-        .filter(s => s.setting_type === 'creator')
-        .forEach(setting => {
-          const creator = creators.value.find(c => c.name === setting.creator_name);
-          if (creator) {
-            creator.rate = setting.base_rate;
-            creator.commissionRate = setting.commission_rate;
-            creator.commissionType = setting.commission_type;
-          }
-        });
-        
-      paymentSettingsLoaded.value = true;
-    }
-  } catch (error) {
-    console.error('Failed to load payment settings:', error);
-  }
-};
+// Note: loadPaymentSettings is provided by usePayments composable
 
-// Save payment settings to backend
-const savePaymentSettings = async () => {
-  isSavingSettings.value = true;
-  try {
-    // Save global settings
-    await fetch('/api/sparks/payment-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        settingType: 'global',
-        baseRate: defaultRate.value,
-        commissionRate: defaultCommissionRate.value,
-        commissionType: defaultCommissionType.value
-      })
-    });
-    
-    // Save creator-specific settings
-    for (const creator of creators.value) {
-      if (creator.rate !== defaultRate.value || 
-          creator.commissionRate !== defaultCommissionRate.value ||
-          creator.commissionType !== defaultCommissionType.value) {
-        await fetch('/api/sparks/payment-settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            settingType: 'creator',
-            creatorName: creator.name,
-            baseRate: creator.rate,
-            commissionRate: creator.commissionRate || 0,
-            commissionType: creator.commissionType || 'percentage'
-          })
-        });
-      }
-    }
-    
-    showSuccess('Payment settings saved successfully');
-    paymentSettingsLoaded.value = true;
-  } catch (error) {
-    console.error('Failed to save payment settings:', error);
-    showError('Failed to save payment settings');
-  } finally {
-    isSavingSettings.value = false;
-  }
-};
+// Note: savePaymentSettings is provided by usePayments composable
 
 const exportPaymentHistory = () => {
   const headers = ['Date', 'Creator', 'Videos', 'Amount', 'Status', 'Method', 'Notes'];
@@ -2438,53 +1909,16 @@ const updateHistoryCreatorOptions = () => {
   ];
 };
 
-// Invoice Management Methods
+// Note: Invoice loading is handled by useInvoices composable via loadInvoices
+// Local wrapper for refreshing
 const fetchInvoices = async () => {
-  isLoadingInvoices.value = true;
-  try {
-    const params = new URLSearchParams();
-    if (invoiceStatusFilter.value !== 'all') params.append('status', invoiceStatusFilter.value);
-    if (invoiceCreatorFilter.value !== 'all') params.append('creator', invoiceCreatorFilter.value);
-    if (invoiceDateFrom.value) params.append('dateFrom', invoiceDateFrom.value);
-    if (invoiceDateTo.value) params.append('dateTo', invoiceDateTo.value);
-    
-    const response = await fetch(`/api/sparks/invoices?${params}`, {
-      credentials: 'include'
-    });
-    const data = await response.json();
-    
-    if (data.success) {
-      invoices.value = data.invoices;
-      
-      // Update creator options
-      const creators = new Set();
-      data.invoices.forEach(inv => creators.add(inv.creator_name));
-      invoiceCreatorOptions.value = [
-        { title: 'All Creators', value: 'all' },
-        ...Array.from(creators).map(c => ({ title: c, value: c }))
-      ];
-    }
-  } catch (error) {
-    console.error('Failed to fetch invoices:', error);
-    showError('Failed to load invoices');
-  } finally {
-    isLoadingInvoices.value = false;
-  }
+  await loadInvoices();
 };
 
-const refreshInvoices = () => {
-  fetchInvoices();
+const refreshInvoices = async () => {
+  await loadInvoices();
 };
 
-const getInvoiceStatusColor = (status) => {
-  const colors = {
-    pending: 'warning',
-    paid: 'success',
-    voided: 'error',
-    overdue: 'error'
-  };
-  return colors[status] || 'grey';
-};
 
 const openInvoiceGenerator = async () => {
   // Get current unpaid sparks grouped by creator
@@ -2581,7 +2015,8 @@ const viewInvoice = (invoice) => {
   window.open(`/api/sparks/invoices/${invoice.id}/pdf`, '_blank');
 };
 
-const downloadInvoice = async (invoice) => {
+// Local implementation of downloadInvoice (uses jsPDF for client-side generation)
+const downloadInvoiceLocal = async (invoice) => {
   // Generate and download invoice as PDF
   try {
     // Parse line items
@@ -2727,34 +2162,9 @@ const downloadInvoice = async (invoice) => {
   }
 };
 
-const markInvoicePaid = async (invoice) => {
-  try {
-    const response = await fetch(`/api/sparks/invoices/${invoice.id}/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        status: 'paid',
-        paymentData: {
-          paymentMethod: 'Manual',
-          paymentDate: new Date().toISOString().split('T')[0],
-          verifiedBy: user.value?.email
-        }
-      })
-    });
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      showSuccess('Invoice marked as paid');
-      await fetchInvoices();
-    } else {
-      showError('Failed to update invoice status');
-    }
-  } catch (error) {
-    console.error('Failed to mark invoice as paid:', error);
-    showError('Failed to update invoice status');
-  }
+// Wrapper for markInvoicePaid from composable
+const markInvoicePaidLocal = async (invoice) => {
+  await markInvoicePaid(invoice);
 };
 
 const editInvoice = (invoice) => {
@@ -2763,109 +2173,19 @@ const editInvoice = (invoice) => {
   showInfo('Invoice editing will be available soon');
 };
 
-const voidInvoice = async (invoice) => {
+// Wrapper for voidInvoice from composable with confirmation
+const voidInvoiceLocal = async (invoice) => {
   if (!confirm(`Are you sure you want to void invoice ${invoice.invoice_number}?`)) {
     return;
   }
-  
-  try {
-    const response = await fetch(`/api/sparks/invoices/${invoice.id}/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ status: 'voided' })
-    });
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      showSuccess('Invoice voided successfully');
-      await fetchInvoices();
-    } else {
-      showError('Failed to void invoice');
-    }
-  } catch (error) {
-    console.error('Failed to void invoice:', error);
-    showError('Failed to void invoice');
-  }
+  await voidInvoice(invoice);
 };
 
 const openInvoiceSettings = () => {
-  // Open settings modal
-  // This would open a modal to configure invoice settings
   showInfo('Invoice settings will be available soon');
 };
 
-// Load initial payment history from completed sparks
-const loadPaymentHistory = () => {
-  // Group completed sparks by creator and approximate payment date
-  const completedByCreator = new Map();
-  
-  sparks.value
-    .filter(spark => spark.creator && spark.status === 'completed')
-    .forEach(spark => {
-      const key = `${spark.creator}_${spark.updated_at?.split('T')[0] || spark.created_at?.split('T')[0]}`;
-      if (!completedByCreator.has(key)) {
-        completedByCreator.set(key, {
-          creator: spark.creator,
-          date: spark.updated_at || spark.created_at,
-          videos: []
-        });
-      }
-      completedByCreator.get(key).videos.push(spark);
-    });
-  
-  // Create payment records from grouped data
-  const historyRecords = Array.from(completedByCreator.values()).map(group => {
-    const customCreator = creators.value.find(c => c.name === group.creator);
-    const rate = customCreator?.rate || defaultRate.value;
-    
-    return {
-      id: `payment_${group.creator}_${group.date}`,
-      creator: group.creator,
-      paymentDate: group.date,
-      amount: (group.videos.length * rate).toFixed(2),
-      videoCount: group.videos.length,
-      status: 'paid',
-      paymentMethod: 'Manual',
-      notes: `Historical payment record`,
-      videos: group.videos.map(v => ({
-        id: v.id,
-        name: v.name,
-        spark_code: v.spark_code
-      }))
-    };
-  });
-  
-  paymentHistory.value = historyRecords.sort((a, b) => 
-    new Date(b.paymentDate) - new Date(a.paymentDate)
-  );
-};
-
 // Helper functions
-const showSuccess = (message) => {
-  snackbarText.value = message;
-  snackbarColor.value = 'success';
-  showSnackbar.value = true;
-};
-
-const showError = (message) => {
-  snackbarText.value = message;
-  snackbarColor.value = 'error';
-  showSnackbar.value = true;
-};
-
-const showInfo = (message) => {
-  snackbarText.value = message;
-  snackbarColor.value = 'info';
-  showSnackbar.value = true;
-};
-
-const showWarning = (message) => {
-  snackbarText.value = message;
-  snackbarColor.value = 'warning';
-  showSnackbar.value = true;
-};
 
 // Handle batch update success
 const handleBatchUpdateSuccess = (data) => {
@@ -2897,18 +2217,20 @@ const startBulkEdit = () => {
   bulkEditValues.value = {};
 
   // Store current thumbnail state and disable thumbnails
-  originalShowThumbnails = showThumbnails.value;
-  showThumbnails.value = false;
+  originalShowThumbnails = sparksShowThumbnails.value;
+  sparksShowThumbnails.value = false;
 
   // Initialize bulk edit values with current values
+  const newBulkEditValues = {};
   filteredSparks.value.forEach(spark => {
-    bulkEditValues.value[`${spark.id}-name`] = spark.name;
-    bulkEditValues.value[`${spark.id}-type`] = spark.type;
-    bulkEditValues.value[`${spark.id}-status`] = spark.status;
-    bulkEditValues.value[`${spark.id}-creator`] = spark.creator;
-    bulkEditValues.value[`${spark.id}-spark_code`] = spark.spark_code;
-    bulkEditValues.value[`${spark.id}-tiktok_link`] = spark.tiktok_link;
+    newBulkEditValues[`${spark.id}-name`] = spark.name;
+    newBulkEditValues[`${spark.id}-type`] = spark.type;
+    newBulkEditValues[`${spark.id}-status`] = spark.status;
+    newBulkEditValues[`${spark.id}-creator`] = spark.creator;
+    newBulkEditValues[`${spark.id}-spark_code`] = spark.spark_code;
+    newBulkEditValues[`${spark.id}-tiktok_link`] = spark.tiktok_link;
   });
+  bulkEditValues.value = newBulkEditValues;
 };
 
 const cancelBulkEdit = () => {
@@ -2917,7 +2239,7 @@ const cancelBulkEdit = () => {
 
   // Restore original thumbnail state
   if (originalShowThumbnails !== null) {
-    showThumbnails.value = originalShowThumbnails;
+    sparksShowThumbnails.value = originalShowThumbnails;
     originalShowThumbnails = null;
   }
 };
@@ -3388,6 +2710,7 @@ onMounted(async () => {
     fetchOfferTemplates()
   ]);
   await fetchSparks();
+  syncCreatorsFromVAs();
 
   // Load payment settings from backend
   await loadPaymentSettings();

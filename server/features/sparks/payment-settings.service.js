@@ -77,6 +77,12 @@ export async function initializePaymentTables(db) {
     return true;
   } catch (error) {
     console.error('Payment tables initialization error:', error);
+    try {
+      const { logError } = await import('../../shared/utils/logError.js');
+      await logError({ DASHBOARD_DB: db }, error, 'payment-settings', { action: 'initializePaymentTables' });
+    } catch (logErr) {
+      console.error('Failed to log error:', logErr);
+    }
     return false;
   }
 }
@@ -96,6 +102,12 @@ export async function getPaymentSettings(db, userId, teamId) {
     return result.results || [];
   } catch (error) {
     console.error('Error getting payment settings:', error);
+    try {
+      const { logError } = await import('../../shared/utils/logError.js');
+      await logError({ DASHBOARD_DB: db }, error, 'payment-settings', { action: 'getPaymentSettings', userId, teamId });
+    } catch (logErr) {
+      console.error('Failed to log error:', logErr);
+    }
     return [];
   }
 }
@@ -116,7 +128,7 @@ export async function savePaymentSettings(db, settings) {
     } = settings;
 
     const id = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Use REPLACE INTO to handle both insert and update
     await db.prepare(`
       REPLACE INTO payment_settings (
@@ -125,10 +137,10 @@ export async function savePaymentSettings(db, settings) {
         is_active, updated_at
       ) VALUES (
         COALESCE((
-          SELECT id FROM payment_settings 
-          WHERE user_id = ? AND 
-                ${teamId ? 'team_id = ?' : 'team_id IS NULL'} AND 
-                setting_type = ? AND 
+          SELECT id FROM payment_settings
+          WHERE user_id = ? AND
+                ${teamId ? 'team_id = ?' : 'team_id IS NULL'} AND
+                setting_type = ? AND
                 ${creatorName ? 'creator_name = ?' : 'creator_name IS NULL'}
         ), ?),
         ?, ?, ?, ?,
@@ -142,9 +154,9 @@ export async function savePaymentSettings(db, settings) {
       ...(creatorName ? [creatorName] : []),
       id,
       userId,
-      teamId,
+      teamId || null,
       settingType,
-      creatorName,
+      creatorName || null,
       baseRate,
       commissionRate || 0,
       commissionType || 'percentage'
@@ -153,6 +165,15 @@ export async function savePaymentSettings(db, settings) {
     return { success: true, id };
   } catch (error) {
     console.error('Error saving payment settings:', error);
+    console.log('>>> ATTEMPTING TO LOG ERROR TO DATABASE <<<');
+    try {
+      const { logError } = await import('../../shared/utils/logError.js');
+      console.log('>>> logError imported, calling it now <<<');
+      await logError({ DASHBOARD_DB: db }, error, 'payment-settings', { action: 'savePaymentSettings', userId: settings.userId, teamId: settings.teamId });
+      console.log('>>> ERROR LOGGED SUCCESSFULLY <<<');
+    } catch (logErr) {
+      console.error('Failed to log error:', logErr);
+    }
     return { success: false, error: error.message };
   }
 }
@@ -211,6 +232,12 @@ export async function recordPayment(db, paymentData) {
     return { success: true, id };
   } catch (error) {
     console.error('Error recording payment:', error);
+    try {
+      const { logError } = await import('../../shared/utils/logError.js');
+      await logError({ DASHBOARD_DB: db }, error, 'payment-settings', { action: 'recordPayment', userId: paymentData.userId, teamId: paymentData.teamId });
+    } catch (logErr) {
+      console.error('Failed to log error:', logErr);
+    }
     return { success: false, error: error.message };
   }
 }
@@ -254,6 +281,12 @@ export async function getPaymentHistory(db, userId, teamId, filters = {}) {
     return result.results || [];
   } catch (error) {
     console.error('Error getting payment history:', error);
+    try {
+      const { logError } = await import('../../shared/utils/logError.js');
+      await logError({ DASHBOARD_DB: db }, error, 'payment-settings', { action: 'getPaymentHistory', userId, teamId });
+    } catch (logErr) {
+      console.error('Failed to log error:', logErr);
+    }
     return [];
   }
 }
@@ -330,6 +363,12 @@ export async function handlePaymentSettings(request, env, userInfo) {
     });
   } catch (error) {
     console.error('Payment settings API error:', error);
+    try {
+      const { logError } = await import('../../shared/utils/logError.js');
+      await logError(env, error, 'payment-settings', { action: 'handlePaymentSettings', userId: userInfo.userId, teamId: userInfo.teamId, pathname });
+    } catch (logErr) {
+      console.error('Failed to log error:', logErr);
+    }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
