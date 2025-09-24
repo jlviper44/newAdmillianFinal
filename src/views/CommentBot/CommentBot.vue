@@ -61,6 +61,7 @@ const commentGroupDetail = ref(null);
 const editingCommentGroup = ref(null);
 const remainingCredits = ref(0);
 const user = ref(null);
+const jobQueueRef = ref(null);
 
 // UI state
 const showCreateGroupDialog = ref(false);
@@ -99,10 +100,17 @@ const fetchCommentGroups = async () => {
   }
 };
 
+const refreshAll = async () => {
+  await Promise.all([
+    fetchOrders(),
+    jobQueueRef.value?.refresh()
+  ]);
+};
+
 const fetchOrders = async () => {
   loading.value.orders = true;
   error.value.orders = null;
-  
+
   try {
     // Fetch orders with their saved progress from D1
     const data = await commentBotApi.getOrders();
@@ -396,10 +404,10 @@ const startPollingOrder = (orderId) => {
   if (pollingIntervals.value[orderId]) {
     clearInterval(pollingIntervals.value[orderId]);
   }
-  // Then poll every 10 seconds
+  // Then poll every 15 seconds
   pollingIntervals.value[orderId] = setInterval(() => {
     pollOrderStatus(orderId);
-  }, 20000);
+  }, 15000);
 };
 
 // Job polling functions for queue-based system
@@ -411,11 +419,11 @@ const startPollingJob = (jobId) => {
   
   // Poll immediately once
   pollJobStatus(jobId);
-  
-  // Then poll every 5 seconds for job status
+
+  // Then poll every 15 seconds for job status
   pollingIntervals.value[`job_${jobId}`] = setInterval(() => {
     pollJobStatus(jobId);
-  }, 5000);
+  }, 15000);
 };
 
 const pollJobStatus = async (jobId) => {
@@ -692,29 +700,18 @@ onUnmounted(() => {
                   </v-card>
 
                   <!-- Job Queue Section -->
-                  <JobQueue class="mb-6" />
+                  <JobQueue ref="jobQueueRef" class="mb-6" @refresh="fetchOrders" />
 
                   <!-- Active Orders Section -->
-                  <v-card class="elevation-1 rounded-lg">
-                    <v-card-title class="d-flex align-center pb-2">
-                      <v-icon icon="mdi-clock-outline" color="primary" class="mr-2"></v-icon>
-                      <span class="text-h6">Active Orders</span>
-                    </v-card-title>
-                    
-                    <v-divider></v-divider>
-                    
-                    <v-card-text class="pa-4">
-                      <ActiveOrders
-                        :orders="activeOrders"
-                        :order-progress="orderProgress"
-                        :loading="loading.orders"
-                        :error="error.orders"
-                        :has-edit-permission="true"
-                        @refresh="fetchOrders"
-                        @poll-status="startPollingOrder"
-                      />
-                    </v-card-text>
-                  </v-card>
+                  <ActiveOrders
+                    :orders="activeOrders"
+                    :order-progress="orderProgress"
+                    :loading="loading.orders"
+                    :error="error.orders"
+                    :has-edit-permission="true"
+                    @refresh="refreshAll"
+                    @poll-status="startPollingOrder"
+                  />
           </div>
           
           <!-- Credits Tab -->

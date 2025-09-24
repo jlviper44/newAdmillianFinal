@@ -184,18 +184,25 @@ watch(() => props.orders.length, () => {
 </script>
 
 <template>
-  <div>
-    <!-- Refresh Button (Mobile) -->
-    <div v-if="hasActiveOrders && $vuetify.display.smAndDown" class="d-flex justify-end mb-3">
+  <v-card class="elevation-1 rounded-lg">
+    <v-card-title class="d-flex align-center justify-space-between">
+      <div class="d-flex align-center">
+        <v-icon icon="mdi-clock-outline" color="primary" class="mr-2"></v-icon>
+        <span class="text-h6">Active Orders</span>
+      </div>
+
       <v-btn
-        icon="mdi-refresh"
+        icon
         variant="text"
         size="small"
         @click="emit('refresh')"
         :loading="props.loading"
-      ></v-btn>
-    </div>
+      >
+        <v-icon>mdi-refresh</v-icon>
+      </v-btn>
+    </v-card-title>
 
+    <v-card-text>
     <!-- Empty State -->
     <div v-if="!hasActiveOrders" class="text-center py-8">
       <v-icon size="x-large" color="grey-lighten-1" class="mb-2">mdi-emoticon-neutral-outline</v-icon>
@@ -204,7 +211,7 @@ watch(() => props.orders.length, () => {
     </div>
     
     <!-- Mobile Card Layout -->
-    <div v-else-if="$vuetify.display.smAndDown" class="mobile-orders">
+    <div v-if="hasActiveOrders && $vuetify.display.smAndDown" class="mobile-orders">
       <v-card 
         v-for="order in paginatedOrders" 
         :key="order.order_id"
@@ -308,23 +315,7 @@ watch(() => props.orders.length, () => {
     </div>
     
     <!-- Desktop Table Layout -->
-    <v-card v-else>
-      <v-card-title class="d-flex align-center justify-space-between">
-        <div class="d-flex align-center">
-          <v-icon icon="mdi-format-list-checks" color="primary" class="mr-2"></v-icon>
-          <span class="text-h6">Active Orders</span>
-        </div>
-
-        <v-btn
-          icon="mdi-refresh"
-          variant="text"
-          size="small"
-          @click="emit('refresh')"
-          :loading="props.loading"
-        ></v-btn>
-      </v-card-title>
-      
-      <v-card-text>
+    <div v-if="hasActiveOrders && !$vuetify.display.smAndDown">
         <v-table>
         <thead>
           <tr>
@@ -417,9 +408,9 @@ watch(() => props.orders.length, () => {
           rounded="circle"
         ></v-pagination>
       </div>
+    </div>
     </v-card-text>
-    </v-card>
-  </div>
+  </v-card>
 </template>
 
 <style scoped>

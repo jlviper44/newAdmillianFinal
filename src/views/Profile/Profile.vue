@@ -112,6 +112,98 @@
           </v-card>
         </v-col>
 
+        <!-- Virtual Assistant Section -->
+        <v-col v-if="isVirtualAssistant || isAssistingUser" cols="12">
+          <v-card :class="$vuetify.display.smAndDown ? 'ma-1' : ''" density="compact" class="va-card">
+            <v-card-title :class="$vuetify.display.smAndDown ? 'text-body-1 pa-3' : 'd-flex align-center pa-3'">
+              <v-icon class="mr-2" :size="$vuetify.display.smAndDown ? 'small' : 'small'" color="primary">mdi-account-supervisor</v-icon>
+              <span :class="$vuetify.display.smAndDown ? 'text-body-1' : 'text-h6'">Virtual Assistant Access</span>
+            </v-card-title>
+            <v-card-text :class="$vuetify.display.smAndDown ? 'pa-3' : 'pa-3'">
+              <!-- Currently Assisting -->
+              <div v-if="isAssistingUser" class="assisting-banner">
+                <v-alert
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-3"
+                >
+                  <template v-slot:prepend>
+                    <v-icon>mdi-account-eye</v-icon>
+                  </template>
+                  <div class="d-flex align-center justify-space-between flex-wrap">
+                    <div>
+                      <div class="font-weight-bold">Currently Assisting</div>
+                      <div class="text-caption">{{ user.assistingFor || user.email || `User #${user.id}` }}</div>
+                    </div>
+                    <v-btn
+                      color="warning"
+                      variant="outlined"
+                      size="small"
+                      prepend-icon="mdi-close-circle"
+                      @click="exitVirtualAssistantMode"
+                      :class="$vuetify.display.smAndDown ? 'mt-2' : ''"
+                    >
+                      Stop Assisting
+                    </v-btn>
+                  </div>
+                </v-alert>
+              </div>
+
+              <!-- VA Account List -->
+              <div v-else>
+                <div class="d-flex align-center justify-space-between mb-3">
+                  <div>
+                    <div class="text-subtitle-2 font-weight-medium">Client Accounts</div>
+                    <div class="text-caption text-grey">Switch to any account you assist</div>
+                  </div>
+                  <v-chip color="primary" size="small" variant="flat">
+                    {{ virtualAssistantAccounts.length }} account{{ virtualAssistantAccounts.length !== 1 ? 's' : '' }}
+                  </v-chip>
+                </div>
+
+                <v-list v-if="virtualAssistantAccounts.length > 0" density="compact" class="va-account-list">
+                  <v-list-item
+                    v-for="account in virtualAssistantAccounts"
+                    :key="account.user_id"
+                    @click="switchToAccount(account)"
+                    :disabled="account.status !== 'active'"
+                    class="va-account-item"
+                  >
+                    <template v-slot:prepend>
+                      <v-icon :color="account.status === 'active' ? 'success' : 'grey'">
+                        {{ account.status === 'active' ? 'mdi-account-check' : 'mdi-account-clock' }}
+                      </v-icon>
+                    </template>
+                    <v-list-item-title class="font-weight-medium">
+                      {{ account.name || account.email || `User #${account.user_id}` }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      <div v-if="account.email" class="text-caption">{{ account.email }}</div>
+                      <div class="d-flex align-center mt-1 gap-2">
+                        <v-chip
+                          :color="account.status === 'active' ? 'success' : 'error'"
+                          size="x-small"
+                          variant="flat"
+                        >
+                          {{ account.status === 'active' ? 'Active' : 'Expired' }}
+                        </v-chip>
+                        <span class="text-caption text-grey">Expires: {{ new Date(account.expires_at).toLocaleDateString() }}</span>
+                      </div>
+                    </v-list-item-subtitle>
+                    <template v-slot:append v-if="account.status === 'active'">
+                      <v-icon size="small">mdi-chevron-right</v-icon>
+                    </template>
+                  </v-list-item>
+                </v-list>
+
+                <v-alert v-else type="info" variant="tonal" density="compact">
+                  You are not currently a virtual assistant for any accounts.
+                </v-alert>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
 
       </v-row>
 
@@ -431,10 +523,11 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
+import { usersApi } from '@/services/api';
 import AuthGuard from '@/components/AuthGuard.vue';
 
 const router = useRouter();
-const { user, subscriptions, signOut, checkAccess } = useAuth();
+const { user, subscriptions, signOut, checkAccess, isVirtualAssistant, virtualAssistantAccounts, isAssistingUser } = useAuth();
 
 const signOutDialog = ref(false);
 
@@ -514,11 +607,33 @@ const openCheckout = (type) => {
   }
 };
 
+// Switch to account
+const switchToAccount = async (account) => {
+  try {
+    await usersApi.startVirtualAssistantMode(account.user_id);
+    window.location.reload();
+  } catch (error) {
+    console.error('Failed to switch to virtual assistant mode:', error);
+    alert('Failed to switch to virtual assistant mode. Please try again.');
+  }
+};
+
+// Exit VA mode
+const exitVirtualAssistantMode = async () => {
+  try {
+    await usersApi.endVirtualAssistantMode();
+    window.location.reload();
+  } catch (error) {
+    console.error('Failed to exit virtual assistant mode:', error);
+    alert('Failed to exit virtual assistant mode. Please try again.');
+  }
+};
+
 // Fetch data on mount
 onMounted(async () => {
   // Refresh access check to get latest subscription data
   await checkAccess();
-  
+
 });
 </script>
 
@@ -703,5 +818,46 @@ onMounted(async () => {
     cursor: pointer !important;
     pointer-events: auto !important;
   }
+}
+
+/* VA Card Styling */
+.va-card {
+  border: 2px solid rgb(var(--v-theme-primary));
+  background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.03) 0%, rgba(var(--v-theme-primary), 0.08) 100%);
+}
+
+.va-account-list {
+  background: transparent !important;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.va-account-list::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.va-account-item {
+  background-color: rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.v-theme--dark .va-account-item {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.va-account-item:hover:not(.v-list-item--disabled) {
+  background-color: rgba(var(--v-theme-primary), 0.1);
+  transform: translateX(4px);
+}
+
+.va-account-item.v-list-item--disabled {
+  opacity: 0.5;
+}
+
+.gap-2 {
+  gap: 8px;
 }
 </style>

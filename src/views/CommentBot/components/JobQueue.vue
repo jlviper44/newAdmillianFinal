@@ -2,6 +2,8 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { commentBotApi } from '@/services/api';
 
+const emit = defineEmits(['refresh']);
+
 // State
 const jobs = ref([]);
 const queueStats = ref(null);
@@ -64,12 +66,13 @@ const fetchQueueStats = async () => {
 const refresh = async () => {
   loading.value = true;
   error.value = null;
-  
+
   try {
     await Promise.all([
       fetchJobs(),
       fetchQueueStats()
     ]);
+    emit('refresh');
   } catch (err) {
     error.value = err.message || 'Failed to fetch queue data';
   } finally {
@@ -135,8 +138,8 @@ const formatTime = (seconds) => {
 onMounted(async () => {
   refresh();
   
-  // Poll every 5 seconds
-  pollingInterval.value = setInterval(refresh, 5000);
+  // Poll every 15 seconds
+  pollingInterval.value = setInterval(refresh, 15000);
 });
 
 // Cleanup
@@ -144,6 +147,10 @@ onUnmounted(() => {
   if (pollingInterval.value) {
     clearInterval(pollingInterval.value);
   }
+});
+
+defineExpose({
+  refresh
 });
 </script>
 
@@ -156,12 +163,14 @@ onUnmounted(() => {
       </div>
       
       <v-btn
-        icon="mdi-refresh"
+        icon
         variant="text"
         size="small"
         @click="refresh"
         :loading="loading"
-      ></v-btn>
+      >
+        <v-icon>mdi-refresh</v-icon>
+      </v-btn>
     </v-card-title>
     
     <v-card-text>
@@ -256,15 +265,15 @@ onUnmounted(() => {
         </v-list-item>
       </v-list>
       
-      <!-- Empty State -->
-      <div v-else-if="!loading" class="text-center py-4">
-        <v-icon size="48" color="grey">mdi-inbox</v-icon>
-        <div class="text-grey mt-2">No jobs in queue</div>
-      </div>
-      
-      <!-- Loading State -->
-      <div v-if="loading && jobs.length === 0" class="text-center py-4">
-        <v-progress-circular indeterminate></v-progress-circular>
+      <!-- Empty/Loading State -->
+      <div v-else class="text-center py-8" style="min-height: 140px; display: flex; align-items: center; justify-content: center;">
+        <div v-if="loading">
+          <v-progress-circular indeterminate></v-progress-circular>
+        </div>
+        <div v-else>
+          <v-icon size="48" color="grey">mdi-inbox</v-icon>
+          <div class="text-grey mt-2">No jobs in queue</div>
+        </div>
       </div>
     </v-card-text>
   </v-card>
