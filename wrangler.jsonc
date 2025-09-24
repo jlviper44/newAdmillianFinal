@@ -4,6 +4,9 @@
   "account_id": "8868b34a10c0236d2dea39a05ff01a01",
   "compatibility_date": "2025-04-07",
   "main": "server/index.js",
+  "dev": {
+    "port": 8787
+  },
   "assets": {
     "not_found_handling": "single-page-application",
     "directory": "dist/client"

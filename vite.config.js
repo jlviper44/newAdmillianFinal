@@ -15,6 +15,7 @@ export default defineConfig({
 		vueDevTools(),
 		cloudflare(),
 	],
+	assetsInclude: ['**/*.sql'],
 	resolve: {
 		alias: {
 			'@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -28,6 +29,11 @@ export default defineConfig({
 		proxy: {
 			'/api': {
 				target: 'http://localhost:8787', // Cloudflare Worker dev server
+				changeOrigin: true,
+				rewrite: (path) => path
+			},
+			'/l': {
+				target: 'http://localhost:8787', // Proxy short links to Worker
 				changeOrigin: true,
 				rewrite: (path) => path
 			}
