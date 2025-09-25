@@ -8,6 +8,38 @@ export function usePayments() {
   const paymentSettingsLoaded = ref(false);
   const isSavingSettings = ref(false);
 
+  // Store for custom creator rates
+  const customCreatorRates = ref(new Map());
+
+  // Load payment settings from localStorage
+  const loadPaymentSettings = () => {
+    try {
+      const saved = localStorage.getItem('va_payment_settings');
+      if (saved) {
+        const settings = JSON.parse(saved);
+        defaultRate.value = settings.default_rate || 1;
+        defaultCommissionRate.value = settings.commission_rate || 0;
+        defaultCommissionType.value = settings.commission_type || 'percentage';
+
+        // Load custom creator rates
+        if (settings.custom_rates) {
+          customCreatorRates.value = new Map(Object.entries(settings.custom_rates));
+        }
+
+        console.log('Payment settings loaded:', settings);
+      }
+      paymentSettingsLoaded.value = true;
+    } catch (error) {
+      console.error('Error loading payment settings:', error);
+      paymentSettingsLoaded.value = true;
+    }
+  };
+
+  // Load settings on initialization
+  if (!paymentSettingsLoaded.value) {
+    loadPaymentSettings();
+  }
+
   const paymentHistory = ref([]);
   const isLoadingHistory = ref(false);
   const historyDateFrom = ref('');
@@ -156,12 +188,13 @@ export function usePayments() {
     sparks.forEach(spark => {
       if (spark.creator && spark.creator.trim() !== '') {
         if (!creatorsMap.has(spark.creator)) {
+          const customRates = customCreatorRates.value.get(spark.creator);
           creatorsMap.set(spark.creator, {
             id: spark.creator,
             name: spark.creator,
-            rate: spark.custom_rate || defaultRate.value,
-            commissionRate: defaultCommissionRate.value,
-            commissionType: defaultCommissionType.value
+            rate: customRates?.rate || defaultRate.value,
+            commissionRate: customRates?.commissionRate || defaultCommissionRate.value,
+            commissionType: customRates?.commissionType || defaultCommissionType.value
           });
         }
       }
@@ -170,31 +203,36 @@ export function usePayments() {
     return Array.from(creatorsMap.values());
   }
 
-  async function loadPaymentSettings() {
-    try {
-      // TODO: Implement backend endpoint
-      // const response = await sparksApi.getPaymentSettings();
-      paymentSettingsLoaded.value = true;
-    } catch (error) {
-      console.error('Error loading payment settings:', error);
-      throw error;
-    }
+  // Function to update custom creator rate
+  function updateCreatorRate(creatorName, rate, commissionRate, commissionType) {
+    customCreatorRates.value.set(creatorName, {
+      rate: parseFloat(rate) || defaultRate.value,
+      commissionRate: parseFloat(commissionRate) || defaultCommissionRate.value,
+      commissionType: commissionType || defaultCommissionType.value
+    });
   }
+
 
   async function savePaymentSettings() {
     try {
       isSavingSettings.value = true;
-      // TODO: Implement backend endpoint
-      // const response = await sparksApi.savePaymentSettings({
-      //   default_rate: defaultRate.value,
-      //   commission_rate: defaultCommissionRate.value,
-      //   commission_type: defaultCommissionType.value
-      // });
-      console.log('Payment settings saved:', {
-        defaultRate: defaultRate.value,
-        defaultCommissionRate: defaultCommissionRate.value,
-        defaultCommissionType: defaultCommissionType.value
-      });
+
+      // Save to localStorage for now (will be replaced with API call later)
+      const settings = {
+        default_rate: defaultRate.value,
+        commission_rate: defaultCommissionRate.value,
+        commission_type: defaultCommissionType.value,
+        custom_rates: Object.fromEntries(customCreatorRates.value),
+        saved_at: new Date().toISOString()
+      };
+
+      localStorage.setItem('va_payment_settings', JSON.stringify(settings));
+
+      console.log('Payment settings saved:', settings);
+
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       return { success: true };
     } catch (error) {
       console.error('Error saving payment settings:', error);
@@ -337,6 +375,7 @@ export function usePayments() {
     defaultCommissionType,
     paymentSettingsLoaded,
     isSavingSettings,
+    customCreatorRates,
     paymentHistory,
     isLoadingHistory,
     historyDateFrom,
@@ -355,6 +394,7 @@ export function usePayments() {
     getUnpaidSparks,
     getActiveCreators,
     getCreatorsWithRates,
+    updateCreatorRate,
     loadPaymentSettings,
     savePaymentSettings,
     loadPaymentHistory,
