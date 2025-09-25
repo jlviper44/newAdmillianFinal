@@ -805,19 +805,19 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { sparksApi, templatesApi, usersApi, commentBotApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
-import { useSparks } from './composables/useSparks';
-import { usePayments } from './composables/usePayments';
-import { useInvoices } from './composables/useInvoices';
-import { useSparkUtils } from './composables/useSparkUtils';
-import { useSparkForms } from './composables/useSparkForms';
-import { useBulkOperations } from './composables/useBulkOperations';
+import { useSparks } from './components/sparks/composables/useSparks';
+import { usePayments } from './payments/composables/usePayments';
+import { useInvoices } from './invoices/composables/useInvoices';
+import { useSparkUtils } from './components/sparks/composables/useSparkUtils';
+import { useSparkForms } from './components/sparks/composables/useSparkForms';
+import { useBulkOperations } from './components/sparks/composables/useBulkOperations';
 import jsPDF from 'jspdf';
 
 // Import tab components
-import SparksTab from './components/SparksTab.vue';
-import PaymentsTab from './components/PaymentsTab.vue';
-import PaymentHistoryTab from './components/PaymentHistoryTab.vue';
-import InvoicesTab from './components/InvoicesTab.vue';
+import SparksTab from './components/sparks/SparksTab.vue';
+import PaymentsTab from './payments/PaymentsTab.vue';
+import PaymentHistoryTab from './payment-history/PaymentHistoryTab.vue';
+import InvoicesTab from './invoices/InvoicesTab.vue';
 
 // Get auth state
 const { user, isAssistingUser } = useAuth();
