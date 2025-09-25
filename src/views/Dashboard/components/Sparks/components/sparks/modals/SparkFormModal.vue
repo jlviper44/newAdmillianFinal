@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="modelValue" max-width="700">
+  <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="700">
     <v-card>
       <v-card-title>
         {{ editingSparkData ? 'Edit Spark' : 'Create Spark' }}

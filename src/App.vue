@@ -548,6 +548,13 @@ onUnmounted(() => {
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
+              v-if="canViewSparks"
+              @click="navigateToAndClose('/dashboard?tab=newsparks')"
+              prepend-icon="mdi-star-plus"
+              title="New Sparks (Reference)"
+              class="mobile-popup-item"
+            ></v-list-item>
+            <v-list-item
               v-if="canViewTemplates"
               @click="navigateToAndClose('/dashboard?tab=templates')"
               prepend-icon="mdi-file-document-multiple"
@@ -887,6 +894,16 @@ onUnmounted(() => {
             prepend-icon="mdi-lightning-bolt"
             title="Sparks"
             :active="isTabActive('/dashboard', 'sparks')"
+            class="ml-2"
+            rounded="lg"
+          ></v-list-item>
+
+          <v-list-item
+            v-if="canViewSparks"
+            to="/dashboard?tab=newsparks"
+            prepend-icon="mdi-star-plus"
+            title="New Sparks (Reference)"
+            :active="isTabActive('/dashboard', 'newsparks')"
             class="ml-2"
             rounded="lg"
           ></v-list-item>

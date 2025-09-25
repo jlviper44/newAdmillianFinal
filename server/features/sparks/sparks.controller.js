@@ -120,17 +120,16 @@ async function initializeSparksTable(db) {
           team_id TEXT,
           name TEXT NOT NULL,
           creator TEXT DEFAULT '',
-          type TEXT DEFAULT 'auto',
           tiktok_link TEXT NOT NULL,
           spark_code TEXT NOT NULL,
           offer TEXT NOT NULL,
-          offer_name TEXT,
           thumbnail TEXT,
           status TEXT DEFAULT 'active',
-          payment_status TEXT DEFAULT 'unpaid',
-          bot_status TEXT DEFAULT 'not_botted',
-          bot_post_id TEXT,
           traffic INTEGER DEFAULT 0,
+          content_type TEXT DEFAULT 'video',
+          bot_status TEXT DEFAULT NULL,
+          bot_post_id TEXT DEFAULT NULL,
+          comment_bot_order_id TEXT DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -154,13 +153,9 @@ async function initializeSparksTable(db) {
       CREATE INDEX IF NOT EXISTS idx_sparks_user_id ON sparks(user_id)
     `).run();
 
-    // Add indexes for bot-related columns
+    // Add index for bot_status column
     await db.prepare(`
       CREATE INDEX IF NOT EXISTS idx_sparks_bot_status ON sparks(bot_status)
-    `).run();
-
-    await db.prepare(`
-      CREATE INDEX IF NOT EXISTS idx_sparks_bot_post_id ON sparks(bot_post_id)
     `).run();
 
     // Add user_id, team_id, creator, and type columns if they don't exist (for existing tables)
@@ -170,34 +165,34 @@ async function initializeSparksTable(db) {
       const hasUserIdColumn = tableInfo.results.some(col => col.name === 'user_id');
       const hasTeamIdColumn = tableInfo.results.some(col => col.name === 'team_id');
       const hasCreatorColumn = tableInfo.results.some(col => col.name === 'creator');
-      const hasTypeColumn = tableInfo.results.some(col => col.name === 'type');
-      
+      const hasContentTypeColumn = tableInfo.results.some(col => col.name === 'content_type');
+
       if (!hasUserIdColumn) {
         console.log('Adding user_id column to existing sparks table...');
         await db.prepare(`ALTER TABLE sparks ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
         console.log('Added user_id column to sparks table');
-        
+
         // Update existing rows to have a default user_id
         await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
         console.log('Updated existing sparks with default user_id');
       }
-      
+
       if (!hasTeamIdColumn) {
         console.log('Adding team_id column to existing sparks table...');
         await db.prepare(`ALTER TABLE sparks ADD COLUMN team_id TEXT`).run();
         console.log('Added team_id column to sparks table');
       }
-      
+
       if (!hasCreatorColumn) {
         console.log('Adding creator column to existing sparks table...');
         await db.prepare(`ALTER TABLE sparks ADD COLUMN creator TEXT DEFAULT ''`).run();
         console.log('Added creator column to sparks table');
       }
-      
-      if (!hasTypeColumn) {
-        console.log('Adding type column to existing sparks table...');
-        await db.prepare(`ALTER TABLE sparks ADD COLUMN type TEXT DEFAULT 'auto'`).run();
-        console.log('Added type column to sparks table');
+
+      if (!hasContentTypeColumn) {
+        console.log('Adding content_type column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN content_type TEXT DEFAULT 'video'`).run();
+        console.log('Added content_type column to sparks table');
       }
 
     } catch (error) {
@@ -205,38 +200,34 @@ async function initializeSparksTable(db) {
       // Continue execution as this might not be critical
     }
 
-    // IMPORTANT: Always check for bot-related and payment columns (outside the try-catch to ensure it runs)
+    // Check for bot_status column (we already have this from our migration)
     try {
       const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
       const columns = tableInfo.results || [];
 
       const hasBotStatusColumn = columns.some(c => c.name === 'bot_status');
       const hasBotPostIdColumn = columns.some(c => c.name === 'bot_post_id');
-      const hasPaymentStatusColumn = columns.some(c => c.name === 'payment_status');
 
       if (!hasBotStatusColumn) {
         console.log('Adding bot_status column to existing sparks table...');
-        await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_status TEXT DEFAULT 'not_botted'`).run();
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_status TEXT DEFAULT NULL`).run();
         console.log('Added bot_status column to sparks table');
       }
 
       if (!hasBotPostIdColumn) {
         console.log('Adding bot_post_id column to existing sparks table...');
-        await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_post_id TEXT`).run();
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_post_id TEXT DEFAULT NULL`).run();
         console.log('Added bot_post_id column to sparks table');
       }
 
-      if (!hasPaymentStatusColumn) {
-        console.log('Adding payment_status column to existing sparks table...');
-        await db.prepare(`ALTER TABLE sparks ADD COLUMN payment_status TEXT DEFAULT 'unpaid'`).run();
-        console.log('Added payment_status column to sparks table');
-
-        // Update existing rows to have unpaid status
-        await db.prepare(`UPDATE sparks SET payment_status = 'unpaid' WHERE payment_status IS NULL`).run();
-        console.log('Updated existing sparks with default payment_status');
+      const hasCommentBotOrderIdColumn = columns.some(c => c.name === 'comment_bot_order_id');
+      if (!hasCommentBotOrderIdColumn) {
+        console.log('Adding comment_bot_order_id column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN comment_bot_order_id TEXT DEFAULT NULL`).run();
+        console.log('Added comment_bot_order_id column to sparks table');
       }
     } catch (error) {
-      console.error('Error adding bot/payment columns:', error);
+      console.error('Error adding bot columns:', error);
       // Log but continue - the app can still function without these columns
     }
 
@@ -887,7 +878,7 @@ async function listSparks(request, db, corsHeaders, env) {
     
     // Apply search filter
     if (search) {
-      query += ' AND (name LIKE ? OR spark_code LIKE ? OR offer_name LIKE ?)';
+      query += ' AND (name LIKE ? OR spark_code LIKE ? OR offer LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     
@@ -1172,27 +1163,29 @@ async function createSpark(request, db, corsHeaders, env) {
       // Update old thumbnail URLs
       thumbnail = `/api/sparks${thumbnail}`;
     }
-    
+
+    // Auto-detect content type from TikTok URL
+    const contentType = detectTikTokContentType(sparkData.tiktokLink);
+
     // Insert into database
     await db.prepare(`
       INSERT INTO sparks
-      (id, user_id, team_id, name, creator, type, tiktok_link, spark_code, offer, offer_name, thumbnail, status, payment_status, traffic)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, team_id, name, creator, tiktok_link, spark_code, offer, thumbnail, status, traffic, content_type, bot_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
       userId,
       teamId,
       sparkData.name,
       sparkData.creator || '',  // Empty string for "None"
-      sparkData.type || 'auto',
       sparkData.tiktokLink,
       sparkData.sparkCode,
       sparkData.offer || '',
-      offerName,
       thumbnail,
       status,
-      sparkData.payment_status || 'unpaid',
-      0
+      0,
+      contentType,
+      null // bot_status defaults to null
     ).run();
     
     // Fetch the created spark
@@ -1242,7 +1235,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     console.log('User ID:', userId, 'Team ID:', teamId);
 
     const sparkData = await request.json();
-    console.log('Request data:', JSON.stringify(sparkData));
+    console.log('🔥 UPDATED SERVER CODE 🔥 Request data:', JSON.stringify(sparkData));
 
     // Check if user has access to the spark
     const existingSpark = await checkSparkAccess(db, env, sparkId, userId, teamId);
@@ -1311,9 +1304,6 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     }
 
 
-    // Handle offer name update - use provided offerName or keep existing
-    let offerName = sparkData.offerName || existingSpark.offer_name || '';
-    
     // Handle thumbnail update
     let thumbnail = sparkData.thumbnail || existingSpark.thumbnail;
     if (finalTiktokLink !== existingSpark.tiktok_link) {
@@ -1325,62 +1315,39 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
       }
     }
 
-    // Update the spark - ensure no undefined values
-    // Check if bot columns exist in the existing spark data
-    const hasBotColumns = existingSpark.bot_status !== undefined || existingSpark.bot_post_id !== undefined;
-
-    let updateQuery;
-    let updateParams;
-
-    if (hasBotColumns) {
-      // Include bot columns in the update
-      const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : (existingSpark.bot_status || 'not_botted');
-      const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : (existingSpark.bot_post_id || null);
-      const paymentStatus = sparkData.payment_status !== undefined ? sparkData.payment_status : (existingSpark.payment_status || 'unpaid');
-
-      updateQuery = `
-        UPDATE sparks
-        SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
-            offer_name = ?, thumbnail = ?, status = ?, payment_status = ?, bot_status = ?, bot_post_id = ?
-        WHERE id = ?
-      `;
-      updateParams = [
-        finalName,
-        sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),
-        sparkData.type || existingSpark.type || 'auto',
-        finalTiktokLink,
-        finalSparkCode,
-        offerName || existingSpark.offer_name || '',
-        thumbnail || existingSpark.thumbnail || '',
-        sparkData.status || existingSpark.status || 'Pending',
-        paymentStatus,
-        botStatus,
-        botPostId,
-        sparkId
-      ];
-    } else {
-      // Skip bot columns if they don't exist
-      const paymentStatus = sparkData.payment_status !== undefined ? sparkData.payment_status : (existingSpark.payment_status || 'unpaid');
-
-      updateQuery = `
-        UPDATE sparks
-        SET name = ?, creator = ?, type = ?, tiktok_link = ?, spark_code = ?,
-            offer_name = ?, thumbnail = ?, status = ?, payment_status = ?
-        WHERE id = ?
-      `;
-      updateParams = [
-        finalName,
-        sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),
-        sparkData.type || existingSpark.type || 'auto',
-        finalTiktokLink,
-        finalSparkCode,
-        offerName || existingSpark.offer_name || '',
-        thumbnail || existingSpark.thumbnail || '',
-        sparkData.status || existingSpark.status || 'Pending',
-        paymentStatus,
-        sparkId
-      ];
+    // Auto-detect content type if TikTok link changed
+    let contentType = existingSpark.content_type;
+    if (finalTiktokLink !== existingSpark.tiktok_link) {
+      contentType = detectTikTokContentType(finalTiktokLink);
     }
+
+    // Update the spark - ensure no undefined values
+    const botStatus = sparkData.bot_status !== undefined ? sparkData.bot_status : existingSpark.bot_status;
+    const botPostId = sparkData.bot_post_id !== undefined ? sparkData.bot_post_id : existingSpark.bot_post_id;
+    const commentBotOrderId = sparkData.comment_bot_order_id !== undefined ? sparkData.comment_bot_order_id : existingSpark.comment_bot_order_id;
+
+    console.log('Bot fields being saved:', { bot_status: botStatus, bot_post_id: botPostId, comment_bot_order_id: commentBotOrderId });
+
+    const updateQuery = `
+      UPDATE sparks
+      SET name = ?, creator = ?, tiktok_link = ?, spark_code = ?,
+          offer = ?, thumbnail = ?, status = ?, content_type = ?, bot_status = ?, bot_post_id = ?, comment_bot_order_id = ?
+      WHERE id = ?
+    `;
+    const updateParams = [
+      finalName,
+      sparkData.creator !== undefined ? sparkData.creator : (existingSpark.creator || ''),
+      finalTiktokLink,
+      finalSparkCode,
+      sparkData.offer || existingSpark.offer || '',
+      thumbnail || existingSpark.thumbnail || '',
+      sparkData.status || existingSpark.status || 'active',
+      contentType,
+      botStatus,
+      botPostId,
+      commentBotOrderId,
+      sparkId
+    ];
 
     console.log('Executing update query:', updateQuery);
     console.log('With params:', updateParams);
@@ -1736,7 +1703,7 @@ async function clearThumbnailCache(request, db, corsHeaders) {
 }
 
 /**
- * Helper function to extract TikTok content ID and type from URL
+ * Helper function to extract TikTok content ID from URL
  */
 function extractTikTokVideoId(url) {
   try {
@@ -1745,7 +1712,7 @@ function extractTikTokVideoId(url) {
     // Photo: https://www.tiktok.com/@username/photo/1234567890123456789
     // Short: https://vm.tiktok.com/XXXXXXXXX/
     // Mobile: https://m.tiktok.com/v/1234567890123456789
-    
+
     // Check for video URLs
     const videoPatterns = [
       /tiktok\.com\/@[\w.-]+\/video\/(\d+)/,
@@ -1753,25 +1720,58 @@ function extractTikTokVideoId(url) {
       /vm\.tiktok\.com\/(\w+)/,
       /m\.tiktok\.com\/v\/(\d+)/
     ];
-    
+
     for (const pattern of videoPatterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
         return match[1];
       }
     }
-    
+
     // Check for photo URLs - treat them the same as videos for ID extraction
     const photoPattern = /tiktok\.com\/@[\w.-]+\/photo\/(\d+)/;
     const photoMatch = url.match(photoPattern);
     if (photoMatch && photoMatch[1]) {
       return photoMatch[1];
     }
-    
+
     return null;
   } catch (error) {
     console.error('Error extracting TikTok content ID:', error);
     return null;
+  }
+}
+
+/**
+ * Helper function to detect TikTok content type from URL
+ */
+function detectTikTokContentType(url) {
+  try {
+    // Check for photo URLs (slideshows)
+    const photoPattern = /tiktok\.com\/@[\w.-]+\/photo\/(\d+)/;
+    if (photoPattern.test(url)) {
+      return 'slideshow';
+    }
+
+    // All other TikTok URLs are considered videos
+    const videoPatterns = [
+      /tiktok\.com\/@[\w.-]+\/video\/(\d+)/,
+      /tiktok\.com\/v\/(\d+)/,
+      /vm\.tiktok\.com\/(\w+)/,
+      /m\.tiktok\.com\/v\/(\d+)/
+    ];
+
+    for (const pattern of videoPatterns) {
+      if (pattern.test(url)) {
+        return 'video';
+      }
+    }
+
+    // Default to video if we can't determine
+    return 'video';
+  } catch (error) {
+    console.error('Error detecting TikTok content type:', error);
+    return 'video'; // Default to video on error
   }
 }
 

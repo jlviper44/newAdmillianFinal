@@ -868,7 +868,7 @@ const fetchVirtualAssistants = async () => {
 // Initialize data
 onMounted(async () => {
   try {
-    console.log('SparksTab mounted, fetching data...');
+    console.log('NewSparksTab mounted, fetching data...');
 
     // Fetch VAs and templates first, then sparks
     await Promise.all([

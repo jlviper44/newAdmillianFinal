@@ -62,6 +62,121 @@
       return-object
       :row-props="getRowProps"
     >
+      <!-- Created Date Column -->
+      <template v-slot:item.created_at="{ item }">
+        {{ formatDate(item.created_at) }}
+      </template>
+
+      <!-- Thumbnail Column -->
+      <template v-slot:item.thumbnail="{ item }">
+        <div class="thumbnail-container my-2">
+          <v-img
+            :src="item.thumbnail || defaultThumbnail"
+            :alt="item.name"
+            width="100"
+            height="100"
+            cover
+            class="rounded cursor-pointer"
+            @click="$emit('showLargePreview', item)"
+            @error="$emit('handleImageError', $event)"
+          />
+        </div>
+      </template>
+
+      <!-- TikTok Link Column -->
+      <template v-slot:item.tiktok_link="{ item }">
+        <v-btn
+          v-if="item.tiktok_link"
+          :href="item.tiktok_link"
+          target="_blank"
+          variant="outlined"
+          size="small"
+          color="primary"
+          prepend-icon="mdi-video"
+          class="text-none"
+        >
+          View Video
+        </v-btn>
+        <span v-else class="text-grey">No link</span>
+      </template>
+
+      <!-- Content Type Column (editable) -->
+      <template v-slot:item.content_type="{ item }">
+        <div
+          v-if="!isBulkEditMode"
+          @dblclick="$emit('startInlineEdit', item, 'content_type')"
+          class="editable-cell"
+          :title="'Double-click to edit'"
+        >
+          <v-text-field
+            v-if="isEditing(item.id, 'content_type')"
+            :model-value="editingValues[`${item.id}-content_type`]"
+            @update:model-value="updateEditingValue(`${item.id}-content_type`, $event)"
+            density="compact"
+            variant="outlined"
+            hide-details
+            clearable
+            autofocus
+            @blur="$emit('saveInlineEdit', item, 'content_type')"
+            @keyup.enter="$emit('saveInlineEdit', item, 'content_type')"
+            @keyup.esc="$emit('cancelInlineEdit', item.id, 'content_type')"
+          />
+          <v-chip
+            v-else
+            size="small"
+            :color="getContentTypeColor(item.content_type)"
+            variant="flat"
+          >
+            {{ item.content_type || 'Unknown' }}
+          </v-chip>
+        </div>
+        <v-text-field
+          v-else
+          :model-value="bulkEditValues[`${item.id}-content_type`]"
+          @update:model-value="updateBulkEditValue(`${item.id}-content_type`, $event)"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          class="bulk-edit-input"
+        />
+      </template>
+
+      <!-- Spark Code Column (editable) -->
+      <template v-slot:item.spark_code="{ item }">
+        <div
+          v-if="!isBulkEditMode"
+          @dblclick="$emit('startInlineEdit', item, 'spark_code')"
+          class="editable-cell"
+          :title="'Double-click to edit'"
+        >
+          <v-text-field
+            v-if="isEditing(item.id, 'spark_code')"
+            :model-value="editingValues[`${item.id}-spark_code`]"
+            @update:model-value="updateEditingValue(`${item.id}-spark_code`, $event)"
+            density="compact"
+            variant="outlined"
+            hide-details
+            single-line
+            autofocus
+            @blur="$emit('saveInlineEdit', item, 'spark_code')"
+            @keyup.enter="$emit('saveInlineEdit', item, 'spark_code')"
+            @keyup.esc="$emit('cancelInlineEdit', item.id, 'spark_code')"
+          />
+          <span v-else class="font-family-monospace">{{ item.spark_code || '-' }}</span>
+        </div>
+        <v-text-field
+          v-else
+          :model-value="bulkEditValues[`${item.id}-spark_code`]"
+          @update:model-value="updateBulkEditValue(`${item.id}-spark_code`, $event)"
+          density="compact"
+          variant="outlined"
+          hide-details
+          single-line
+          class="bulk-edit-input"
+        />
+      </template>
+
       <!-- Name Column (editable) -->
       <template v-slot:item.name="{ item }">
         <div
@@ -231,11 +346,6 @@
         />
       </template>
 
-      <!-- Created Date Column -->
-      <template v-slot:item.created_at="{ item }">
-        {{ formatDate(item.created_at) }}
-      </template>
-
       <!-- Actions Column -->
       <template v-slot:item.actions="{ item }">
         <v-btn
@@ -256,22 +366,6 @@
         >
           <v-icon>mdi-delete</v-icon>
         </v-btn>
-      </template>
-
-      <!-- Thumbnail Column -->
-      <template v-slot:item.thumbnail="{ item }">
-        <div class="thumbnail-container my-2">
-          <v-img
-            :src="item.thumbnail || defaultThumbnail"
-            :alt="item.name"
-            width="150"
-            height="150"
-            cover
-            class="rounded cursor-pointer"
-            @click="$emit('showLargePreview', item)"
-            @error="$emit('handleImageError', $event)"
-          />
-        </div>
       </template>
 
     </v-data-table>
@@ -427,6 +521,19 @@ const getStatusLabel = (status) => {
   }
 };
 
+const getContentTypeColor = (contentType) => {
+  switch (contentType?.toLowerCase()) {
+    case 'video': return 'purple';
+    case 'image': return 'blue';
+    case 'text': return 'green';
+    case 'carousel': return 'orange';
+    case 'story': return 'pink';
+    case 'reel': return 'red';
+    case 'live': return 'error';
+    default: return 'grey';
+  }
+};
+
 const formatDate = (date) => {
   if (!date) return '-';
   return new Date(date).toLocaleDateString();
@@ -545,5 +652,11 @@ const formatDate = (date) => {
 .duplicate-row :deep(*) {
   color: inherit !important;
   opacity: 1 !important;
+}
+
+/* Monospace font for spark codes */
+.font-family-monospace {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
 }
 </style>

@@ -68,15 +68,18 @@ export function usePayments() {
       if (!byCreator[creator]) {
         byCreator[creator] = {
           creator,
-          unpaidSparks: [],
-          unpaidCount: 0,
-          unpaidAmount: 0
+          videos: [],
+          rate: spark.custom_rate || defaultRate.value,
+          commissionRate: defaultCommissionRate.value,
+          commissionType: defaultCommissionType.value,
+          baseAmount: 0,
+          commissionAmount: 0,
+          total: 0
         };
       }
 
-      if (spark.payment_status !== 'paid') {
-        byCreator[creator].unpaidSparks.push(spark);
-        byCreator[creator].unpaidCount++;
+      if (!spark.payment_status || spark.payment_status !== 'paid') {
+        byCreator[creator].videos.push(spark);
 
         const sparkRate = spark.custom_rate || defaultRate.value;
         const baseAmount = sparkRate;
@@ -88,16 +91,19 @@ export function usePayments() {
           commissionAmount = defaultCommissionRate.value;
         }
 
-        byCreator[creator].unpaidAmount += baseAmount + commissionAmount;
+        byCreator[creator].baseAmount += baseAmount;
+        byCreator[creator].commissionAmount += commissionAmount;
+        byCreator[creator].total += baseAmount + commissionAmount;
       }
     });
 
-    return byCreator;
+    // Return as array, filtering out empty creators
+    return Object.values(byCreator).filter(creator => creator.videos.length > 0);
   }
 
   function getTotalOwed(sparks) {
     return sparks
-      .filter(s => s.payment_status !== 'paid')
+      .filter(s => !s.payment_status || s.payment_status !== 'paid')
       .reduce((sum, spark) => {
         const sparkRate = spark.custom_rate || defaultRate.value;
         const baseAmount = sparkRate;
@@ -110,7 +116,7 @@ export function usePayments() {
         }
 
         return sum + baseAmount + commissionAmount;
-      }, 0);
+      }, 0).toFixed(2);
   }
 
   function getTotalPaid(sparks) {
@@ -128,20 +134,40 @@ export function usePayments() {
         }
 
         return sum + baseAmount + commissionAmount;
-      }, 0);
+      }, 0).toFixed(2);
   }
 
   function getUnpaidSparks(sparks) {
-    return sparks.filter(s => s.payment_status !== 'paid');
+    return sparks.filter(s => !s.payment_status || s.payment_status !== 'paid').length;
   }
 
   function getActiveCreators(sparks) {
     const creators = new Set(
       sparks
-        .filter(s => s.payment_status !== 'paid' && s.creator)
+        .filter(s => (!s.payment_status || s.payment_status !== 'paid') && s.creator)
         .map(s => s.creator)
     );
     return creators.size;
+  }
+
+  function getCreatorsWithRates(sparks) {
+    const creatorsMap = new Map();
+
+    sparks.forEach(spark => {
+      if (spark.creator && spark.creator.trim() !== '') {
+        if (!creatorsMap.has(spark.creator)) {
+          creatorsMap.set(spark.creator, {
+            id: spark.creator,
+            name: spark.creator,
+            rate: spark.custom_rate || defaultRate.value,
+            commissionRate: defaultCommissionRate.value,
+            commissionType: defaultCommissionType.value
+          });
+        }
+      }
+    });
+
+    return Array.from(creatorsMap.values());
   }
 
   async function loadPaymentSettings() {
@@ -164,6 +190,11 @@ export function usePayments() {
       //   commission_rate: defaultCommissionRate.value,
       //   commission_type: defaultCommissionType.value
       // });
+      console.log('Payment settings saved:', {
+        defaultRate: defaultRate.value,
+        defaultCommissionRate: defaultCommissionRate.value,
+        defaultCommissionType: defaultCommissionType.value
+      });
       return { success: true };
     } catch (error) {
       console.error('Error saving payment settings:', error);
@@ -187,15 +218,33 @@ export function usePayments() {
     }
   }
 
-  async function recordPayment(paymentData) {
+  async function markCreatorPaid(creator, sparks, customAmount = null) {
     try {
-      // TODO: Implement backend endpoint
-      // const response = await sparksApi.recordPayment(paymentData);
+      // Find all unpaid sparks for this creator
+      const unpaidSparks = sparks.filter(spark =>
+        spark.creator === creator &&
+        (!spark.payment_status || spark.payment_status !== 'paid')
+      );
+
+      if (unpaidSparks.length === 0) {
+        throw new Error('No unpaid sparks found for this creator');
+      }
+
+      // TODO: Implement backend endpoint to mark sparks as paid
+      // For now, we'll just log the action
+      console.log(`Marking ${unpaidSparks.length} sparks as paid for creator: ${creator}`, {
+        customAmount,
+        sparkIds: unpaidSparks.map(s => s.id)
+      });
+
       lastPaymentAction.value = {
         type: 'payment',
-        data: paymentData,
+        creator,
+        sparkIds: unpaidSparks.map(s => s.id),
+        amount: customAmount,
         timestamp: Date.now()
       };
+
       showUndoButton.value = true;
 
       if (undoTimeoutId.value) {
@@ -207,10 +256,51 @@ export function usePayments() {
         lastPaymentAction.value = null;
       }, 10000);
 
-      await loadPaymentHistory();
       return { success: true };
     } catch (error) {
-      console.error('Error recording payment:', error);
+      console.error('Error marking creator as paid:', error);
+      throw error;
+    }
+  }
+
+  async function voidCreatorPayment(creator, sparks) {
+    try {
+      // Find all unpaid sparks for this creator
+      const unpaidSparks = sparks.filter(spark =>
+        spark.creator === creator &&
+        (!spark.payment_status || spark.payment_status !== 'paid')
+      );
+
+      if (unpaidSparks.length === 0) {
+        throw new Error('No unpaid sparks found for this creator');
+      }
+
+      // TODO: Implement backend endpoint to void payment
+      console.log(`Voiding payment for ${unpaidSparks.length} sparks for creator: ${creator}`, {
+        sparkIds: unpaidSparks.map(s => s.id)
+      });
+
+      lastPaymentAction.value = {
+        type: 'void',
+        creator,
+        sparkIds: unpaidSparks.map(s => s.id),
+        timestamp: Date.now()
+      };
+
+      showUndoButton.value = true;
+
+      if (undoTimeoutId.value) {
+        clearTimeout(undoTimeoutId.value);
+      }
+
+      undoTimeoutId.value = setTimeout(() => {
+        showUndoButton.value = false;
+        lastPaymentAction.value = null;
+      }, 10000);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error voiding creator payment:', error);
       throw error;
     }
   }
@@ -219,14 +309,15 @@ export function usePayments() {
     if (!lastPaymentAction.value) return;
 
     try {
-      // TODO: Implement backend endpoint
-      // const response = await sparksApi.undoPayment(lastPaymentAction.value.data);
+      // TODO: Implement backend endpoint to undo payment
+      console.log('Undoing payment for:', lastPaymentAction.value);
+
       showUndoButton.value = false;
       lastPaymentAction.value = null;
       if (undoTimeoutId.value) {
         clearTimeout(undoTimeoutId.value);
       }
-      await loadPaymentHistory();
+
       return { success: true };
     } catch (error) {
       console.error('Error undoing payment:', error);
@@ -263,10 +354,12 @@ export function usePayments() {
     getTotalPaid,
     getUnpaidSparks,
     getActiveCreators,
+    getCreatorsWithRates,
     loadPaymentSettings,
     savePaymentSettings,
     loadPaymentHistory,
-    recordPayment,
+    markCreatorPaid,
+    voidCreatorPayment,
     undoLastPayment,
     clearHistoryFilters
   };

@@ -52,7 +52,7 @@
             <v-btn
               color="primary"
               variant="elevated"
-              @click="openInvoiceGenerator"
+              @click="openInvoiceGeneratorLocal"
               prepend-icon="mdi-file-document-plus"
             >
               Create Invoice
@@ -169,7 +169,7 @@
               icon="mdi-download"
               size="small"
               variant="text"
-              @click="downloadInvoice(item)"
+              @click="downloadInvoiceLocal(item)"
               title="Download PDF"
             />
             <v-btn
@@ -178,7 +178,7 @@
               size="small"
               variant="text"
               color="success"
-              @click="markInvoicePaid(item)"
+              @click="markInvoicePaidLocal(item)"
               title="Mark as Paid"
             />
             <v-btn
@@ -186,7 +186,7 @@
               icon="mdi-pencil"
               size="small"
               variant="text"
-              @click="editInvoice(item)"
+              @click="editInvoiceLocal(item)"
               title="Edit Invoice"
             />
             <v-btn
@@ -195,7 +195,7 @@
               size="small"
               variant="text"
               color="error"
-              @click="voidInvoice(item)"
+              @click="voidInvoiceLocal(item)"
               title="Void Invoice"
             />
           </template>
@@ -206,42 +206,97 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue';
+import { useInvoices } from './composables/useInvoices';
+import { useSparkUtils } from '../sparks/composables/useSparkUtils';
+import { usePayments } from '../payments/composables/usePayments';
+import { useSparks } from '../sparks/composables/useSparks';
+import { useAuth } from '@/composables/useAuth';
 
-const props = defineProps({
-  invoiceStatusFilter: String,
-  invoiceCreatorFilter: String,
-  invoiceDateFrom: String,
-  invoiceDateTo: String,
-  invoiceStatusOptions: Array,
-  invoiceCreatorOptions: Array,
-  totalInvoices: Number,
-  totalInvoiced: [Number, String],
-  pendingInvoices: Number,
-  paidInvoices: [Number, String],
-  invoiceHeaders: Array,
-  invoices: Array,
-  isLoadingInvoices: Boolean
-});
+// Get auth state for creators data
+const { user } = useAuth();
 
+// Use composables directly
+const {
+  invoices,
+  isLoadingInvoices,
+  invoiceStatusFilter,
+  invoiceCreatorFilter,
+  invoiceDateFrom,
+  invoiceDateTo,
+  invoiceStatusOptions,
+  invoiceCreatorOptions,
+  filteredInvoices,
+  totalInvoices,
+  totalInvoiced,
+  pendingInvoices,
+  paidInvoices,
+  loadInvoices,
+  markInvoicePaid,
+  openInvoiceGenerator,
+  viewInvoice,
+  downloadInvoiceWithPDF,
+  editInvoice,
+  voidInvoiceWithConfirmation
+} = useInvoices();
+
+const { sparks } = useSparks();
+const { defaultRate, defaultCommissionRate, defaultCommissionType } = usePayments();
+const { showWarning, showSuccess, showError, showInfo } = useSparkUtils();
+
+// Props are no longer needed since we're using composables directly
+const props = defineProps({});
+
+// Define invoice headers locally
+const invoiceHeaders = [
+  { title: 'Invoice #', key: 'invoice_number', sortable: true },
+  { title: 'Creator', key: 'creator_name', sortable: true },
+  { title: 'Date', key: 'invoice_date', sortable: true },
+  { title: 'Due Date', key: 'due_date', sortable: true },
+  { title: 'Amount', key: 'total_amount', sortable: true },
+  { title: 'Status', key: 'status', sortable: true },
+  { title: 'Actions', key: 'actions', sortable: false }
+];
+
+// Only emit filter updates to parent if needed for synchronization
 const emit = defineEmits([
   'update:invoiceStatusFilter',
   'update:invoiceCreatorFilter',
   'update:invoiceDateFrom',
-  'update:invoiceDateTo',
-  'openInvoiceGenerator',
-  'openInvoiceSettings',
-  'refreshInvoices',
-  'viewInvoice',
-  'downloadInvoice',
-  'markInvoicePaid',
-  'editInvoice',
-  'voidInvoice'
+  'update:invoiceDateTo'
 ]);
 
-const openInvoiceGenerator = () => emit('openInvoiceGenerator');
-const openInvoiceSettings = () => emit('openInvoiceSettings');
-const refreshInvoices = () => emit('refreshInvoices');
+// Local functions that call composable functions directly
+const openInvoiceGeneratorLocal = async () => {
+  // Create mock creators array - this should ideally come from a separate composable
+  const creators = [];
+  await openInvoiceGenerator(sparks.value, defaultRate.value, defaultCommissionRate.value, defaultCommissionType.value, creators, showWarning, showSuccess, showError);
+};
+
+const refreshInvoices = async () => {
+  await loadInvoices();
+};
+
+const openInvoiceSettings = () => {
+  showInfo('Invoice settings will be available soon');
+};
+
+const downloadInvoiceLocal = async (invoice) => {
+  await downloadInvoiceWithPDF(invoice, showSuccess, showError);
+};
+
+const markInvoicePaidLocal = async (invoice) => {
+  await markInvoicePaid(invoice.id, {});
+};
+
+const editInvoiceLocal = (invoice) => {
+  editInvoice(invoice, showInfo);
+};
+
+const voidInvoiceLocal = async (invoice) => {
+  await voidInvoiceWithConfirmation(invoice);
+};
+
+// Utility functions
 const getInvoiceStatusColor = (status) => {
   switch (status) {
     case 'paid': return 'success';
@@ -251,13 +306,9 @@ const getInvoiceStatusColor = (status) => {
     default: return 'grey';
   }
 };
+
 const formatDate = (date) => {
   if (!date) return '-';
   return new Date(date).toLocaleDateString();
 };
-const viewInvoice = (item) => emit('viewInvoice', item);
-const downloadInvoice = (item) => emit('downloadInvoice', item);
-const markInvoicePaid = (item) => emit('markInvoicePaid', item);
-const editInvoice = (item) => emit('editInvoice', item);
-const voidInvoice = (item) => emit('voidInvoice', item);
 </script>

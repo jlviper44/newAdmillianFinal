@@ -62,6 +62,11 @@
           <div v-if="selectedTab === 'sparks' && canViewSparks">
             <SparksView />
           </div>
+
+          <!-- New Sparks Tab (Check permissions for VAs) -->
+          <div v-if="selectedTab === 'newsparks' && canViewSparks">
+            <NewSparksView />
+          </div>
           
           <!-- Templates Tab (Check permissions for VAs) -->
           <div v-if="selectedTab === 'templates' && canViewTemplates">
@@ -111,6 +116,7 @@ import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 import MetricsView from './components/Metrics/MetricsView.vue';
 import SparksView from './components/Sparks/SparksView.vue';
+import NewSparksView from './components/NewSparks/NewSparksView.vue';
 import TemplatesView from './components/Templates/TemplatesView.vue';
 import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
 import CampaignsView from './components/Campaigns/CampaignsView.vue';
@@ -130,6 +136,7 @@ const tabTitles = {
   campaigns: 'Campaigns',
   launches: 'Ad Launches',
   sparks: 'Sparks',
+  newsparks: 'New Sparks (Reference)',
   templates: 'Templates',
   shopify: 'Shopify Stores',
   logs: 'Logs',
@@ -192,12 +199,13 @@ const isAdmin = computed(() => {
 // Helper function to check if user has permission for a tab
 const hasTabPermission = (tab) => {
   if (!user.value?.isVirtualAssistant) return true;
-  
+
   switch(tab) {
     case 'metrics': return canViewMetrics.value;
     case 'campaigns': return canViewCampaigns.value;
     case 'launches': return canViewLaunches.value;
     case 'sparks': return canViewSparks.value;
+    case 'newsparks': return canViewSparks.value; // Same permission as sparks
     case 'templates': return canViewTemplates.value;
     case 'shopify': return canViewShopify.value;
     case 'logs': return canViewLogs.value;
@@ -224,7 +232,7 @@ const hasAnyTabPermission = computed(() => {
 
 // Find the first tab that the user has permission to view
 const getDefaultTab = () => {
-  const tabs = ['campaigns', 'launches', 'sparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
+  const tabs = ['campaigns', 'launches', 'sparks', 'newsparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
   for (const tab of tabs) {
     if (hasTabPermission(tab)) {
       return tab;

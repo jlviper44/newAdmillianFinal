@@ -33,16 +33,30 @@
           <v-row>
             <v-col cols="12" md="6">
               <v-text-field
-                v-model="form.type"
+                v-model="form.offer"
                 label="Offer"
                 variant="outlined"
                 density="compact"
                 clearable
                 hint="Enter an offer for these sparks"
                 persistent-hint
-                class="mb-4"
+                class="mb-2"
                 @update:model-value="updateBaseName"
               />
+              <div class="mb-4">
+                <v-chip-group>
+                  <v-chip
+                    v-for="offerType in offerTypes"
+                    :key="offerType"
+                    size="small"
+                    variant="outlined"
+                    @click="selectOfferType(offerType)"
+                    class="mr-1 mb-1"
+                  >
+                    {{ offerType }}
+                  </v-chip>
+                </v-chip-group>
+              </div>
             </v-col>
 
             <v-col cols="12" md="6">
@@ -307,7 +321,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
+import { useAuth } from '@/composables/useAuth';
 
 const props = defineProps({
   modelValue: Boolean,
@@ -329,6 +344,9 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'save']);
 
+// Get current user info
+const { user, isAssistingUser } = useAuth();
+
 const bulkAddFormRef = ref(null);
 
 const statusOptions = [
@@ -338,10 +356,29 @@ const statusOptions = [
   { title: 'Blocked', value: 'blocked' }
 ];
 
+const offerTypes = [
+  'Playful',
+  'Testerup',
+  'Shein',
+  'Cash',
+  'PayPal'
+];
+
+// Get default creator based on current user
+const defaultCreator = computed(() => {
+  if (isAssistingUser.value) {
+    // If user is a VA, use their email
+    return user.value?.email || '';
+  } else {
+    // If main user, use their email
+    return user.value?.email || '';
+  }
+});
+
 const form = ref({
   baseName: '',
-  type: '',
-  creator: '',
+  offer: 'Cash',
+  creator: defaultCreator.value,
   status: 'active',
   tiktokLinks: '',
   sparkCodes: '',
@@ -354,15 +391,38 @@ const form = ref({
 const preview = ref([]);
 const validationMessage = ref('');
 
-function generateDefaultName(creator, type) {
+// Watch for modal opening to set initial base name
+watch(() => props.modelValue, (newVal) => {
+  if (newVal) {
+    // Modal is opening, set creator and update base name
+    form.value.creator = defaultCreator.value;
+    updateBaseName();
+  }
+});
+
+// Watch for changes in default creator
+watch(defaultCreator, (newCreator) => {
+  form.value.creator = newCreator;
+  updateBaseName();
+});
+
+function generateDefaultName(creator, offer) {
   if (!creator) return '';
-  const creatorName = typeof creator === 'object' ? creator.title : creator;
-  const typeName = type || 'Auto';
-  return `${creatorName} - ${typeName}`;
+  const creatorName = (typeof creator === 'object' ? creator.title : creator).split('@')[0]; // Get part before @
+  const today = new Date();
+  const dateStr = `${String(today.getDate()).padStart(2, '0')}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getFullYear()).slice(2)}`; // DDMMYY format
+  const offerName = (offer || 'auto').toLowerCase().replace(/\s+/g, ''); // Remove spaces
+  return `${creatorName}-${dateStr}-${offerName}`;
 }
 
 function updateBaseName() {
-  form.value.baseName = generateDefaultName(form.value.creator, form.value.type);
+  form.value.baseName = generateDefaultName(form.value.creator, form.value.offer);
+}
+
+function selectOfferType(offerType) {
+  form.value.offer = offerType;
+  updateBaseName();
+  updatePreview();
 }
 
 function updatePreview() {
@@ -388,21 +448,33 @@ function updatePreview() {
   }
 
   validationMessage.value = '';
-  preview.value = links.map((link, index) => ({
-    name: form.value.baseName ? `${form.value.baseName}-${index + 1}` : `Spark ${index + 1}`,
-    tiktokLink: link,
-    sparkCode: codes[index],
-    type: form.value.type || 'auto',
-    creator: form.value.creator || '',
-    status: form.value.status
-  }));
+  preview.value = links.map((link, index) => {
+    // Generate name in format: {creator}-{date}-{offer} (no spaces)
+    const creatorName = (form.value.creator || '').split('@')[0]; // Get part before @
+    const today = new Date();
+    const dateStr = `${String(today.getDate()).padStart(2, '0')}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getFullYear()).slice(2)}`; // DDMMYY format
+    const offer = (form.value.offer || 'auto').toLowerCase().replace(/\s+/g, ''); // Remove spaces
+    const name = `${creatorName}-${dateStr}-${offer}`;
+
+    return {
+      name: name || `Spark ${index + 1}`,
+      tiktokLink: link || '',
+      sparkCode: codes[index] || '',
+      creator: form.value.creator || '',
+      status: form.value.status || 'active',
+      offer: form.value.offer || 'auto', // Use offer field only
+      thumbnail: '', // Ensure thumbnail field is present
+      paymentStatus: 'unpaid', // Ensure paymentStatus is present
+      traffic: '0' // Ensure traffic field is present
+    };
+  });
 }
 
 function close() {
   form.value = {
     baseName: '',
-    type: '',
-    creator: '',
+    offer: 'Cash',
+    creator: defaultCreator.value,
     status: 'active',
     tiktokLinks: '',
     sparkCodes: '',
