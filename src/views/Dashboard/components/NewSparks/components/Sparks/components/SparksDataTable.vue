@@ -11,7 +11,7 @@
         :headers="headers"
         :items="sparks"
         :loading="isLoading"
-        :items-per-page="itemsPerPage"
+        :items-per-page="50"
         class="sparks-table"
         density="compact"
       >
@@ -42,8 +42,7 @@
             target="_blank"
             class="text-primary text-decoration-none"
           >
-            <v-icon size="small" class="mr-1">mdi-open-in-new</v-icon>
-            View
+            <v-icon size="small">mdi-open-in-new</v-icon>
           </a>
           <span v-else class="text-grey">No link</span>
         </template>
@@ -61,7 +60,7 @@
 
         <!-- Spark Code Column -->
         <template v-slot:item.spark_code="{ item }">
-          <code class="text-caption">{{ item.spark_code }}</code>
+          <code class="text-caption" style="max-width: 150px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="item.spark_code">{{ item.spark_code }}</code>
         </template>
 
         <!-- Status Column -->
@@ -145,15 +144,15 @@ const defaultThumbnail = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdo
 // Table headers
 const headers = computed(() => {
   let baseHeaders = [
-    { title: 'Date', key: 'created_at', sortable: true, width: '100px' },
+    { title: 'Date', key: 'created_at', sortable: true, width: '80px' },
     { title: 'Preview', key: 'thumbnail', sortable: false, width: '120px' },
-    { title: 'Link', key: 'tiktok_link', sortable: false, width: '100px' },
-    { title: 'Type', key: 'content_type', sortable: true, width: '120px' },
-    { title: 'Spark Code', key: 'spark_code', sortable: true, width: '150px' },
-    { title: 'Status', key: 'status', sortable: true, width: '100px' },
-    { title: 'Bot Status', key: 'bot_status', sortable: true, width: '140px' },
-    { title: 'Offer', key: 'offer', sortable: true, width: '120px' },
-    { title: 'Creator', key: 'creator', sortable: true, width: '120px' },
+    { title: 'Link', key: 'tiktok_link', sortable: false, width: '50px' },
+    { title: 'Type', key: 'content_type', sortable: true, width: '80px' },
+    { title: 'Code', key: 'spark_code', sortable: true, width: '120px' },
+    { title: 'Status', key: 'status', sortable: true, width: '90px' },
+    { title: 'Bot', key: 'bot_status', sortable: true, width: '80px' },
+    { title: 'Offer', key: 'offer', sortable: true, width: '100px' },
+    { title: 'Creator', key: 'creator', sortable: true, width: '100px' },
     { title: 'Name', key: 'name', sortable: true }
   ];
 
@@ -219,7 +218,28 @@ const getBotStatusColor = (status) => {
 
 <style scoped>
 .sparks-table {
-  /* Custom table styling */
+  font-size: 0.75rem;
+}
+
+.sparks-table :deep(.v-data-table__td) {
+  padding: 6px 8px !important;
+  height: auto !important;
+}
+
+.sparks-table :deep(.v-data-table__th) {
+  padding: 8px 8px !important;
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+}
+
+.sparks-table :deep(.v-chip) {
+  font-size: 0.65rem !important;
+  height: 20px !important;
+  min-width: auto !important;
+}
+
+.sparks-table :deep(.text-caption) {
+  font-size: 0.65rem !important;
 }
 
 .thumbnail-container {

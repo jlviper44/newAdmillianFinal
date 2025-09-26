@@ -83,7 +83,7 @@
                   <v-col cols="8">
                     <v-select
                       v-model="batchUpdate.status"
-                      :items="['active', 'testing', 'blocked']"
+                      :items="['active', 'testing', 'untested', 'blocked']"
                       label="Status"
                       density="compact"
                       variant="outlined"
@@ -148,7 +148,7 @@
                     />
                     <div class="mt-1">
                       <v-btn
-                        v-for="offerType in ['CPI', 'Auto', 'Shein', 'Cash']"
+                        v-for="offerType in ['Playful', 'Testerup', 'Shein', 'Cash', 'PayPal']"
                         :key="offerType"
                         size="x-small"
                         variant="tonal"
