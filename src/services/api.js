@@ -248,7 +248,28 @@ export const sparksApi = {
   
   // Bot status operations
   updateBotStatus: (sparkIds, status) => api.put('/sparks/bulk-bot-status', { spark_ids: sparkIds, status }),
-  getBotStatus: (sparkIds) => api.post('/sparks/bot-status', { spark_ids: sparkIds })
+  getBotStatus: (sparkIds) => api.post('/sparks/bot-status', { spark_ids: sparkIds }),
+
+  // Payment status operations
+  updatePaymentStatus: (sparkIds, status) => api.put('/sparks/bulk-payment-status', { spark_ids: sparkIds, payment_status: status }),
+
+  // Payment settings operations
+  getPaymentSettings: () => api.get('/sparks/payment-settings'),
+  savePaymentSettings: (settings) => api.post('/sparks/payment-settings', settings),
+
+  // Payment history operations
+  getPaymentHistory: (filters = {}) => {
+    const queryParams = new URLSearchParams(filters).toString()
+    return api.get(`/sparks/payment-history${queryParams ? `?${queryParams}` : ''}`)
+  },
+  recordPayment: (paymentData) => api.post('/sparks/record-payment', paymentData),
+
+  // Weekly payment entry operations
+  getWeeklyPaymentEntries: () => api.get('/sparks/weekly-payment-entries'),
+  createWeeklyPaymentEntry: (entryData) => api.post('/sparks/weekly-payment-entries', entryData),
+  updateWeeklyPaymentEntryStatus: (entryId, status) => api.put(`/sparks/weekly-payment-entries/${entryId}/status`, { status }),
+  updateWeeklyPaymentEntryAmount: (entryId, amount) => api.put(`/sparks/weekly-payment-entries/${entryId}/amount`, { amount }),
+  updateWeeklyPaymentEntryPaymentMethod: (entryId, paymentMethod) => api.put(`/sparks/weekly-payment-entries/${entryId}/payment-method`, { payment_method: paymentMethod })
 }
 
 // Templates specific API methods

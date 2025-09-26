@@ -542,16 +542,9 @@ onUnmounted(() => {
             ></v-list-item>
             <v-list-item
               v-if="canViewSparks"
-              @click="navigateToAndClose('/dashboard?tab=sparks')"
-              prepend-icon="mdi-lightning-bolt"
-              title="Sparks"
-              class="mobile-popup-item"
-            ></v-list-item>
-            <v-list-item
-              v-if="canViewSparks"
               @click="navigateToAndClose('/dashboard?tab=newsparks')"
               prepend-icon="mdi-star-plus"
-              title="New Sparks (Reference)"
+              title="Sparks"
               class="mobile-popup-item"
             ></v-list-item>
             <v-list-item
@@ -888,21 +881,12 @@ onUnmounted(() => {
             rounded="lg"
           ></v-list-item>
           
-          <v-list-item
-            v-if="canViewSparks"
-            to="/dashboard?tab=sparks"
-            prepend-icon="mdi-lightning-bolt"
-            title="Sparks"
-            :active="isTabActive('/dashboard', 'sparks')"
-            class="ml-2"
-            rounded="lg"
-          ></v-list-item>
 
           <v-list-item
             v-if="canViewSparks"
             to="/dashboard?tab=newsparks"
             prepend-icon="mdi-star-plus"
-            title="New Sparks (Reference)"
+            title="Sparks"
             :active="isTabActive('/dashboard', 'newsparks')"
             class="ml-2"
             rounded="lg"

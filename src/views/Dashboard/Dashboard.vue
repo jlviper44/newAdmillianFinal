@@ -58,12 +58,8 @@
             <AdLaunchesView />
           </div>
           
-          <!-- Sparks Tab (Check permissions for VAs) -->
-          <div v-if="selectedTab === 'sparks' && canViewSparks">
-            <SparksView />
-          </div>
 
-          <!-- New Sparks Tab (Check permissions for VAs) -->
+          <!-- Sparks Tab (Check permissions for VAs) -->
           <div v-if="selectedTab === 'newsparks' && canViewSparks">
             <NewSparksView />
           </div>
@@ -115,7 +111,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 import MetricsView from './components/Metrics/MetricsView.vue';
-import SparksView from './components/Sparks/SparksView.vue';
 import NewSparksView from './components/NewSparks/NewSparksView.vue';
 import TemplatesView from './components/Templates/TemplatesView.vue';
 import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
@@ -135,8 +130,7 @@ const tabTitles = {
   metrics: 'Metrics',
   campaigns: 'Campaigns',
   launches: 'Ad Launches',
-  sparks: 'Sparks',
-  newsparks: 'New Sparks (Reference)',
+  newsparks: 'Sparks',
   templates: 'Templates',
   shopify: 'Shopify Stores',
   logs: 'Logs',
@@ -204,8 +198,7 @@ const hasTabPermission = (tab) => {
     case 'metrics': return canViewMetrics.value;
     case 'campaigns': return canViewCampaigns.value;
     case 'launches': return canViewLaunches.value;
-    case 'sparks': return canViewSparks.value;
-    case 'newsparks': return canViewSparks.value; // Same permission as sparks
+    case 'newsparks': return canViewSparks.value;
     case 'templates': return canViewTemplates.value;
     case 'shopify': return canViewShopify.value;
     case 'logs': return canViewLogs.value;
@@ -232,7 +225,7 @@ const hasAnyTabPermission = computed(() => {
 
 // Find the first tab that the user has permission to view
 const getDefaultTab = () => {
-  const tabs = ['campaigns', 'launches', 'sparks', 'newsparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
+  const tabs = ['campaigns', 'launches', 'newsparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
   for (const tab of tabs) {
     if (hasTabPermission(tab)) {
       return tab;
@@ -278,7 +271,6 @@ onMounted(async () => {
         metrics: user.value.vaPermissions?.dashboardMetrics,
         campaigns: user.value.vaPermissions?.dashboardCampaigns,
         launches: user.value.vaPermissions?.dashboardLaunches,
-        sparks: user.value.vaPermissions?.dashboardSparks,
         templates: user.value.vaPermissions?.dashboardTemplates,
         shopify: user.value.vaPermissions?.dashboardShopify,
         logs: user.value.vaPermissions?.dashboardLogs,

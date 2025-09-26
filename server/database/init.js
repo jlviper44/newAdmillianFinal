@@ -3,6 +3,7 @@ import bcgenSchema from './schemas/bcgen.sql?raw';
 import linkSplitterSchema from './schemas/link-splitter.sql?raw';
 import linkSplitterAnalyticsSchema from './schemas/link-splitter-analytics.sql?raw';
 import linkSplitterAdvancedAnalyticsSchema from './schemas/link-splitter-advanced-analytics-fixed.sql?raw';
+import paymentSettingsSchema from './schemas/payment-settings.sql?raw';
 
 const SCHEMAS = {
   USERS_DB: [
@@ -12,7 +13,8 @@ const SCHEMAS = {
     { name: 'bcgen', sql: bcgenSchema },
     { name: 'link-splitter', sql: linkSplitterSchema },
     { name: 'link-splitter-analytics', sql: linkSplitterAnalyticsSchema },
-    { name: 'link-splitter-advanced-analytics', sql: linkSplitterAdvancedAnalyticsSchema }
+    { name: 'link-splitter-advanced-analytics', sql: linkSplitterAdvancedAnalyticsSchema },
+    { name: 'payment-settings', sql: paymentSettingsSchema }
   ]
 };
 
@@ -54,4 +56,15 @@ export async function ensureTablesExist(env) {
   await initializeAuthTables(env);
 
   await initializeDatabaseSchemas(env);
+
+  // Initialize sparks table with migrations
+  if (env.DASHBOARD_DB) {
+    try {
+      const { initializeSparksTable } = await import('../features/sparks/sparks.controller.js');
+      await initializeSparksTable(env.DASHBOARD_DB);
+      console.log('Sparks table initialization completed in database init');
+    } catch (error) {
+      console.error('Failed to initialize sparks table in database init:', error);
+    }
+  }
 }

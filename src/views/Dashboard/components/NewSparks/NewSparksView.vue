@@ -5,8 +5,8 @@
     <v-tabs v-model="activeTab" class="mb-4">
       <v-tab value="sparks">Sparks</v-tab>
       <v-tab value="va-status">VA Status</v-tab>
-      <v-tab value="payments">Payments</v-tab>
-      <v-tab value="invoices">Invoices</v-tab>
+      <v-tab value="payments">Active Payments</v-tab>
+      <v-tab value="invoices">History and Invoices</v-tab>
     </v-tabs>
 
     <!-- Tab Content -->

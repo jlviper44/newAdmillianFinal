@@ -20,6 +20,7 @@
 		"chart.js": "^4.4.8",
 		"codemirror": "^6.0.1",
 		"geoip-lite": "^1.4.10",
+		"html2pdf.js": "^0.12.1",
 		"jspdf": "^3.0.2",
 		"node-cache": "^5.1.2",
 		"ua-parser-js": "^2.0.4",

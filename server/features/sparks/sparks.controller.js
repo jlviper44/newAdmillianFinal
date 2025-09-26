@@ -12,7 +12,7 @@ console.log('Sparks.js loaded - handleInvoiceManagement:', typeof handleInvoiceM
 /**
  * Initialize sparks table if it doesn't exist
  */
-async function initializeSparksTable(db) {
+export async function initializeSparksTable(db) {
   try {
     // Initialize thumbnail cache table
     await db.prepare(`
@@ -123,6 +123,7 @@ async function initializeSparksTable(db) {
           tiktok_link TEXT NOT NULL,
           spark_code TEXT NOT NULL,
           offer TEXT NOT NULL,
+          offer_name TEXT,
           thumbnail TEXT,
           status TEXT DEFAULT 'active',
           traffic INTEGER DEFAULT 0,
@@ -130,6 +131,8 @@ async function initializeSparksTable(db) {
           bot_status TEXT DEFAULT NULL,
           bot_post_id TEXT DEFAULT NULL,
           comment_bot_order_id TEXT DEFAULT NULL,
+          payment_status TEXT DEFAULT NULL,
+          type TEXT DEFAULT 'auto',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -153,10 +156,19 @@ async function initializeSparksTable(db) {
       CREATE INDEX IF NOT EXISTS idx_sparks_user_id ON sparks(user_id)
     `).run();
 
-    // Add index for bot_status column
-    await db.prepare(`
-      CREATE INDEX IF NOT EXISTS idx_sparks_bot_status ON sparks(bot_status)
-    `).run();
+    // Add index for bot_status column (only if the column exists)
+    try {
+      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
+      const hasBotStatusColumn = (tableInfo.results || []).some(col => col.name === 'bot_status');
+
+      if (hasBotStatusColumn) {
+        await db.prepare(`
+          CREATE INDEX IF NOT EXISTS idx_sparks_bot_status ON sparks(bot_status)
+        `).run();
+      }
+    } catch (indexError) {
+      console.log('Note: Could not create bot_status index, column may not exist yet');
+    }
 
     // Add user_id, team_id, creator, and type columns if they don't exist (for existing tables)
     try {
@@ -212,6 +224,16 @@ async function initializeSparksTable(db) {
         console.log('Adding bot_status column to existing sparks table...');
         await db.prepare(`ALTER TABLE sparks ADD COLUMN bot_status TEXT DEFAULT NULL`).run();
         console.log('Added bot_status column to sparks table');
+
+        // Create index for the newly added bot_status column
+        try {
+          await db.prepare(`
+            CREATE INDEX IF NOT EXISTS idx_sparks_bot_status ON sparks(bot_status)
+          `).run();
+          console.log('Created index for bot_status column');
+        } catch (indexError) {
+          console.error('Could not create bot_status index:', indexError);
+        }
       }
 
       if (!hasBotPostIdColumn) {
@@ -226,8 +248,31 @@ async function initializeSparksTable(db) {
         await db.prepare(`ALTER TABLE sparks ADD COLUMN comment_bot_order_id TEXT DEFAULT NULL`).run();
         console.log('Added comment_bot_order_id column to sparks table');
       }
+
+      const hasPaymentStatusColumn = columns.some(c => c.name === 'payment_status');
+      if (!hasPaymentStatusColumn) {
+        console.log('Adding payment_status column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN payment_status TEXT DEFAULT NULL`).run();
+        console.log('Added payment_status column to sparks table');
+      }
+
+      // Add offer_name column if missing (for compatibility with remote)
+      const hasOfferNameColumn = columns.some(c => c.name === 'offer_name');
+      if (!hasOfferNameColumn) {
+        console.log('Adding offer_name column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN offer_name TEXT`).run();
+        console.log('Added offer_name column to sparks table');
+      }
+
+      // Add type column if missing (for compatibility with remote)
+      const hasTypeColumn = columns.some(c => c.name === 'type');
+      if (!hasTypeColumn) {
+        console.log('Adding type column to existing sparks table...');
+        await db.prepare(`ALTER TABLE sparks ADD COLUMN type TEXT DEFAULT 'auto'`).run();
+        console.log('Added type column to sparks table');
+      }
     } catch (error) {
-      console.error('Error adding bot columns:', error);
+      console.error('Error adding columns:', error);
       // Log but continue - the app can still function without these columns
     }
 
@@ -396,7 +441,8 @@ export async function handleSparkData(request, env) {
   const path = url.pathname.replace('/api/sparks', '');
   const method = request.method;
   
-  console.log('Sparks API - Path:', path, 'Method:', method);
+  console.log('🔍 Sparks API - Path:', path, 'Method:', method);
+  console.log('🔍 Full URL:', request.url);
   
   // Handle CORS preflight requests
   if (method === 'OPTIONS') {
@@ -408,7 +454,7 @@ export async function handleSparkData(request, env) {
   
   try {
     // Payment Settings endpoints (check these first before generic patterns)
-    if (path.startsWith('/payment-settings') || path.startsWith('/payment-history') || path.startsWith('/record-payment')) {
+    if (path.startsWith('/payment-settings') || path.startsWith('/payment-history') || path.startsWith('/record-payment') || path.startsWith('/weekly-payment-entries')) {
       console.log('Handling payment settings endpoint');
       const userInfo = await getUserInfoFromSession(request, env);
       return await handlePaymentSettings(request, env, userInfo);
@@ -437,33 +483,39 @@ export async function handleSparkData(request, env) {
       return await getSpark(sparkId, request, db, corsHeaders, env);
     }
     
+    // Extract TikTok Thumbnail
+    if (path === '/extract-tiktok-thumbnail' && method === 'POST') {
+      return await extractTikTokThumbnail(request, corsHeaders);
+    }
+
+    // Bulk Payment Status Update (Must come before generic patterns)
+    if (path === '/bulk-payment-status' && method === 'PUT') {
+      console.log('🎯 BULK PAYMENT STATUS ROUTE MATCHED!');
+      return await bulkUpdatePaymentStatus(request, db, corsHeaders, env);
+    }
+
     // Update Spark
     if (path.match(/^\/[\w-]+$/) && method === 'PUT') {
       const sparkId = path.substring(1); // Remove leading slash
       return await updateSpark(sparkId, request, db, corsHeaders, env);
     }
-    
+
     // Delete Spark
     if (path.match(/^\/[\w-]+$/) && method === 'DELETE') {
       const sparkId = path.substring(1); // Remove leading slash
       return await deleteSpark(sparkId, request, db, corsHeaders, env);
     }
-    
+
     // Toggle Spark Status
     if (path.match(/^\/[\w-]+\/toggle-status$/) && method === 'PUT') {
       const sparkId = path.substring(1).split('/')[0]; // Extract ID from path
       return await toggleSparkStatus(sparkId, request, db, corsHeaders, env);
     }
-    
+
     // Get Spark Stats
     if (path.match(/^\/[\w-]+\/stats$/) && method === 'GET') {
       const sparkId = path.substring(1).split('/')[0]; // Extract ID from path
       return await getSparkStats(sparkId, request, db, corsHeaders, env);
-    }
-    
-    // Extract TikTok Thumbnail
-    if (path === '/extract-tiktok-thumbnail' && method === 'POST') {
-      return await extractTikTokThumbnail(request, corsHeaders);
     }
     
     // Proxy TikTok thumbnail
@@ -1780,4 +1832,120 @@ function detectTikTokContentType(url) {
  */
 function getFallbackThumbnail() {
   return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgdmlld0JveD0iMCAwIDQwMCA0MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIiBmaWxsPSIjMUYxRjFGIi8+CjxwYXRoIGQ9Ik0yMDAgMTUwTDI1MCAyMDBMMjAwIDI1MEwxNTAgMjAwWiIgZmlsbD0iI0VFMUQ1MiIvPgo8L3N2Zz4=';
+}
+
+/**
+ * Bulk update payment status for multiple sparks
+ */
+async function bulkUpdatePaymentStatus(request, db, corsHeaders, env) {
+  try {
+    console.log('Bulk payment status update request received');
+
+    // Get user_id and team_id from session
+    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    console.log('User ID:', userId, 'Team ID:', teamId);
+
+    const requestData = await request.json();
+    const { spark_ids, payment_status } = requestData;
+
+    console.log('Request data:', {
+      spark_ids,
+      payment_status,
+      count: spark_ids?.length
+    });
+
+    // Validate input
+    if (!Array.isArray(spark_ids) || spark_ids.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'spark_ids must be a non-empty array' }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        }
+      );
+    }
+
+    if (!payment_status) {
+      return new Response(
+        JSON.stringify({ error: 'payment_status is required' }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        }
+      );
+    }
+
+    // Validate payment_status value
+    const validStatuses = ['paid', 'unpaid', 'pending'];
+    if (!validStatuses.includes(payment_status)) {
+      return new Response(
+        JSON.stringify({ error: 'payment_status must be one of: ' + validStatuses.join(', ') }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        }
+      );
+    }
+
+    // Update payment status for all specified sparks
+    // Only update sparks that belong to the user or their team
+    const placeholders = spark_ids.map(() => '?').join(',');
+    const query = `
+      UPDATE sparks
+      SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id IN (${placeholders})
+        AND (user_id = ? OR team_id = ?)
+    `;
+
+    const params = [payment_status, ...spark_ids, userId, teamId];
+    const result = await db.prepare(query).bind(...params).run();
+
+    console.log('Bulk update result:', {
+      success: result.success,
+      changes: result.changes,
+      meta: result.meta
+    });
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Successfully updated payment status to "${payment_status}" for ${result.changes} spark(s)`,
+        updated_count: result.changes,
+        total_requested: spark_ids.length
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
+      }
+    );
+
+  } catch (error) {
+    console.error('Error in bulk payment status update:', error);
+
+    return new Response(
+      JSON.stringify({
+        error: 'Failed to update payment status',
+        message: error.message
+      }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
+      }
+    );
+  }
 }

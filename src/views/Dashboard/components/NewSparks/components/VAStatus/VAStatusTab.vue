@@ -75,15 +75,15 @@
       </v-col>
     </v-row>
 
-    <!-- Weekly Chart Component Placeholder -->
+    <!-- Weekly Chart Component - Shows ALL sparks for trends -->
     <WeeklyChart
-      :current-week-data="currentWeekData"
-      :previous-week-data="previousWeekData"
+      :current-week-data="currentWeekAllData"
+      :previous-week-data="previousWeekAllData"
       class="mb-4"
     />
 
     <!-- Payment Settings -->
-    <v-card class="mb-4">
+    <v-card class="mb-4" :loading="isLoadingSettings">
       <v-card-title>
         <span>Payment Settings</span>
         <v-spacer />
@@ -91,6 +91,7 @@
           color="primary"
           variant="elevated"
           :loading="isSavingSettings"
+          :disabled="isLoadingSettings"
           @click="handleSaveSettings"
           prepend-icon="mdi-content-save"
         >
@@ -99,7 +100,7 @@
       </v-card-title>
       <v-card-text>
         <v-row>
-          <v-col cols="12" md="4">
+          <v-col cols="12" md="3">
             <v-text-field
               v-model="defaultRate"
               label="Default Rate per Video"
@@ -109,7 +110,7 @@
               density="compact"
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col cols="12" md="3">
             <v-text-field
               v-model="defaultCommissionRate"
               label="Default Commission"
@@ -119,13 +120,23 @@
               density="compact"
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col cols="12" md="3">
             <v-select
               v-model="defaultCommissionType"
               label="Commission Type"
               :items="[{title: 'Percentage', value: 'percentage'}, {title: 'Fixed Amount', value: 'fixed'}]"
               variant="outlined"
               density="compact"
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="defaultPaymentMethod"
+              label="Default Payment Method"
+              :items="['Wise', 'Crypto', 'Wire', 'Zelle', 'Cash', 'PayPal', 'Other']"
+              variant="outlined"
+              density="compact"
+              placeholder="Select default payment method..."
             />
           </v-col>
         </v-row>
@@ -140,7 +151,7 @@
             <v-card variant="outlined" class="pa-3">
               <div class="font-weight-medium mb-2">{{ creator.name }}</div>
               <v-row>
-                <v-col cols="12" md="4">
+                <v-col cols="12" md="3">
                   <v-text-field
                     v-model="creator.rate"
                     label="Rate per Video"
@@ -151,7 +162,7 @@
                     hide-details
                   />
                 </v-col>
-                <v-col cols="12" md="4">
+                <v-col cols="12" md="3">
                   <v-text-field
                     v-model="creator.commissionRate"
                     label="Commission"
@@ -162,7 +173,7 @@
                     hide-details
                   />
                 </v-col>
-                <v-col cols="12" md="4">
+                <v-col cols="12" md="3">
                   <v-select
                     v-model="creator.commissionType"
                     label="Type"
@@ -170,6 +181,17 @@
                     variant="outlined"
                     density="compact"
                     hide-details
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-select
+                    v-model="creator.paymentMethod"
+                    label="Payment Method"
+                    :items="['Wise', 'Crypto', 'Wire', 'Zelle', 'Cash', 'PayPal', 'Other']"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    placeholder="Select method..."
                   />
                 </v-col>
               </v-row>
@@ -203,9 +225,23 @@
               <div>
                 <div class="font-weight-medium">{{ item.va_email }}</div>
                 <div class="text-caption text-grey">
-                  {{ item.sparks_created }} spark{{ item.sparks_created !== 1 ? 's' : '' }} created
+                  {{ item.sparks_created }} unpaid spark{{ item.sparks_created !== 1 ? 's' : '' }}
                 </div>
               </div>
+            </div>
+          </template>
+
+          <!-- Total Sparks Created Column -->
+          <template v-slot:item.total_sparks_created="{ item }">
+            <div class="text-center">
+              <div class="font-weight-medium">{{ item.total_sparks_created || 0 }}</div>
+            </div>
+          </template>
+
+          <!-- Unpaid Sparks Column -->
+          <template v-slot:item.sparks_created="{ item }">
+            <div class="text-center">
+              <div class="font-weight-medium text-warning">{{ item.sparks_created }}</div>
             </div>
           </template>
 
@@ -250,7 +286,8 @@
               size="small"
               prepend-icon="mdi-file-document-plus"
               @click="generateVAPaymentReport(item)"
-              :disabled="item.sparks_created === 0"
+              :loading="isGeneratingReport"
+              :disabled="isGeneratingReport || item.sparks_created === 0"
             >
               Generate Report
             </v-btn>
@@ -291,16 +328,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useVAStatus } from './composables/useVAStatus.js';
 import { usePayments } from '../Payments/composables/usePayments.js';
-import { useSparks } from '../Sparks/composables/useSparks.js';
+import { useSparks, onSparkEvent } from '../Sparks/composables/useSparks.js';
 import WeeklyChart from './components/WeeklyChart.vue';
 
 // Use VA Status composable
 const {
   isLoading,
   getWeeklyComparison,
+  getWeeklyProductivityBreakdown,
   generateEarlyReport,
   getCurrentWeekRange
 } = useVAStatus();
@@ -310,7 +348,9 @@ const {
   defaultRate,
   defaultCommissionRate,
   defaultCommissionType,
+  defaultPaymentMethod,
   isSavingSettings,
+  isLoadingSettings,
   customCreatorRates,
   getCreatorsWithRates,
   savePaymentSettings,
@@ -321,9 +361,11 @@ const {
 const { sparks, fetchSparks } = useSparks();
 
 // Component state
-const currentWeekData = ref([]);
-const previousWeekData = ref([]);
-const stats = ref({
+const currentWeekData = ref([]); // For productivity breakdown (unpaid only)
+const previousWeekData = ref([]); // For productivity breakdown (unpaid only)
+const currentWeekAllData = ref([]); // For chart trends (all sparks)
+const previousWeekAllData = ref([]); // For chart trends (all sparks)
+const stats = ref({ // Overall stats (all sparks)
   currentWeekTotal: 0,
   previousWeekTotal: 0,
   weekOverWeekChange: 0,
@@ -338,10 +380,17 @@ const showSnackbar = ref(false);
 const snackbarMessage = ref('');
 const snackbarColor = ref('success');
 
+// Report generation state
+const isGeneratingReport = ref(false);
+
+// Event cleanup functions
+const eventCleanupFunctions = [];
+
 // Table headers for VA breakdown
 const vaHeaders = [
   { title: 'VA', key: 'va_email', sortable: true },
-  { title: 'Sparks Created', key: 'sparks_created', sortable: true },
+  { title: 'Sparks Created', key: 'total_sparks_created', sortable: true },
+  { title: 'Unpaid Sparks', key: 'sparks_created', sortable: true },
   { title: 'Daily Breakdown', key: 'daily_breakdown', sortable: false },
   { title: 'Earnings', key: 'total_earnings', sortable: true },
   { title: 'Status', key: 'status', sortable: false },
@@ -349,26 +398,67 @@ const vaHeaders = [
 ];
 
 // Computed properties
-const creators = computed(() => {
-  // Make the computed reactive to customCreatorRates changes
-  customCreatorRates.value; // This ensures reactivity
-  return getCreatorsWithRates(sparks.value);
-});
+const creators = ref([]);
+
+// Update creators when sparks or customCreatorRates change
+const updateCreators = () => {
+  creators.value = getCreatorsWithRates(sparks.value);
+};
+
+// Watch for changes to update creators
+watch([sparks, customCreatorRates], updateCreators, { deep: true });
 
 // Methods
 const refreshData = async () => {
   try {
-    const comparison = await getWeeklyComparison();
-    console.log('Weekly comparison data:', comparison);
-    console.log('Current week data:', comparison.currentWeek);
+    // Prepare payment settings object to pass to useVAStatus functions
+    const paymentSettings = {
+      defaultRate: defaultRate.value,
+      defaultCommissionRate: defaultCommissionRate.value,
+      defaultCommissionType: defaultCommissionType.value,
+      customCreatorRates: customCreatorRates.value
+    };
 
-    currentWeekData.value = comparison.currentWeek;
-    previousWeekData.value = comparison.previousWeek;
+    // Get overall stats (all sparks) and productivity breakdown (unpaid only) in parallel
+    const [comparison, productivityBreakdown] = await Promise.all([
+      getWeeklyComparison(paymentSettings), // All sparks for stats
+      getWeeklyProductivityBreakdown(paymentSettings) // Unpaid sparks for breakdown table
+    ]);
+
+    console.log('Weekly comparison data (all sparks):', comparison);
+    console.log('Productivity breakdown data (unpaid only):', productivityBreakdown);
+
+    // Use all-sparks data for stats display and chart trends
     stats.value = comparison.stats;
+    currentWeekAllData.value = comparison.currentWeek; // For chart trends
+    previousWeekAllData.value = comparison.previousWeek; // For chart trends
+
+    // Use unpaid-sparks data for productivity breakdown table, but add total sparks count
+    currentWeekData.value = productivityBreakdown.currentWeek.map(unpaidVA => {
+      // Find corresponding VA data from all-sparks dataset
+      const allVA = comparison.currentWeek.find(allVA => allVA.va_email === unpaidVA.va_email);
+      return {
+        ...unpaidVA,
+        total_sparks_created: allVA ? allVA.sparks_created : 0
+      };
+    });
+
+    previousWeekData.value = productivityBreakdown.previousWeek.map(unpaidVA => {
+      // Find corresponding VA data from all-sparks dataset
+      const allVA = comparison.previousWeek.find(allVA => allVA.va_email === unpaidVA.va_email);
+      return {
+        ...unpaidVA,
+        total_sparks_created: allVA ? allVA.sparks_created : 0
+      };
+    });
+
+    console.log('Stats (all sparks):', stats.value);
+    console.log('Chart data (all sparks):', currentWeekAllData.value);
+    console.log('Productivity breakdown (unpaid sparks):', currentWeekData.value);
 
     // Log the first item to see its structure
-    if (comparison.currentWeek.length > 0) {
-      console.log('First VA data item:', comparison.currentWeek[0]);
+    if (currentWeekData.value.length > 0) {
+      console.log('First VA productivity item (unpaid only):', currentWeekData.value[0]);
     }
   } catch (error) {
     console.error('Failed to refresh VA status data:', error);
@@ -389,7 +479,7 @@ const handleSaveSettings = async () => {
   try {
     // Update custom creator rates from the form data
     creators.value.forEach(creator => {
-      updateCreatorRate(creator.name, creator.rate, creator.commissionRate, creator.commissionType);
+      updateCreatorRate(creator.name, creator.rate, creator.commissionRate, creator.commissionType, creator.paymentMethod);
     });
 
     // Save all payment settings including custom rates
@@ -415,24 +505,53 @@ const handleSaveSettings = async () => {
 
 const generateVAPaymentReport = async (vaData) => {
   try {
+    isGeneratingReport.value = true;
     console.log('Generating payment report for VA:', vaData.va_email);
+
+    // Show starting notification
+    snackbarMessage.value = `Generating payment report for ${vaData.va_email}...`;
+    snackbarColor.value = 'info';
+    showSnackbar.value = true;
 
     // Use the current week's date range for this specific VA
     const currentWeek = getCurrentWeekRange();
+
+    // Prepare payment settings object to pass to generateEarlyReport
+    const paymentSettings = {
+      defaultRate: defaultRate.value,
+      defaultCommissionRate: defaultCommissionRate.value,
+      defaultCommissionType: defaultCommissionType.value,
+      defaultPaymentMethod: defaultPaymentMethod.value,
+      customCreatorRates: customCreatorRates.value
+    };
 
     const result = await generateEarlyReport(
       currentWeek.start,
       currentWeek.end,
       [vaData.va_email], // Only this specific VA
-      'admin'
+      'admin',
+      paymentSettings
     );
 
     console.log('Payment report generated successfully for', vaData.va_email, result);
+
+    // Show success notification with details
+    const sparkCount = result.sparksMarkedAsPaid || 0;
+    snackbarMessage.value = `Payment report generated for ${vaData.va_email}! ${sparkCount} sparks marked as paid.`;
+    snackbarColor.value = 'success';
+    showSnackbar.value = true;
 
     // Refresh the data to reflect any changes
     setTimeout(refreshData, 1000);
   } catch (error) {
     console.error('Failed to generate payment report for', vaData.va_email, ':', error);
+
+    // Show error notification
+    snackbarMessage.value = `Failed to generate payment report for ${vaData.va_email}. ${error.message}`;
+    snackbarColor.value = 'error';
+    showSnackbar.value = true;
+  } finally {
+    isGeneratingReport.value = false;
   }
 };
 
@@ -450,12 +569,45 @@ watch(customCreatorRates, async () => {
   await refreshData();
 }, { deep: true });
 
-// Load data on mount
+// Watch for when payment settings are initially loaded
+watch(isLoadingSettings, async (newValue, oldValue) => {
+  if (oldValue === true && newValue === false) {
+    console.log('Payment settings loaded, recalculating VA earnings...');
+    await refreshData();
+  }
+});
+
+// Auto-refresh function for spark events
+const handleSparkChange = async (sparkData) => {
+  console.log('🔄 VA Status: Auto-refreshing due to spark change:', sparkData);
+
+  // Refresh the data silently
+  await refreshData();
+};
+
+// Load data on mount and set up event listeners
 onMounted(async () => {
   await Promise.all([
     refreshData(),
     fetchSparks()
   ]);
+  updateCreators(); // Initialize creators after data is loaded
+
+  // Set up event listeners for automatic refresh
+  const sparkCreatedCleanup = onSparkEvent('sparkCreated', handleSparkChange);
+  const sparkUpdatedCleanup = onSparkEvent('sparkUpdated', handleSparkChange);
+  const sparkDeletedCleanup = onSparkEvent('sparkDeleted', handleSparkChange);
+
+  // Store cleanup functions
+  eventCleanupFunctions.push(sparkCreatedCleanup, sparkUpdatedCleanup, sparkDeletedCleanup);
+
+  console.log('✅ VA Status: Event listeners set up for auto-refresh');
+});
+
+// Cleanup event listeners on unmount
+onUnmounted(() => {
+  console.log('🧹 VA Status: Cleaning up event listeners');
+  eventCleanupFunctions.forEach(cleanup => cleanup());
 });
 </script>
 

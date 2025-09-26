@@ -118,12 +118,31 @@
       :is-loading="isLoading"
       @save="saveSpark"
     />
+
+    <!-- Success Snackbar -->
+    <v-snackbar
+      v-model="showSnackbar"
+      :color="snackbarColor"
+      :timeout="4000"
+      location="top"
+    >
+      {{ snackbarMessage }}
+      <template v-slot:actions>
+        <v-btn
+          color="white"
+          variant="text"
+          @click="showSnackbar = false"
+        >
+          Close
+        </v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useSparks } from './composables/useSparks.js';
+import { useSparks, onSparkEvent } from './composables/useSparks.js';
 import { usersApi, commentBotApi } from '@/services/api';
 import { useAuth } from '@/composables/useAuth';
 import SparksDataTable from './components/SparksDataTable.vue';
@@ -185,6 +204,11 @@ const showSpreadsheetView = ref(false);
 
 // Add spark modal state
 const showSparkModal = ref(false);
+
+// Snackbar state
+const showSnackbar = ref(false);
+const snackbarMessage = ref('');
+const snackbarColor = ref('success');
 
 // Virtual Assistants data
 const virtualAssistants = ref([]);
@@ -338,6 +362,13 @@ const saveSpark = async (bulkData) => {
 
     console.log(`Successfully created ${sparksToCreate.length} sparks`);
     await loadSparks();
+
+    // Show success message for bulk creation
+    if (sparksToCreate.length > 1) {
+      snackbarMessage.value = `Successfully added ${sparksToCreate.length} sparks`;
+      snackbarColor.value = 'success';
+      showSnackbar.value = true;
+    }
 
     if (enableCommentBot && commentBotSettings) {
       console.log('Processing comment bot for newly created sparks...');
@@ -569,6 +600,13 @@ onMounted(async () => {
   await fetchCredits();
   await fetchCommentGroups();
   await loadSparks();
+
+  // Set up success notification for spark creation
+  onSparkEvent('sparkCreatedSuccess', (sparkData) => {
+    snackbarMessage.value = `Successfully added spark: ${sparkData.name}`;
+    snackbarColor.value = 'success';
+    showSnackbar.value = true;
+  });
 
   // Start bot status polling
   console.log('🚀 Starting bot status polling every 10 seconds');
