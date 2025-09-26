@@ -5,6 +5,7 @@
 
 import { handlePaymentSettings, initializePaymentTables } from './payment-settings.service.js';
 import { handleInvoiceManagement, initializeInvoiceTables, generateScheduledInvoices } from './invoice-management.service.js';
+import { getUserInfoFromSession as getSessionInfo, getUserTeamId } from '../campaigns/utils.js';
 
 console.log('Sparks.js loaded - handlePaymentSettings:', typeof handlePaymentSettings);
 console.log('Sparks.js loaded - handleInvoiceManagement:', typeof handleInvoiceManagement);
@@ -294,80 +295,6 @@ export async function initializeSparksTable(db) {
 }
 
 /**
- * Get user's team ID from the database
- */
-async function getUserTeamId(env, userId) {
-  try {
-    const result = await env.USERS_DB.prepare(
-      'SELECT team_id FROM team_members WHERE user_id = ?'
-    ).bind(userId).first();
-    
-    return result?.team_id || null;
-  } catch (error) {
-    console.error('Error getting user team ID:', error);
-    return null;
-  }
-}
-
-/**
- * Extract user_id and team_id from session
- */
-async function getUserInfoFromSession(request, env) {
-  try {
-    // First check if session is available in request context (for virtual assistant support)
-    if (request.ctx && request.ctx.session) {
-      const session = request.ctx.session;
-      const userId = session.user_id || session.user?.id;
-      if (userId) {
-        const teamId = await getUserTeamId(env, userId);
-        return { userId, teamId };
-      }
-    }
-
-    // Fallback to cookie-based session extraction
-    const sessionCookie = request.headers.get('Cookie');
-    if (!sessionCookie) {
-      throw new Error('No session cookie found');
-    }
-
-    const sessionId = sessionCookie.split('session=')[1]?.split(';')[0];
-    if (!sessionId) {
-      throw new Error('No session ID found in cookie');
-    }
-
-    const session = await env.USERS_DB.prepare(
-      'SELECT user_id, user_data FROM sessions WHERE session_id = ? AND expires_at > datetime("now")'
-    ).bind(sessionId).first();
-
-    if (!session) {
-      throw new Error('Invalid or expired session');
-    }
-
-    let userId = session.user_id;
-
-    // Handle virtual assistant mode - check if the session has virtualAssistantMode
-    if (session.user_data) {
-      try {
-        const userData = JSON.parse(session.user_data);
-        if (userData.virtualAssistantMode && userData.virtualAssistantMode.targetUserId) {
-          console.log('Virtual assistant mode detected, using target user:', userData.virtualAssistantMode.targetUserId);
-          userId = userData.virtualAssistantMode.targetUserId;
-        }
-      } catch (e) {
-        console.error('Error parsing user_data for virtual assistant mode:', e);
-      }
-    }
-
-    const teamId = await getUserTeamId(env, userId);
-
-    return { userId, teamId };
-  } catch (error) {
-    console.error('Error extracting user info from session:', error);
-    throw new Error('Authentication required');
-  }
-}
-
-/**
  * Check if user has access to a spark
  */
 async function checkSparkAccess(db, env, sparkId, userId, teamId) {
@@ -470,19 +397,20 @@ export async function handleSparkData(request, env) {
     // Payment Settings endpoints (check these first before generic patterns)
     if (path.startsWith('/payment-settings') || path.startsWith('/payment-history') || path.startsWith('/record-payment') || path.startsWith('/weekly-payment-entries')) {
       console.log('Handling payment settings endpoint');
-      const userInfo = await getUserInfoFromSession(request, env);
+      const userInfo = await getSessionInfo(request, env);
       return await handlePaymentSettings(request, env, userInfo);
     }
     
     // Invoice Management endpoints (check these first before generic patterns)
     if (path.startsWith('/invoices')) {
       console.log('Handling invoice management endpoint');
-      const userInfo = await getUserInfoFromSession(request, env);
+      const userInfo = await getSessionInfo(request, env);
       return await handleInvoiceManagement(request, env, userInfo);
     }
     
     // List Sparks
     if (path === '' && method === 'GET') {
+      console.log('🔍 Entering listSparks function');
       return await listSparks(request, db, corsHeaders, env);
     }
     
@@ -896,6 +824,7 @@ async function generateCustomThumbnail(videoId) {
  */
 async function listSparks(request, db, corsHeaders, env) {
   try {
+    console.log('🔍 Inside listSparks function, starting execution...');
     // First ensure the table has user_id column
     try {
       const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
@@ -911,7 +840,7 @@ async function listSparks(request, db, corsHeaders, env) {
     }
     
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -925,22 +854,31 @@ async function listSparks(request, db, corsHeaders, env) {
     
     if (teamId) {
       // If user is in a team, get all team members
+      console.log('Getting team members for teamId:', teamId);
       const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
       const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
-      
+
+      console.log('Team members result:', teamMembersResult);
+
       if (teamMembersResult.results && teamMembersResult.results.length > 0) {
         const memberIds = teamMembersResult.results.map(m => m.user_id);
+        console.log('Team member IDs:', memberIds);
         query += `(user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)`;
         params.push(...memberIds, teamId);
       } else {
+        console.log('No team members found, using team_id filter only');
         query += 'team_id = ?';
         params.push(teamId);
       }
     } else {
       // Only show user's own sparks
+      console.log('No team found, showing only user sparks for userId:', userId);
       query += 'user_id = ?';
       params.push(userId);
     }
+
+    console.log('Final sparks query:', query);
+    console.log('Query params:', params);
     
     // Apply search filter
     if (search) {
@@ -1028,7 +966,7 @@ async function getSpark(sparkId, request, db, corsHeaders, env) {
     }
     
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if user has access to the spark
     const spark = await checkSparkAccess(db, env, sparkId, userId, teamId);
@@ -1098,7 +1036,7 @@ async function createSpark(request, db, corsHeaders, env) {
     }
     
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     const sparkData = await request.json();
     
@@ -1297,7 +1235,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
     console.log('Update request received for spark:', sparkId);
 
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     console.log('User ID:', userId, 'Team ID:', teamId);
 
     const sparkData = await request.json();
@@ -1466,7 +1404,7 @@ async function updateSpark(sparkId, request, db, corsHeaders, env) {
 async function deleteSpark(sparkId, request, db, corsHeaders, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if user has access to the spark
     const existingSpark = await checkSparkAccess(db, env, sparkId, userId, teamId);
@@ -1525,7 +1463,7 @@ async function deleteSpark(sparkId, request, db, corsHeaders, env) {
 async function toggleSparkStatus(sparkId, request, db, corsHeaders, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Check if user has access to the spark
     const spark = await checkSparkAccess(db, env, sparkId, userId, teamId);
@@ -1593,7 +1531,7 @@ async function toggleSparkStatus(sparkId, request, db, corsHeaders, env) {
 async function getSparkStats(sparkId, request, db, corsHeaders, env) {
   try {
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     
     // Get spark to ensure it exists - using team permissions
     const spark = await checkSparkAccess(db, env, sparkId, userId, teamId);
@@ -1856,7 +1794,7 @@ async function bulkUpdatePaymentStatus(request, db, corsHeaders, env) {
     console.log('Bulk payment status update request received');
 
     // Get user_id and team_id from session
-    const { userId, teamId } = await getUserInfoFromSession(request, env);
+    const { userId, teamId } = await getSessionInfo(request, env);
     console.log('User ID:', userId, 'Team ID:', teamId);
 
     const requestData = await request.json();
