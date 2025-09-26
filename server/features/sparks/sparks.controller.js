@@ -844,7 +844,7 @@ async function listSparks(request, db, corsHeaders, env) {
     
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '10');
+    const limit = parseInt(url.searchParams.get('limit') || '1000');
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
     
