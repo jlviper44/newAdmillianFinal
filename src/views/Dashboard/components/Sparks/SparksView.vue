@@ -1454,26 +1454,28 @@ const refreshBotStatuses = async () => {
 
 // Lifecycle
 onMounted(async () => {
-  // Fetch VAs and templates first, then sparks
-  await Promise.all([
+  // PRIORITY 1: Load sparks data first for immediate UI display
+  fetchSparks().then(() => {
+    // Once sparks are loaded, sync creators
+    syncCreatorsFromVAs();
+  });
+
+  // PRIORITY 2: Load essential data in parallel (non-blocking)
+  Promise.all([
     fetchVirtualAssistants(),
-    fetchOfferTemplates()
+    fetchOfferTemplates(),
+    loadPaymentSettings()
+  ]).then(() => {
+    // Once these are done, update creator sync again if needed
+    syncCreatorsFromVAs();
+  });
+
+  // PRIORITY 3: Load secondary data (non-blocking)
+  Promise.all([
+    loadPaymentHistory().then(() => updateHistoryCreatorOptions()),
+    fetchInvoices(),
+    checkCommentBotAccess()
   ]);
-  await fetchSparks();
-  syncCreatorsFromVAs();
-
-  // Load payment settings from backend
-  await loadPaymentSettings();
-
-  // Load payment history and update creator options
-  loadPaymentHistory();
-  updateHistoryCreatorOptions();
-
-  // Load invoices
-  await fetchInvoices();
-
-  // Check Comment Bot access and fetch comment groups
-  await checkCommentBotAccess();
 
   // Start periodic bot status refresh (every 10 seconds)
   botStatusInterval = setInterval(refreshBotStatuses, 10000);

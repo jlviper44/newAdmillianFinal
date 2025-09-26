@@ -825,19 +825,6 @@ async function generateCustomThumbnail(videoId) {
 async function listSparks(request, db, corsHeaders, env) {
   try {
     console.log('🔍 Inside listSparks function, starting execution...');
-    // First ensure the table has user_id column
-    try {
-      const tableInfo = await db.prepare(`PRAGMA table_info(sparks)`).all();
-      const hasUserIdColumn = tableInfo.results?.some(col => col.name === 'user_id');
-      
-      if (!hasUserIdColumn) {
-        console.log('Sparks table missing user_id column, adding it now...');
-        await db.prepare(`ALTER TABLE sparks ADD COLUMN user_id TEXT DEFAULT 'default_user'`).run();
-        await db.prepare(`UPDATE sparks SET user_id = 'default_user' WHERE user_id IS NULL`).run();
-      }
-    } catch (e) {
-      console.error('Error checking/adding user_id column:', e);
-    }
     
     // Get user_id and team_id from session
     const { userId, teamId } = await getSessionInfo(request, env);
@@ -851,25 +838,12 @@ async function listSparks(request, db, corsHeaders, env) {
     // Build the query - filter by team members if in a team
     let query = 'SELECT * FROM sparks WHERE ';
     const params = [];
-    
+
     if (teamId) {
-      // If user is in a team, get all team members
-      console.log('Getting team members for teamId:', teamId);
-      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
-      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
-
-      console.log('Team members result:', teamMembersResult);
-
-      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
-        const memberIds = teamMembersResult.results.map(m => m.user_id);
-        console.log('Team member IDs:', memberIds);
-        query += `(user_id IN (${memberIds.map(() => '?').join(',')}) OR team_id = ?)`;
-        params.push(...memberIds, teamId);
-      } else {
-        console.log('No team members found, using team_id filter only');
-        query += 'team_id = ?';
-        params.push(teamId);
-      }
+      // Simplified team query - use team_id directly for better performance
+      console.log('Using team_id filter for teamId:', teamId);
+      query += '(user_id = ? OR team_id = ?)';
+      params.push(userId, teamId);
     } else {
       // Only show user's own sparks
       console.log('No team found, showing only user sparks for userId:', userId);
