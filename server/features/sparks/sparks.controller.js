@@ -323,29 +323,43 @@ async function getUserInfoFromSession(request, env) {
         return { userId, teamId };
       }
     }
-    
+
     // Fallback to cookie-based session extraction
     const sessionCookie = request.headers.get('Cookie');
     if (!sessionCookie) {
       throw new Error('No session cookie found');
     }
-    
+
     const sessionId = sessionCookie.split('session=')[1]?.split(';')[0];
     if (!sessionId) {
       throw new Error('No session ID found in cookie');
     }
-    
+
     const session = await env.USERS_DB.prepare(
-      'SELECT user_id FROM sessions WHERE session_id = ? AND expires_at > datetime("now")'
+      'SELECT user_id, user_data FROM sessions WHERE session_id = ? AND expires_at > datetime("now")'
     ).bind(sessionId).first();
-    
+
     if (!session) {
       throw new Error('Invalid or expired session');
     }
-    
-    const userId = session.user_id;
+
+    let userId = session.user_id;
+
+    // Handle virtual assistant mode - check if the session has virtualAssistantMode
+    if (session.user_data) {
+      try {
+        const userData = JSON.parse(session.user_data);
+        if (userData.virtualAssistantMode && userData.virtualAssistantMode.targetUserId) {
+          console.log('Virtual assistant mode detected, using target user:', userData.virtualAssistantMode.targetUserId);
+          userId = userData.virtualAssistantMode.targetUserId;
+        }
+      } catch (e) {
+        console.error('Error parsing user_data for virtual assistant mode:', e);
+      }
+    }
+
     const teamId = await getUserTeamId(env, userId);
-    
+
     return { userId, teamId };
   } catch (error) {
     console.error('Error extracting user info from session:', error);
