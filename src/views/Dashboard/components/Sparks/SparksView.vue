@@ -32,10 +32,10 @@
 
 <script setup>
 import { ref } from 'vue';
-import SparksTab from '@/views/Dashboard/components/Sparks/components/Sparks/SparksTab.vue';
+import SparksTab from '@/views/Dashboard/components/Sparks/components/sparks/SparksTab.vue';
 import VAStatusTab from '@/views/Dashboard/components/Sparks/components/VAStatus/VAStatusTab.vue';
-import PaymentsTab from '@/views/Dashboard/components/Sparks/components/Payments/PaymentsTab.vue';
-import InvoicesTab from '@/views/Dashboard/components/Sparks/components/Invoices/InvoicesTab.vue';
+import PaymentsTab from '@/views/Dashboard/components/Sparks/components/payments/PaymentsTab.vue';
+import InvoicesTab from '@/views/Dashboard/components/Sparks/components/invoices/InvoicesTab.vue';
 
 // Tab state
 const activeTab = ref('sparks');
