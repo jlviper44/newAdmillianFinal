@@ -138,7 +138,7 @@ const form = ref({
   tiktokLink: '',
   sparkCode: '',
   type: '',
-  status: 'active'
+  status: 'untested'
 });
 
 watch(() => props.editingSparkData, (newVal) => {
@@ -149,7 +149,7 @@ watch(() => props.editingSparkData, (newVal) => {
       tiktokLink: newVal.tiktok_link || '',
       sparkCode: newVal.spark_code || '',
       type: newVal.type || '',
-      status: newVal.status || 'active'
+      status: newVal.status || 'untested'
     };
   } else {
     form.value = {
@@ -158,7 +158,7 @@ watch(() => props.editingSparkData, (newVal) => {
       tiktokLink: '',
       sparkCode: '',
       type: '',
-      status: 'active'
+      status: 'untested'
     };
   }
 }, { immediate: true });

@@ -9,6 +9,12 @@ const virtualAssistantFor = ref([])
 const showAuthModal = ref(false)
 const isAssistingUser = ref(false) // True when accessing as virtual assistant
 
+// Track initialization and prevent duplicate calls
+let isInitializing = false
+let initPromise = null
+let authController = null
+let accessController = null
+
 // Set up global auth expired listener
 let authExpiredHandler = null
 if (typeof window !== 'undefined') {
@@ -76,12 +82,20 @@ export function useAuth() {
 
   // Check authentication status
   const checkAuth = async () => {
+    // Cancel previous auth request if it exists
+    if (authController) {
+      authController.abort()
+    }
+
+    authController = new AbortController()
     loading.value = true
+
     try {
       const response = await fetch('/api/auth/user', {
-        credentials: 'include'
+        credentials: 'include',
+        signal: authController.signal
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         user.value = data.user
@@ -94,22 +108,37 @@ export function useAuth() {
         // Don't trigger auth modal here, let individual API calls handle 401s
       }
     } catch (error) {
-      user.value = null
+      // Only update state if this wasn't an abort
+      if (error.name !== 'AbortError') {
+        user.value = null
+      }
     } finally {
-      loading.value = false
+      // Only set loading to false if this wasn't aborted
+      if (!authController.signal.aborted) {
+        loading.value = false
+      }
+      authController = null
     }
   }
 
   // Check access (membership validation)
   const checkAccess = async () => {
+    // Cancel previous access request if it exists
+    if (accessController) {
+      accessController.abort()
+    }
+
+    accessController = new AbortController()
+
     try {
       // Check access - virtual assistant mode is now handled by session
       const url = '/api/auth/check-access'
-      
+
       const response = await fetch(url, {
-        credentials: 'include'
+        credentials: 'include',
+        signal: accessController.signal
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         if (data.user) {
@@ -131,9 +160,19 @@ export function useAuth() {
         return true
       }
     } catch (error) {
+      // Only handle non-abort errors
+      if (error.name !== 'AbortError') {
+        console.error('Check access error:', error)
+      }
+    } finally {
+      accessController = null
     }
-    subscriptions.value = null
-    virtualAssistantFor.value = []
+
+    // Only reset state if request wasn't aborted
+    if (accessController === null) {
+      subscriptions.value = null
+      virtualAssistantFor.value = []
+    }
     return false
   }
 
@@ -257,56 +296,76 @@ export function useAuth() {
 
   // Initialize auth on app load
   const initAuth = async () => {
-    // Check if we're returning from an OAuth callback
-    const authCallbackComplete = sessionStorage.getItem('auth_callback_complete')
-    if (authCallbackComplete) {
-      // Clear the flag
-      sessionStorage.removeItem('auth_callback_complete')
-      
-      // Check if we have pending auth parameters (from fallback HTML)
-      const pendingCode = sessionStorage.getItem('pending_auth_code')
-      const pendingState = sessionStorage.getItem('pending_auth_state')
-      
-      if (pendingCode && pendingState) {
-        // Process the auth callback
-        sessionStorage.removeItem('pending_auth_code')
-        sessionStorage.removeItem('pending_auth_state')
-        
-        try {
-          const response = await fetch('/api/auth/callback/whop', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: pendingCode, state: pendingState })
-          })
-          
-          if (!response.ok) {
-            throw new Error('Auth callback failed')
+    // If already initializing, return the existing promise
+    if (isInitializing) {
+      return initPromise
+    }
+
+    // If already initialized (not loading), return immediately
+    if (!loading.value) {
+      return Promise.resolve()
+    }
+
+    isInitializing = true
+    initPromise = (async () => {
+      try {
+        // Check if we're returning from an OAuth callback
+        const authCallbackComplete = sessionStorage.getItem('auth_callback_complete')
+        if (authCallbackComplete) {
+          // Clear the flag
+          sessionStorage.removeItem('auth_callback_complete')
+
+          // Check if we have pending auth parameters (from fallback HTML)
+          const pendingCode = sessionStorage.getItem('pending_auth_code')
+          const pendingState = sessionStorage.getItem('pending_auth_state')
+
+          if (pendingCode && pendingState) {
+            // Process the auth callback
+            sessionStorage.removeItem('pending_auth_code')
+            sessionStorage.removeItem('pending_auth_state')
+
+            try {
+              const response = await fetch('/api/auth/callback/whop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: pendingCode, state: pendingState })
+              })
+
+              if (!response.ok) {
+                throw new Error('Auth callback failed')
+              }
+            } catch (error) {
+              console.error('Error processing auth callback:', error)
+            }
           }
-        } catch (error) {
-          console.error('Error processing auth callback:', error)
+
+          // Force a fresh auth check
+          loading.value = true
         }
+
+        await checkAuth()
+        // Check access if we're authenticated
+        if (user.value && user.value.id) {
+          await checkAccess()
+        } else {
+          // Ensure subscriptions are null when not authenticated
+          subscriptions.value = null
+          virtualAssistantFor.value = []
+        }
+
+        // Check if we should show auth modal from query parameter
+        if (route?.query?.showAuth === 'true') {
+          showAuthModal.value = true
+          // Clean up the URL
+          router?.replace({ query: {} })
+        }
+      } finally {
+        isInitializing = false
+        initPromise = null
       }
-      
-      // Force a fresh auth check
-      loading.value = true
-    }
-    
-    await checkAuth()
-    // Check access if we're authenticated
-    if (user.value && user.value.id) {
-      await checkAccess()
-    } else {
-      // Ensure subscriptions are null when not authenticated
-      subscriptions.value = null
-      virtualAssistantFor.value = []
-    }
-    
-    // Check if we should show auth modal from query parameter
-    if (route?.query?.showAuth === 'true') {
-      showAuthModal.value = true
-      // Clean up the URL
-      router?.replace({ query: {} })
-    }
+    })()
+
+    return initPromise
   }
 
   return {
