@@ -163,7 +163,7 @@ const {
 } = useSparks();
 
 // Auth composable
-const { user, isAssistingUser } = useAuth();
+const { user, subscriptions, isAssistingUser } = useAuth();
 
 // Load sparks data (same method as old implementation)
 const loadSparks = async () => {
