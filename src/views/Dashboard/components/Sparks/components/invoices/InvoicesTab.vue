@@ -154,7 +154,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useVAStatus } from '../VAStatus/composables/useVAStatus.js';
-import { onSparkEvent } from '../Sparks/composables/useSparks.js';
+import { onSparkEvent } from '../sparks/composables/useSparks.js';
 import { api } from '@/services/api.js';
 import jsPDF from 'jspdf';
 

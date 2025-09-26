@@ -330,8 +330,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useVAStatus } from './composables/useVAStatus.js';
-import { usePayments } from '../Payments/composables/usePayments.js';
-import { useSparks, onSparkEvent } from '../Sparks/composables/useSparks.js';
+import { usePayments } from '../payments/composables/usePayments.js';
+import { useSparks, onSparkEvent } from '../sparks/composables/useSparks.js';
 import WeeklyChart from './components/WeeklyChart.vue';
 
 // Use VA Status composable

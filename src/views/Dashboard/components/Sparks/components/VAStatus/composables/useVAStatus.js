@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue';
 import { sparksApi } from '@/services/api';
-import { usePayments } from '../../Payments/composables/usePayments.js';
-import { emitSparkEvent } from '../../Sparks/composables/useSparks.js';
+import { usePayments } from '../../payments/composables/usePayments.js';
+import { emitSparkEvent } from '../../sparks/composables/useSparks.js';
 
 export function useVAStatus() {
   // Get payment settings

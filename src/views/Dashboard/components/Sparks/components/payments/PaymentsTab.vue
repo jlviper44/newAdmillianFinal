@@ -280,7 +280,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { usePayments } from './composables/usePayments.js';
 import { useVAStatus } from '../VAStatus/composables/useVAStatus.js';
-import { onSparkEvent, emitSparkEvent } from '../Sparks/composables/useSparks.js';
+import { onSparkEvent, emitSparkEvent } from '../sparks/composables/useSparks.js';
 import { sparksApi } from '@/services/api';
 
 // Use the payments composable for undo functionality and payment settings
