@@ -257,8 +257,7 @@ watch(() => selectedTab.value, (newTab) => {
 
 // Set initial tab from query parameter
 onMounted(async () => {
-  // Ensure user data is loaded
-  await checkAccess();
+  // Note: checkAccess is already called by initAuth in App.vue, no need to call again
   
   // Debug: Log VA permissions if it's a VA
   if (user.value?.isVirtualAssistant) {

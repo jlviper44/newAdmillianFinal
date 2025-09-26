@@ -1,5 +1,6 @@
 import { ref, computed, getCurrentInstance } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { api } from '@/services/api'
 
 // Global auth state
 const user = ref(null)
@@ -29,6 +30,8 @@ if (typeof window !== 'undefined') {
     // Reset access cache
     accessCached = false
     accessPromise = null
+    // Clear API cache
+    api.clearCache()
   }
   window.addEventListener('auth:expired', authExpiredHandler)
 }
@@ -328,6 +331,8 @@ export function useAuth() {
       // Reset access cache
       accessCached = false
       accessPromise = null
+      // Clear API cache
+      api.clearCache()
       router?.push('/')
     }
   }
@@ -412,6 +417,8 @@ export function useAuth() {
   const resetAccessCache = () => {
     accessCached = false
     accessPromise = null
+    // Also clear the API service cache
+    api.clearCache()
   }
 
   return {

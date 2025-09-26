@@ -631,8 +631,7 @@ const exitVirtualAssistantMode = async () => {
 
 // Fetch data on mount
 onMounted(async () => {
-  // Refresh access check to get latest subscription data
-  await checkAccess();
+  // Note: checkAccess is already called by initAuth, no need to call again
 
 });
 </script>

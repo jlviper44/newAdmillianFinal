@@ -1,9 +1,31 @@
 // API service with authentication support
 const API_BASE = '/api'
 
+// Global request deduplication cache
+const requestCache = new Map()
+const pendingRequests = new Map()
+
 // Helper function for API requests
 async function apiRequest(url, options = {}) {
-  
+  // Create a cache key for deduplication
+  const cacheKey = `${options.method || 'GET'}:${url}:${JSON.stringify(options.body || '')}`
+
+  // For check-access requests, use aggressive caching and deduplication
+  if (url === '/auth/check-access') {
+    // If we have a cached result, return it
+    if (requestCache.has(cacheKey)) {
+      const cached = requestCache.get(cacheKey)
+      if (Date.now() - cached.timestamp < 30000) { // 30 second cache
+        return cached.data
+      }
+    }
+
+    // If request is already pending, return the pending promise
+    if (pendingRequests.has(cacheKey)) {
+      return pendingRequests.get(cacheKey)
+    }
+  }
+
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
@@ -13,29 +35,76 @@ async function apiRequest(url, options = {}) {
     ...options
   }
 
+  // For check-access, create promise and store it
+  let requestPromise
+  if (url === '/auth/check-access') {
+    requestPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}${url}`, defaultOptions)
+
+        if (response.status === 401) {
+          // Special handling for metrics endpoints - don't logout immediately
+          if (url.includes('/metrics/') || url.includes('/affiliate/')) {
+            return { success: false, error: 'Authentication required', data: [] }
+          }
+
+          // Session expired or invalid - handle logout
+          handleSessionExpired()
+          throw new Error('Unauthorized')
+        }
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Request failed' }))
+          throw new Error(error.error || `HTTP ${response.status}`)
+        }
+
+        const data = await response.json()
+
+        // Cache the result
+        requestCache.set(cacheKey, {
+          data,
+          timestamp: Date.now()
+        })
+
+        return data
+      } finally {
+        pendingRequests.delete(cacheKey)
+      }
+    })()
+
+    pendingRequests.set(cacheKey, requestPromise)
+    return requestPromise
+  }
+
   try {
     const response = await fetch(`${API_BASE}${url}`, defaultOptions)
-    
+
     if (response.status === 401) {
       // Special handling for metrics endpoints - don't logout immediately
       if (url.includes('/metrics/') || url.includes('/affiliate/')) {
         return { success: false, error: 'Authentication required', data: [] }
       }
-      
+
       // Session expired or invalid - handle logout
       handleSessionExpired()
       throw new Error('Unauthorized')
     }
-    
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }))
       throw new Error(error.error || `HTTP ${response.status}`)
     }
-    
+
     return await response.json()
   } catch (error) {
     throw error
   }
+}
+
+// Clear request cache (useful after auth changes)
+function clearRequestCache() {
+  requestCache.clear()
+  pendingRequests.clear()
 }
 
 // Handle expired sessions
@@ -43,13 +112,16 @@ function handleSessionExpired() {
   // Clear any local auth state
   localStorage.removeItem('user')
   sessionStorage.clear()
-  
+
+  // Clear request cache
+  clearRequestCache()
+
   // Clear cookies by setting them to expire
   document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
-  
+
   // Dispatch a custom event that components can listen to
   window.dispatchEvent(new CustomEvent('auth:expired'))
-  
+
   // Redirect to home page with auth modal
   if (window.location.pathname !== '/') {
     window.location.href = '/?showAuth=true'
@@ -60,29 +132,32 @@ function handleSessionExpired() {
 export const api = {
   // GET request
   get: (url) => apiRequest(url),
-  
+
   // POST request
   post: (url, data) => apiRequest(url, {
     method: 'POST',
     body: JSON.stringify(data)
   }),
-  
+
   // PUT request
   put: (url, data) => apiRequest(url, {
     method: 'PUT',
     body: JSON.stringify(data)
   }),
-  
+
   // DELETE request
   delete: (url) => apiRequest(url, {
     method: 'DELETE'
   }),
-  
+
   // Raw SQL query
   sql: (query, params = []) => apiRequest('/sql/raw', {
     method: 'POST',
     body: JSON.stringify({ query, params })
-  })
+  }),
+
+  // Clear request cache
+  clearCache: clearRequestCache
 }
 
 // Users/Auth API methods

@@ -219,10 +219,9 @@ const userCredits = ref(0);
 // Fetch credits from server
 const fetchCredits = async () => {
   try {
-    const data = await usersApi.checkAccess();
-
-    // Store user data including admin status
-    const userData = data.user;
+    // Use existing user and subscription data instead of API call
+    const userData = user.value;
+    const data = { user: userData, subscriptions: subscriptions.value };
 
     // Check if user is admin (admins get unlimited credits)
     if (userData?.isAdmin && !userData?.isVirtualAssistant) {

@@ -1121,18 +1121,15 @@ const checkCommentBotAccess = async () => {
         showWarning('Comment groups unavailable');
       }
       
-      // Fetch user credits - same as Comment Bot page
+      // Get user credits from existing subscription data (no need for API call)
       try {
-        const creditsResponse = await usersApi.checkAccess();
-        console.log('Credits response:', creditsResponse);
-        
         // Get Comment Bot specific credits (matching CommentBot.vue logic)
-        const commentBotData = creditsResponse.subscriptions?.comment_bot;
+        const commentBotData = subscriptions.value?.comment_bot;
         userCredits.value = commentBotData?.totalCredits || 0;
-        
+
         console.log('User credits:', userCredits.value);
       } catch (error) {
-        console.error('Failed to fetch user credits:', error);
+        console.error('Failed to get user credits:', error);
         userCredits.value = 0;
       }
     }
