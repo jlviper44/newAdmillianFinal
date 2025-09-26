@@ -125,7 +125,7 @@ const props = defineProps({
   }
 })
 
-const { isAuthenticated, hasAccess, loading, signIn, checkAccess, initAuth, showAuthModal } = useAuth()
+const { isAuthenticated, hasAccess, loading, signIn, checkAccess, resetAccessCache, initAuth, showAuthModal } = useAuth()
 const checkoutLink = ref('')
 const showPaymentDialog = ref(false)
 const paymentCheckInterval = ref(null)
@@ -165,16 +165,14 @@ const openCheckout = () => {
     paymentCheckInterval.value = setInterval(async () => {
       if (popup.closed) {
         // Window closed, check if payment was successful
+        // Reset cache first so we get fresh data
+        resetAccessCache()
         await checkAccess()
-        
-        // Give it a moment then check again to ensure we have the latest data
-        setTimeout(async () => {
-          await checkAccess()
-          clearInterval(paymentCheckInterval.value)
-          showPaymentDialog.value = false
-          
-          // If access is granted, the component will automatically update
-        }, 1000)
+
+        clearInterval(paymentCheckInterval.value)
+        showPaymentDialog.value = false
+
+        // If access is granted, the component will automatically update
       }
     }, 500)
   }
@@ -185,20 +183,17 @@ onMounted(async () => {
   if (loading.value) {
     await initAuth()
   }
-  
-  if (isAuthenticated.value && props.requireAccess && !hasAccess.value) {
-    await checkAccess()
-  }
-  
+
+  // Note: checkAccess is already called by initAuth, no need to call it again
+
   // Fetch checkout link
   await fetchCheckoutLink()
 })
 
 // Watch for authentication changes
 watch(isAuthenticated, async (newVal) => {
-  if (newVal && props.requireAccess && !hasAccess.value) {
-    await checkAccess()
-  }
+  // Note: checkAccess is already called by initAuth when user is authenticated
+  // No need to call it again here
 })
 
 // Watch for auth modal trigger

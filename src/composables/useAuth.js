@@ -14,6 +14,9 @@ let isInitializing = false
 let initPromise = null
 let authController = null
 let accessController = null
+let accessPromise = null
+let accessCached = false
+let authPromise = null
 
 // Set up global auth expired listener
 let authExpiredHandler = null
@@ -21,7 +24,11 @@ if (typeof window !== 'undefined') {
   authExpiredHandler = () => {
     user.value = null
     subscriptions.value = null
+    virtualAssistantFor.value = []
     showAuthModal.value = true
+    // Reset access cache
+    accessCached = false
+    accessPromise = null
   }
   window.addEventListener('auth:expired', authExpiredHandler)
 }
@@ -82,98 +89,128 @@ export function useAuth() {
 
   // Check authentication status
   const checkAuth = async () => {
-    // Cancel previous auth request if it exists
-    if (authController) {
-      authController.abort()
+    // If already checking auth, return the existing promise
+    if (authPromise) {
+      return authPromise
     }
 
-    authController = new AbortController()
-    loading.value = true
+    authPromise = (async () => {
+      try {
+        // Cancel previous auth request if it exists
+        if (authController) {
+          authController.abort()
+        }
 
-    try {
-      const response = await fetch('/api/auth/user', {
-        credentials: 'include',
-        signal: authController.signal
-      })
+        authController = new AbortController()
+        loading.value = true
 
-      if (response.ok) {
-        const data = await response.json()
-        user.value = data.user
-        // If we have a user object but it's empty or has no id, treat as not authenticated
-        if (user.value && !user.value.id) {
+        const response = await fetch('/api/auth/user', {
+          credentials: 'include',
+          signal: authController.signal
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          user.value = data.user
+          // If we have a user object but it's empty or has no id, treat as not authenticated
+          if (user.value && !user.value.id) {
+            user.value = null
+          }
+        } else {
+          user.value = null
+          // Don't trigger auth modal here, let individual API calls handle 401s
+        }
+      } catch (error) {
+        // Only update state if this wasn't an abort
+        if (error.name !== 'AbortError') {
           user.value = null
         }
-      } else {
-        user.value = null
-        // Don't trigger auth modal here, let individual API calls handle 401s
+      } finally {
+        // Only set loading to false if this wasn't aborted
+        if (!authController || !authController.signal.aborted) {
+          loading.value = false
+        }
+        authController = null
+        authPromise = null
       }
-    } catch (error) {
-      // Only update state if this wasn't an abort
-      if (error.name !== 'AbortError') {
-        user.value = null
-      }
-    } finally {
-      // Only set loading to false if this wasn't aborted
-      if (!authController.signal.aborted) {
-        loading.value = false
-      }
-      authController = null
-    }
+    })()
+
+    return authPromise
   }
 
   // Check access (membership validation)
   const checkAccess = async () => {
-    // Cancel previous access request if it exists
-    if (accessController) {
-      accessController.abort()
+    // If already cached, return immediately
+    if (accessCached && subscriptions.value !== null) {
+      return true
     }
 
-    accessController = new AbortController()
+    // If already checking access, return the existing promise
+    if (accessPromise) {
+      return accessPromise
+    }
 
-    try {
-      // Check access - virtual assistant mode is now handled by session
-      const url = '/api/auth/check-access'
+    // Create new access check promise
+    accessPromise = (async () => {
+      try {
+        // Cancel previous access request if it exists
+        if (accessController) {
+          accessController.abort()
+        }
 
-      const response = await fetch(url, {
-        credentials: 'include',
-        signal: accessController.signal
-      })
+        accessController = new AbortController()
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.user) {
-          user.value = data.user
-          // Check if this is a virtual assistant accessing another user's account
-          // assistingFor is only set when actively assisting, not when just being a VA
-          isAssistingUser.value = !!data.user.assistingFor
-          // Log for debugging
-          if (data.user.assistingFor) {
-            console.log('Virtual Assistant Mode Active - Assisting:', data.user.assistingFor)
+        // Check access - virtual assistant mode is now handled by session
+        const url = '/api/auth/check-access'
+
+        const response = await fetch(url, {
+          credentials: 'include',
+          signal: accessController.signal
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.user) {
+            user.value = data.user
+            // Check if this is a virtual assistant accessing another user's account
+            // assistingFor is only set when actively assisting, not when just being a VA
+            isAssistingUser.value = !!data.user.assistingFor
+            // Log for debugging
+            if (data.user.assistingFor) {
+              console.log('Virtual Assistant Mode Active - Assisting:', data.user.assistingFor)
+            }
           }
-        }
-        if (data.subscriptions) {
-          subscriptions.value = data.subscriptions
-        }
-        if (data.virtualAssistantFor) {
-          virtualAssistantFor.value = data.virtualAssistantFor
-        }
-        return true
-      }
-    } catch (error) {
-      // Only handle non-abort errors
-      if (error.name !== 'AbortError') {
-        console.error('Check access error:', error)
-      }
-    } finally {
-      accessController = null
-    }
+          if (data.subscriptions) {
+            subscriptions.value = data.subscriptions
+          }
+          if (data.virtualAssistantFor) {
+            virtualAssistantFor.value = data.virtualAssistantFor
+          }
 
-    // Only reset state if request wasn't aborted
-    if (accessController === null) {
-      subscriptions.value = null
-      virtualAssistantFor.value = []
-    }
-    return false
+          // Mark as cached
+          accessCached = true
+          return true
+        }
+
+        // Reset state on failure
+        subscriptions.value = null
+        virtualAssistantFor.value = []
+        return false
+      } catch (error) {
+        // Only handle non-abort errors
+        if (error.name !== 'AbortError') {
+          console.error('Check access error:', error)
+          subscriptions.value = null
+          virtualAssistantFor.value = []
+        }
+        return false
+      } finally {
+        accessController = null
+        accessPromise = null
+      }
+    })()
+
+    return accessPromise
   }
 
   // Sign in
@@ -288,6 +325,9 @@ export function useAuth() {
       user.value = null
       subscriptions.value = null
       virtualAssistantFor.value = []
+      // Reset access cache
+      accessCached = false
+      accessPromise = null
       router?.push('/')
     }
   }
@@ -368,6 +408,12 @@ export function useAuth() {
     return initPromise
   }
 
+  // Reset access cache (useful after payment completion)
+  const resetAccessCache = () => {
+    accessCached = false
+    accessPromise = null
+  }
+
   return {
     user,
     loading,
@@ -386,6 +432,7 @@ export function useAuth() {
     showAuthModal,
     checkAuth,
     checkAccess,
+    resetAccessCache,
     signIn,
     signOut,
     initAuth,
