@@ -1,6 +1,35 @@
 import { ref, computed } from 'vue';
 import { sparksApi } from '@/services/api';
 
+// Event bus for spark changes
+const sparkEvents = ref({});
+const eventListeners = new Map();
+
+const emitSparkEvent = (event, data) => {
+  console.log('🔥 Spark event emitted:', event, data);
+  if (eventListeners.has(event)) {
+    eventListeners.get(event).forEach(callback => callback(data));
+  }
+};
+
+const onSparkEvent = (event, callback) => {
+  if (!eventListeners.has(event)) {
+    eventListeners.set(event, new Set());
+  }
+  eventListeners.get(event).add(callback);
+
+  // Return cleanup function
+  return () => {
+    const listeners = eventListeners.get(event);
+    if (listeners) {
+      listeners.delete(callback);
+      if (listeners.size === 0) {
+        eventListeners.delete(event);
+      }
+    }
+  };
+};
+
 export function useSparks() {
   const sparks = ref([]);
   const isLoading = ref(false);
@@ -79,6 +108,9 @@ export function useSparks() {
       const response = await sparksApi.createSpark(sparkData);
       if (response.success && response.spark) {
         sparks.value.unshift(response.spark);
+        // Emit event for VA Status to auto-refresh and show success message
+        emitSparkEvent('sparkCreated', response.spark);
+        emitSparkEvent('sparkCreatedSuccess', response.spark);
         return response.spark;
       }
       throw new Error('Failed to create spark');
@@ -96,6 +128,8 @@ export function useSparks() {
         if (index !== -1) {
           sparks.value[index] = response.spark;
         }
+        // Emit event for VA Status to auto-refresh
+        emitSparkEvent('sparkUpdated', response.spark);
         return response.spark;
       }
       throw new Error('Failed to update spark');
@@ -110,6 +144,8 @@ export function useSparks() {
       const response = await sparksApi.deleteSpark(sparkId);
       if (response.success) {
         sparks.value = sparks.value.filter(s => s.id !== sparkId);
+        // Emit event for VA Status to auto-refresh
+        emitSparkEvent('sparkDeleted', { id: sparkId });
         return true;
       }
       throw new Error('Failed to delete spark');
@@ -187,3 +223,6 @@ export function useSparks() {
     detectDuplicates
   };
 }
+
+// Export event functions separately to use across components
+export { onSparkEvent, emitSparkEvent };

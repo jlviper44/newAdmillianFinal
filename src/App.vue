@@ -542,7 +542,7 @@ onUnmounted(() => {
             ></v-list-item>
             <v-list-item
               v-if="canViewSparks"
-              @click="navigateToAndClose('/dashboard?tab=newsparks')"
+              @click="navigateToAndClose('/dashboard?tab=sparks')"
               prepend-icon="mdi-star-plus"
               title="Sparks"
               class="mobile-popup-item"
@@ -884,10 +884,10 @@ onUnmounted(() => {
 
           <v-list-item
             v-if="canViewSparks"
-            to="/dashboard?tab=newsparks"
+            to="/dashboard?tab=sparks"
             prepend-icon="mdi-star-plus"
             title="Sparks"
-            :active="isTabActive('/dashboard', 'newsparks')"
+            :active="isTabActive('/dashboard', 'sparks')"
             class="ml-2"
             rounded="lg"
           ></v-list-item>

@@ -60,8 +60,8 @@
           
 
           <!-- Sparks Tab (Check permissions for VAs) -->
-          <div v-if="selectedTab === 'newsparks' && canViewSparks">
-            <NewSparksView />
+          <div v-if="selectedTab === 'sparks' && canViewSparks">
+            <SparksView />
           </div>
           
           <!-- Templates Tab (Check permissions for VAs) -->
@@ -111,7 +111,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
 import AuthGuard from '@/components/AuthGuard.vue';
 import MetricsView from './components/Metrics/MetricsView.vue';
-import NewSparksView from './components/NewSparks/NewSparksView.vue';
+import SparksView from './components/Sparks/SparksView.vue';
 import TemplatesView from './components/Templates/TemplatesView.vue';
 import ShopifyStoresView from './components/ShopifyStores/ShopifyStoresView.vue';
 import CampaignsView from './components/Campaigns/CampaignsView.vue';
@@ -130,7 +130,7 @@ const tabTitles = {
   metrics: 'Metrics',
   campaigns: 'Campaigns',
   launches: 'Ad Launches',
-  newsparks: 'Sparks',
+  sparks: 'Sparks',
   templates: 'Templates',
   shopify: 'Shopify Stores',
   logs: 'Logs',
@@ -198,7 +198,7 @@ const hasTabPermission = (tab) => {
     case 'metrics': return canViewMetrics.value;
     case 'campaigns': return canViewCampaigns.value;
     case 'launches': return canViewLaunches.value;
-    case 'newsparks': return canViewSparks.value;
+    case 'sparks': return canViewSparks.value;
     case 'templates': return canViewTemplates.value;
     case 'shopify': return canViewShopify.value;
     case 'logs': return canViewLogs.value;
@@ -225,7 +225,7 @@ const hasAnyTabPermission = computed(() => {
 
 // Find the first tab that the user has permission to view
 const getDefaultTab = () => {
-  const tabs = ['campaigns', 'launches', 'newsparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
+  const tabs = ['campaigns', 'launches', 'sparks', 'templates', 'shopify', 'metrics', 'logs', 'linksplitter', 'errorlogs'];
   for (const tab of tabs) {
     if (hasTabPermission(tab)) {
       return tab;
