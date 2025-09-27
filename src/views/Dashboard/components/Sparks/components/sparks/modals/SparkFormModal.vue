@@ -377,9 +377,9 @@ const defaultCreator = computed(() => {
 
 const form = ref({
   baseName: '',
-  offer: 'Cash',
+  offer: '',
   creator: defaultCreator.value,
-  status: 'active',
+  status: 'untested',
   tiktokLinks: '',
   sparkCodes: '',
   enableCommentBot: false,
@@ -461,7 +461,7 @@ function updatePreview() {
       tiktokLink: link || '',
       sparkCode: codes[index] || '',
       creator: form.value.creator || '',
-      status: form.value.status || 'active',
+      status: form.value.status || 'untested',
       offer: form.value.offer || 'auto', // Use offer field only
       thumbnail: '', // Ensure thumbnail field is present
       paymentStatus: 'unpaid', // Ensure paymentStatus is present
@@ -473,9 +473,9 @@ function updatePreview() {
 function close() {
   form.value = {
     baseName: '',
-    offer: 'Cash',
+    offer: '',
     creator: defaultCreator.value,
-    status: 'active',
+    status: 'untested',
     tiktokLinks: '',
     sparkCodes: '',
     enableCommentBot: false,

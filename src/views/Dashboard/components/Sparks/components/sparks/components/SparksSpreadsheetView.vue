@@ -1,51 +1,67 @@
 <template>
   <v-dialog v-model="dialog" fullscreen>
     <v-card>
-      <v-card-title class="d-flex align-center">
-        <v-icon class="mr-2">mdi-table-large</v-icon>
-        Sparks Spreadsheet View
-        <v-spacer />
-        <v-btn
-          :variant="isBatchUpdateMode ? 'elevated' : 'outlined'"
-          :color="isBatchUpdateMode ? 'primary' : 'default'"
-          prepend-icon="mdi-pencil-box-multiple"
-          @click="toggleBatchUpdate"
-          class="mr-2"
-        >
-          {{ isBatchUpdateMode ? 'Hide Batch Update' : 'Batch Update' }}
-        </v-btn>
-        <v-btn
-          v-if="hasCommentBotAccess"
-          :variant="isCommentBotMode ? 'elevated' : 'outlined'"
-          :color="isCommentBotMode ? 'primary' : 'default'"
-          prepend-icon="mdi-robot"
-          @click="toggleCommentBot"
-          class="mr-2"
-        >
-          {{ isCommentBotMode ? 'Hide Comment Bot' : 'Comment Bot' }}
-        </v-btn>
-        <v-btn
-          variant="outlined"
-          color="error"
-          prepend-icon="mdi-delete"
-          @click="deleteSelected"
-          :disabled="selectedRows.size === 0"
-          class="mr-2"
-        >
-          Delete ({{ selectedRows.size }})
-        </v-btn>
-        <v-btn
-          variant="outlined"
-          prepend-icon="mdi-content-save"
-          @click="saveChanges"
-          :disabled="!hasChanges"
-          class="mr-2"
-        >
-          Save Changes
-        </v-btn>
-        <v-btn icon @click="closeDialog">
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
+      <v-card-title>
+        <div class="w-100">
+          <div class="d-flex align-center">
+            <v-icon class="mr-2">mdi-table-large</v-icon>
+            Sparks Spreadsheet View
+            <v-spacer />
+            <v-btn icon @click="closeDialog">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </div>
+          <div class="d-flex align-center mt-2">
+            <v-btn
+              :variant="isBatchUpdateMode ? 'elevated' : 'outlined'"
+              :color="isBatchUpdateMode ? 'primary' : 'default'"
+              prepend-icon="mdi-pencil-box-multiple"
+              @click="toggleBatchUpdate"
+              class="mr-2"
+            >
+              {{ isBatchUpdateMode ? 'Hide Batch Update' : 'Batch Update' }}
+            </v-btn>
+            <v-btn
+              v-if="hasCommentBotAccess"
+              :variant="isCommentBotMode ? 'elevated' : 'outlined'"
+              :color="isCommentBotMode ? 'primary' : 'default'"
+              prepend-icon="mdi-robot"
+              @click="toggleCommentBot"
+              class="mr-2"
+            >
+              {{ isCommentBotMode ? 'Hide Comment Bot' : 'Comment Bot' }}
+            </v-btn>
+            <v-spacer />
+            <v-btn
+              variant="outlined"
+              color="error"
+              prepend-icon="mdi-delete"
+              @click="deleteSelected"
+              :disabled="selectedRows.size === 0"
+              class="mr-2"
+            >
+              Delete ({{ selectedRows.size }})
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              color="success"
+              prepend-icon="mdi-download"
+              @click="exportSelectedToCSV"
+              :disabled="selectedRows.size === 0"
+              class="mr-2"
+            >
+              Export Selected ({{ selectedRows.size }})
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-content-save"
+              @click="saveChanges"
+              :disabled="!hasChanges"
+            >
+              Save Changes
+            </v-btn>
+          </div>
+        </div>
       </v-card-title>
 
       <v-card-text>
@@ -323,7 +339,8 @@
               <div class="cell data-cell checkbox-cell">
                 <v-checkbox-btn
                   :model-value="selectedRows.has(spark.id)"
-                  @update:model-value="toggleRowSelection(spark.id)"
+                  @update:model-value="(value) => handleCheckboxChange(spark.id, rowIndex, value, $event)"
+                  @click.native="(event) => captureShiftKey(event)"
                   density="compact"
                 />
               </div>
@@ -459,6 +476,8 @@ const cellInput = ref(null);
 
 // Row selection state
 const selectedRows = ref(new Set());
+const lastSelectedIndex = ref(null);
+const isShiftPressed = ref(false);
 
 // Batch update state
 const batchUpdate = ref({
@@ -585,8 +604,10 @@ const isAllSelected = computed(() => {
 const toggleSelectAll = (value) => {
   if (value) {
     selectedRows.value = new Set(editableSparks.value.map(spark => spark.id));
+    lastSelectedIndex.value = editableSparks.value.length - 1;
   } else {
     selectedRows.value.clear();
+    lastSelectedIndex.value = null;
   }
 };
 
@@ -596,16 +617,55 @@ const selectAllRows = () => {
 
 const clearSelection = () => {
   selectedRows.value.clear();
+  lastSelectedIndex.value = null;
 };
 
-const toggleRowSelection = (sparkId) => {
-  if (selectedRows.value.has(sparkId)) {
-    selectedRows.value.delete(sparkId);
+const captureShiftKey = (event) => {
+  isShiftPressed.value = event.shiftKey;
+};
+
+const handleCheckboxChange = (sparkId, rowIndex, value) => {
+  // Check if shift key is pressed and we have a previous selection
+  if (isShiftPressed.value && lastSelectedIndex.value !== null && lastSelectedIndex.value !== rowIndex) {
+    // Get the range of rows to select
+    const startIndex = Math.min(lastSelectedIndex.value, rowIndex);
+    const endIndex = Math.max(lastSelectedIndex.value, rowIndex);
+
+    console.log('Shift-click detected:', {
+      lastSelectedIndex: lastSelectedIndex.value,
+      currentIndex: rowIndex,
+      range: [startIndex, endIndex],
+      totalSparks: editableSparks.value.length
+    });
+
+    // Select all rows in the range
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (editableSparks.value[i]) {
+        selectedRows.value.add(editableSparks.value[i].id);
+        console.log('Adding spark at index', i, 'with id', editableSparks.value[i].id);
+      }
+    }
+
+    // Don't update lastSelectedIndex on shift-click to maintain the anchor point
   } else {
-    selectedRows.value.add(sparkId);
+    // Normal single selection toggle
+    if (value) {
+      selectedRows.value.add(sparkId);
+      lastSelectedIndex.value = rowIndex;
+    } else {
+      selectedRows.value.delete(sparkId);
+      // Only clear lastSelectedIndex if no items are selected
+      if (selectedRows.value.size === 0) {
+        lastSelectedIndex.value = null;
+      }
+    }
   }
+
   // Trigger reactivity
   selectedRows.value = new Set(selectedRows.value);
+
+  // Reset shift flag
+  isShiftPressed.value = false;
 };
 
 // Batch update functionality
@@ -873,6 +933,74 @@ const confirmDelete = async () => {
   } finally {
     isDeleting.value = false;
   }
+};
+
+// Export selected rows to CSV
+const exportSelectedToCSV = () => {
+  if (selectedRows.value.size === 0) {
+    return;
+  }
+
+  // Get selected sparks
+  const selectedSparks = editableSparks.value.filter(spark => selectedRows.value.has(spark.id));
+
+  // Define CSV headers
+  const headers = [
+    'Name',
+    'TikTok Link',
+    'Spark Code',
+    'Status',
+    'Bot Status',
+    'Offer',
+    'Creator',
+    'Content Type',
+    'Created Date'
+  ];
+
+  // Convert sparks to CSV rows
+  const csvRows = selectedSparks.map(spark => {
+    return [
+      spark.name || '',
+      spark.tiktok_link || '',
+      spark.spark_code || '',
+      spark.status || '',
+      spark.bot_status || '',
+      spark.offer || '',
+      spark.creator || '',
+      spark.content_type || '',
+      spark.created_at ? new Date(spark.created_at).toLocaleDateString() : ''
+    ].map(field => {
+      // Escape fields that contain commas, quotes, or newlines
+      const escaped = String(field).replace(/"/g, '""');
+      return escaped.includes(',') || escaped.includes('"') || escaped.includes('\n')
+        ? `"${escaped}"`
+        : escaped;
+    }).join(',');
+  });
+
+  // Combine headers and rows
+  const csvContent = [
+    headers.join(','),
+    ...csvRows
+  ].join('\n');
+
+  // Create and trigger download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const filename = `sparks_export_${timestamp}.csv`;
+
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  console.log(`Exported ${selectedSparks.length} sparks to ${filename}`);
 };
 
 // Close dialog

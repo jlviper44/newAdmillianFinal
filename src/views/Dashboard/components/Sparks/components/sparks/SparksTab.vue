@@ -74,7 +74,7 @@
               @click="openSpreadsheetView"
               class="mr-2"
             >
-              Spreadsheet View
+              Edit All
             </v-btn>
             <v-btn
               prepend-icon="mdi-refresh"

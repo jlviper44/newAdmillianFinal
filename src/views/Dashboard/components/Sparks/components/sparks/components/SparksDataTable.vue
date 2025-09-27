@@ -1,13 +1,31 @@
 <template>
   <v-card>
     <v-card-title class="d-flex align-center">
+      <!-- View Toggle -->
+      <v-btn-toggle
+        v-model="viewMode"
+        mandatory
+        density="compact"
+        variant="outlined"
+        divided
+      >
+        <v-btn value="table" size="small">
+          <v-icon start>mdi-table</v-icon>
+          Table
+        </v-btn>
+        <v-btn value="card" size="small">
+          <v-icon start>mdi-view-grid</v-icon>
+          Cards
+        </v-btn>
+      </v-btn-toggle>
       <v-spacer />
       <v-chip color="info" size="small">View Only</v-chip>
     </v-card-title>
 
     <v-card-text>
-      <!-- Simple data table for viewing only -->
+      <!-- Table View -->
       <v-data-table
+        v-if="viewMode === 'table'"
         :headers="headers"
         :items="sparks"
         :loading="isLoading"
@@ -111,12 +129,144 @@
           </div>
         </template>
       </v-data-table>
+
+      <!-- Card View -->
+      <div v-else-if="viewMode === 'card'">
+        <!-- Loading state -->
+        <div v-if="isLoading" class="text-center pa-8">
+          <v-progress-circular indeterminate color="primary" />
+          <div class="text-body-2 mt-2">Loading sparks...</div>
+        </div>
+
+        <!-- Cards Grid -->
+        <v-row v-else-if="sparks.length > 0">
+          <v-col
+            v-for="spark in sparks"
+            :key="spark.id"
+            cols="12"
+            sm="6"
+            md="4"
+            lg="3"
+          >
+            <v-card class="spark-card" height="100%">
+              <!-- Thumbnail -->
+              <v-img
+                :src="spark.thumbnail || defaultThumbnail"
+                :alt="spark.name"
+                height="200"
+                cover
+                class="align-end"
+                @error="handleImageError"
+              >
+                <!-- Status overlay -->
+                <v-chip
+                  :color="getStatusColor(spark.status)"
+                  size="small"
+                  class="ma-2"
+                  style="position: absolute; top: 0; right: 0;"
+                >
+                  {{ getStatusLabel(spark.status) }}
+                </v-chip>
+              </v-img>
+
+              <v-card-title class="text-h6 py-2">
+                {{ spark.name || 'Untitled' }}
+              </v-card-title>
+
+              <v-card-subtitle class="py-0">
+                <v-chip
+                  size="x-small"
+                  :color="getTypeColor(spark.content_type)"
+                  variant="tonal"
+                  class="mr-1"
+                >
+                  {{ spark.content_type || 'Auto' }}
+                </v-chip>
+                <span class="text-caption">{{ formatDate(spark.created_at) }}</span>
+              </v-card-subtitle>
+
+              <v-card-text>
+                <div class="d-flex flex-column gap-1">
+                  <!-- Spark Code with Copy Button -->
+                  <div class="d-flex align-center">
+                    <v-btn
+                      size="x-small"
+                      variant="tonal"
+                      color="primary"
+                      @click.stop="() => copySparkCode(spark)"
+                      :disabled="!spark.spark_code && !spark.sparkCode && !spark.code"
+                    >
+                      <v-icon start size="x-small">{{ isCodeCopied(spark) ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+                      {{ isCodeCopied(spark) ? 'Copied!' : 'Copy Spark Code' }}
+                    </v-btn>
+                    <span v-if="!spark.spark_code && !spark.sparkCode && !spark.code" class="text-caption text-grey ml-2">No code</span>
+                  </div>
+
+                  <!-- Creator -->
+                  <div v-if="spark.creator" class="text-caption">
+                    <v-icon size="x-small" class="mr-1">mdi-account</v-icon>
+                    {{ spark.creator }}
+                  </div>
+
+                  <!-- Offer -->
+                  <div v-if="spark.offer" class="text-caption">
+                    <v-icon size="x-small" class="mr-1">mdi-tag</v-icon>
+                    {{ spark.offer }}
+                  </div>
+
+                  <!-- Bot Status -->
+                  <div v-if="spark.bot_status" class="text-caption">
+                    <v-icon size="x-small" class="mr-1">mdi-robot</v-icon>
+                    <v-chip
+                      size="x-small"
+                      :color="getBotStatusColor(spark.bot_status)"
+                      variant="tonal"
+                    >
+                      {{ spark.bot_status }}
+                    </v-chip>
+                  </div>
+                </div>
+              </v-card-text>
+
+              <v-card-actions>
+                <v-btn
+                  v-if="spark.tiktok_link"
+                  @click="openLink(spark.tiktok_link)"
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  block
+                >
+                  <v-icon start>mdi-open-in-new</v-icon>
+                  Open
+                </v-btn>
+                <div v-else class="text-center text-grey text-caption w-100 py-2">
+                  No link available
+                </div>
+              </v-card-actions>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- No data state -->
+        <div v-else class="text-center pa-8">
+          <v-icon size="48" color="grey-lighten-2" class="mb-2">mdi-lightning-bolt-outline</v-icon>
+          <div class="text-h6 text-grey">No sparks found</div>
+          <div class="text-caption text-grey">Start by creating some sparks</div>
+        </div>
+      </div>
     </v-card-text>
   </v-card>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
+
+// View mode state
+const viewMode = ref('card');
+
+// Copy state
+const copiedCode = ref(null);
 
 // Props
 const props = defineProps({
@@ -214,7 +364,97 @@ const getBotStatusColor = (status) => {
     default: return 'grey';
   }
 };
+
+// Open link in new tab
+const openLink = (url) => {
+  if (url) {
+    window.open(url, '_blank');
+  }
+};
+
+// Check if code is copied
+const isCodeCopied = (spark) => {
+  const code = spark.spark_code || spark.sparkCode || spark.code;
+  return copiedCode.value === code;
+};
+
+// Copy spark code to clipboard
+const copySparkCode = async (spark) => {
+  console.log('Full spark object:', JSON.stringify(spark, null, 2));
+  console.log('Available fields:', Object.keys(spark));
+
+  // Try different possible field names for the spark code
+  const code = spark.spark_code || spark.sparkCode || spark.code || '';
+
+  console.log('spark.spark_code:', spark.spark_code);
+  console.log('spark.tiktok_link:', spark.tiktok_link);
+  console.log('Selected code to copy:', code);
+
+  if (!code) {
+    console.error('No spark code found! Available fields:', Object.keys(spark));
+    if (spark.tiktok_link) {
+      console.warn('WARNING: Found tiktok_link but no spark_code!');
+    }
+    alert('No spark code found! Check console for details.');
+    return;
+  }
+
+  try {
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(code);
+      console.log('Copied using clipboard API:', code);
+    } else {
+      // Fallback for older browsers or non-HTTPS
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        document.execCommand('copy');
+        console.log('Copied using fallback method:', code);
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+        alert('Failed to copy. Please copy manually: ' + code);
+        return;
+      } finally {
+        textArea.remove();
+      }
+    }
+
+    copiedCode.value = code;
+
+    // Reset after 2 seconds
+    setTimeout(() => {
+      copiedCode.value = null;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy:', err);
+    // Last resort - show the code to copy manually
+    alert('Failed to copy. Spark code: ' + code);
+  }
+};
 </script>
+
+<style scoped>
+.spark-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.spark-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.gap-1 > *:not(:last-child) {
+  margin-bottom: 4px;
+}
+</style>
 
 <style scoped>
 .sparks-table {
