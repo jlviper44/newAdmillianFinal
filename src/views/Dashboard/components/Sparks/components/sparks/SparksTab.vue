@@ -259,25 +259,93 @@ const fetchVirtualAssistants = async () => {
 
       console.log('Processed VAs:', virtualAssistants.value); // Debug log
 
-      // Add main user's email if they're logged in (not a VA)
-      if (!isAssistingUser.value && user.value?.email) {
-        virtualAssistants.value.push({
-          title: user.value.email,
-          value: user.value.email
-        });
+      // Add current user's email
+      if (isAssistingUser.value && user.value?.originalEmail) {
+        // Current user is a VA - use their original email
+        const vaEmail = user.value.originalEmail;
+
+        // Check if VA's email is already in the list
+        const emailExists = virtualAssistants.value.some(va =>
+          va.value === vaEmail
+        );
+
+        if (!emailExists) {
+          // Add VA's email with (You) marker at the beginning
+          virtualAssistants.value.unshift({
+            title: `${vaEmail} (You)`,
+            value: vaEmail
+          });
+        } else {
+          // If VA's email already exists, update it to show (You)
+          const vaIndex = virtualAssistants.value.findIndex(va => va.value === vaEmail);
+          if (vaIndex !== -1) {
+            virtualAssistants.value[vaIndex].title = `${vaEmail} (You)`;
+          }
+        }
+      } else if (!isAssistingUser.value && user.value?.email) {
+        // Current user is main user - add their email
+        const currentUserEmail = user.value.email;
+
+        // Check if current user's email is already in the list
+        const emailExists = virtualAssistants.value.some(va =>
+          va.value === currentUserEmail
+        );
+
+        if (!emailExists) {
+          virtualAssistants.value.push({
+            title: currentUserEmail,
+            value: currentUserEmail
+          });
+        }
       }
 
       // Add a "None" option at the beginning
       virtualAssistants.value.unshift({ title: 'None', value: '' });
     } else {
       console.log('No virtual assistants found in response, response structure:', response);
-      virtualAssistants.value = [{ title: 'None', value: '' }];
+      virtualAssistants.value = [];
+
+      // Add current user's email even if API returns no VAs
+      if (isAssistingUser.value && user.value?.originalEmail) {
+        // Current user is a VA - use their original email
+        virtualAssistants.value.push({
+          title: `${user.value.originalEmail} (You)`,
+          value: user.value.originalEmail
+        });
+      } else if (!isAssistingUser.value && user.value?.email) {
+        // Current user is main user
+        virtualAssistants.value.push({
+          title: user.value.email,
+          value: user.value.email
+        });
+      }
+
+      // Add "None" option
+      virtualAssistants.value.unshift({ title: 'None', value: '' });
     }
 
     console.log('Final virtualAssistants.value:', virtualAssistants.value); // Debug log
   } catch (error) {
     console.error('Failed to fetch virtual assistants:', error);
-    virtualAssistants.value = [{ title: 'None', value: '' }];
+    virtualAssistants.value = [];
+
+    // Add current user's email even on error
+    if (isAssistingUser.value && user.value?.originalEmail) {
+      // Current user is a VA - use their original email
+      virtualAssistants.value.push({
+        title: `${user.value.originalEmail} (You)`,
+        value: user.value.originalEmail
+      });
+    } else if (!isAssistingUser.value && user.value?.email) {
+      // Current user is main user
+      virtualAssistants.value.push({
+        title: user.value.email,
+        value: user.value.email
+      });
+    }
+
+    // Add "None" option
+    virtualAssistants.value.unshift({ title: 'None', value: '' });
   }
 };
 

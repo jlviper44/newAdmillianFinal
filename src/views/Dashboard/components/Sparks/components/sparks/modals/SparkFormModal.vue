@@ -63,7 +63,7 @@
               <v-select
                 v-model="form.creator"
                 label="Creator (VA)"
-                :items="virtualAssistants"
+                :items="creatorOptions"
                 variant="outlined"
                 density="compact"
                 class="mb-4"
@@ -349,6 +349,11 @@ const { user, isAssistingUser } = useAuth();
 
 const bulkAddFormRef = ref(null);
 
+// Use the virtualAssistants directly as they already contain the current user
+const creatorOptions = computed(() => {
+  return props.virtualAssistants;
+});
+
 const statusOptions = [
   { title: 'Active', value: 'active' },
   { title: 'Testing', value: 'testing' },
@@ -366,13 +371,12 @@ const offerTypes = [
 
 // Get default creator based on current user
 const defaultCreator = computed(() => {
-  if (isAssistingUser.value) {
-    // If user is a VA, use their email
-    return user.value?.email || '';
-  } else {
-    // If main user, use their email
-    return user.value?.email || '';
+  if (isAssistingUser.value && user.value?.originalEmail) {
+    // If user is a VA, use their original email as default
+    return user.value.originalEmail;
   }
+  // For main users, default to empty (they select from VAs)
+  return '';
 });
 
 const form = ref({
