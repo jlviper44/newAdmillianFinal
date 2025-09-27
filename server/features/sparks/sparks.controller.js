@@ -296,29 +296,66 @@ export async function initializeSparksTable(db) {
 
 /**
  * Check if user has access to a spark
+ * VAs can access sparks from their parent user and other VAs under the same parent
  */
 async function checkSparkAccess(db, env, sparkId, userId, teamId) {
   try {
-    if (teamId) {
-      // If user is in a team, get all team members
-      const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
-      const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
-      
-      if (teamMembersResult.results && teamMembersResult.results.length > 0) {
-        const memberIds = teamMembersResult.results.map(m => m.user_id);
-        const placeholders = memberIds.map(() => '?').join(',');
+    // Check if current user is a VA
+    const vaCheck = await env.USERS_DB.prepare(
+      'SELECT user_id FROM virtual_assistants WHERE id = ?'
+    ).bind(userId).first();
+
+    if (vaCheck && vaCheck.user_id) {
+      // Current user is a VA, check access to parent and sibling VAs' sparks
+      const allVAs = await env.USERS_DB.prepare(
+        'SELECT id FROM virtual_assistants WHERE user_id = ?'
+      ).bind(vaCheck.user_id).all();
+
+      if (allVAs.results && allVAs.results.length > 0) {
+        const vaIds = allVAs.results.map(va => va.id);
+        const placeholders = vaIds.map(() => '?').join(',');
         return await db.prepare(
-          `SELECT * FROM sparks WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
-        ).bind(sparkId, ...memberIds, teamId).first();
+          `SELECT * FROM sparks WHERE id = ? AND (user_id = ? OR user_id IN (${placeholders}))`
+        ).bind(sparkId, vaCheck.user_id, ...vaIds).first();
       } else {
         return await db.prepare(
-          'SELECT * FROM sparks WHERE id = ? AND team_id = ?'
-        ).bind(sparkId, teamId).first();
+          'SELECT * FROM sparks WHERE id = ? AND (user_id = ? OR user_id = ?)'
+        ).bind(sparkId, vaCheck.user_id, userId).first();
       }
     } else {
-      return await db.prepare(
-        'SELECT * FROM sparks WHERE id = ? AND user_id = ?'
-      ).bind(sparkId, userId).first();
+      // Current user is a main user, check if they have access directly or through VAs
+      const userVAs = await env.USERS_DB.prepare(
+        'SELECT id FROM virtual_assistants WHERE user_id = ?'
+      ).bind(userId).all();
+
+      if (userVAs.results && userVAs.results.length > 0) {
+        const vaIds = userVAs.results.map(va => va.id);
+        const placeholders = vaIds.map(() => '?').join(',');
+        return await db.prepare(
+          `SELECT * FROM sparks WHERE id = ? AND (user_id = ? OR user_id IN (${placeholders}))`
+        ).bind(sparkId, userId, ...vaIds).first();
+      } else if (teamId) {
+        // No VAs, check team access
+        const teamMembersQuery = 'SELECT user_id FROM team_members WHERE team_id = ?';
+        const teamMembersResult = await env.USERS_DB.prepare(teamMembersQuery).bind(teamId).all();
+
+        if (teamMembersResult.results && teamMembersResult.results.length > 0) {
+          const memberIds = teamMembersResult.results.map(m => m.user_id);
+          const placeholders = memberIds.map(() => '?').join(',');
+          return await db.prepare(
+            `SELECT * FROM sparks WHERE id = ? AND (user_id IN (${placeholders}) OR team_id = ?)`
+          ).bind(sparkId, ...memberIds, teamId).first();
+        } else {
+          return await db.prepare(
+            'SELECT * FROM sparks WHERE id = ? AND team_id = ?'
+          ).bind(sparkId, teamId).first();
+        }
+      } else {
+        // No VAs, no team, just check direct ownership
+        return await db.prepare(
+          'SELECT * FROM sparks WHERE id = ? AND user_id = ?'
+        ).bind(sparkId, userId).first();
+      }
     }
   } catch (error) {
     console.error('Error checking spark access:', error);
@@ -835,20 +872,64 @@ async function listSparks(request, db, corsHeaders, env) {
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
     
-    // Build the query - filter by team members if in a team
+    // Build the query - filter by VA relationships or team members
     let query = 'SELECT * FROM sparks WHERE ';
     const params = [];
 
-    if (teamId) {
-      // Simplified team query - use team_id directly for better performance
-      console.log('Using team_id filter for teamId:', teamId);
-      query += '(user_id = ? OR team_id = ?)';
-      params.push(userId, teamId);
+    // Check if current user is a VA
+    const vaCheck = await env.USERS_DB.prepare(
+      'SELECT user_id FROM virtual_assistants WHERE id = ?'
+    ).bind(userId).first();
+
+    if (vaCheck && vaCheck.user_id) {
+      // Current user is a VA, get all VAs under the same parent user
+      console.log('Current user is a VA with parent:', vaCheck.user_id);
+
+      // Get all VAs under the same parent
+      const allVAs = await env.USERS_DB.prepare(
+        'SELECT id FROM virtual_assistants WHERE user_id = ?'
+      ).bind(vaCheck.user_id).all();
+
+      if (allVAs.results && allVAs.results.length > 0) {
+        const vaIds = allVAs.results.map(va => va.id);
+        const placeholders = vaIds.map(() => '?').join(',');
+
+        // Show sparks from parent user and all VAs
+        query += `(user_id = ? OR user_id IN (${placeholders}))`;
+        params.push(vaCheck.user_id, ...vaIds);
+
+        console.log('Showing sparks from parent and VAs:', { parent: vaCheck.user_id, vas: vaIds });
+      } else {
+        // Fallback: show parent user's sparks and current VA's sparks
+        query += '(user_id = ? OR user_id = ?)';
+        params.push(vaCheck.user_id, userId);
+      }
     } else {
-      // Only show user's own sparks
-      console.log('No team found, showing only user sparks for userId:', userId);
-      query += 'user_id = ?';
-      params.push(userId);
+      // Current user is a main user, check if they have VAs
+      const userVAs = await env.USERS_DB.prepare(
+        'SELECT id FROM virtual_assistants WHERE user_id = ?'
+      ).bind(userId).all();
+
+      if (userVAs.results && userVAs.results.length > 0) {
+        const vaIds = userVAs.results.map(va => va.id);
+        const placeholders = vaIds.map(() => '?').join(',');
+
+        // Show main user's sparks and all their VAs' sparks
+        query += `(user_id = ? OR user_id IN (${placeholders}))`;
+        params.push(userId, ...vaIds);
+
+        console.log('Main user with VAs, showing all sparks:', { mainUser: userId, vas: vaIds });
+      } else if (teamId) {
+        // No VAs, but has a team
+        console.log('Using team_id filter for teamId:', teamId);
+        query += '(user_id = ? OR team_id = ?)';
+        params.push(userId, teamId);
+      } else {
+        // No VAs, no team, only show user's own sparks
+        console.log('No VAs or team found, showing only user sparks for userId:', userId);
+        query += 'user_id = ?';
+        params.push(userId);
+      }
     }
 
     console.log('Final sparks query:', query);
@@ -1823,16 +1904,81 @@ async function bulkUpdatePaymentStatus(request, db, corsHeaders, env) {
     }
 
     // Update payment status for all specified sparks
-    // Only update sparks that belong to the user or their team
-    const placeholders = spark_ids.map(() => '?').join(',');
-    const query = `
-      UPDATE sparks
-      SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id IN (${placeholders})
-        AND (user_id = ? OR team_id = ?)
-    `;
+    // Check VA relationships for access control
+    let query;
+    let params;
 
-    const params = [payment_status, ...spark_ids, userId, teamId];
+    // Check if current user is a VA
+    const vaCheck = await env.USERS_DB.prepare(
+      'SELECT user_id FROM virtual_assistants WHERE id = ?'
+    ).bind(userId).first();
+
+    const sparkPlaceholders = spark_ids.map(() => '?').join(',');
+
+    if (vaCheck && vaCheck.user_id) {
+      // Current user is a VA, can update sparks from parent and sibling VAs
+      const allVAs = await env.USERS_DB.prepare(
+        'SELECT id FROM virtual_assistants WHERE user_id = ?'
+      ).bind(vaCheck.user_id).all();
+
+      if (allVAs.results && allVAs.results.length > 0) {
+        const vaIds = allVAs.results.map(va => va.id);
+        const vaPlaceholders = vaIds.map(() => '?').join(',');
+
+        query = `
+          UPDATE sparks
+          SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id IN (${sparkPlaceholders})
+            AND (user_id = ? OR user_id IN (${vaPlaceholders}))
+        `;
+        params = [payment_status, ...spark_ids, vaCheck.user_id, ...vaIds];
+      } else {
+        query = `
+          UPDATE sparks
+          SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id IN (${sparkPlaceholders})
+            AND (user_id = ? OR user_id = ?)
+        `;
+        params = [payment_status, ...spark_ids, vaCheck.user_id, userId];
+      }
+    } else {
+      // Current user is a main user, check if they have VAs
+      const userVAs = await env.USERS_DB.prepare(
+        'SELECT id FROM virtual_assistants WHERE user_id = ?'
+      ).bind(userId).all();
+
+      if (userVAs.results && userVAs.results.length > 0) {
+        const vaIds = userVAs.results.map(va => va.id);
+        const vaPlaceholders = vaIds.map(() => '?').join(',');
+
+        query = `
+          UPDATE sparks
+          SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id IN (${sparkPlaceholders})
+            AND (user_id = ? OR user_id IN (${vaPlaceholders}))
+        `;
+        params = [payment_status, ...spark_ids, userId, ...vaIds];
+      } else if (teamId) {
+        // No VAs, but has team
+        query = `
+          UPDATE sparks
+          SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id IN (${sparkPlaceholders})
+            AND (user_id = ? OR team_id = ?)
+        `;
+        params = [payment_status, ...spark_ids, userId, teamId];
+      } else {
+        // No VAs, no team, only update user's own sparks
+        query = `
+          UPDATE sparks
+          SET payment_status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id IN (${sparkPlaceholders})
+            AND user_id = ?
+        `;
+        params = [payment_status, ...spark_ids, userId];
+      }
+    }
+
     const result = await db.prepare(query).bind(...params).run();
 
     console.log('Bulk update result:', {
